@@ -1,0 +1,69 @@
+/* Full-bleed, no chrome. Layers, bottom to top:
+   #backdrop  CSS gradient (static default; driven by JS in the fallback)
+   #rings     canvas-2D ripples (fallback only, created by JS)
+   #water     WebGL canvas, fades in over the backdrop once it has drawn */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #6b6fd4;
+  /* No scrolling, zooming, text selection or long-press callouts: every
+     touch belongs to the water. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#backdrop,
+#rings,
+#water {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#backdrop {
+  background-color: #6b6fd4;
+  background-image: linear-gradient(150deg, #5d63cf 0%, #a777c9 48%, #f0a18c 100%);
+}
+
+#rings {
+  pointer-events: none;
+}
+
+#water {
+  opacity: 0;
+  transition: opacity 1.2s ease-out;
+}
+
+#water.on {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #water {
+    transition-duration: 0.3s;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

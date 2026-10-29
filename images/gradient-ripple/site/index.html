@@ -2,10 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>gradient-ripple</title>
+  <meta name="description" content="A slowly drifting colour gradient. Click or tap to make ripples.">
+  <meta name="theme-color" content="#5d63cf">
+  <link rel="icon" href="favicon.ico" sizes="32x32">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="main.js"></script>
 </head>
 <body>
-  <p>Placeholder — the gradient + ripple visual lands here.</p>
+  <div id="backdrop" aria-hidden="true"></div>
+  <canvas id="water" aria-hidden="true"></canvas>
+  <p class="sr-only">A slowly drifting colour gradient. Click or tap anywhere to make ripples.</p>
 </body>
 </html>
