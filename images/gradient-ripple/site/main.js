@@ -25,11 +25,12 @@ const IDLE_MS = 83;
 const TRAIL_SPACING = 10; // CSS px between drag-trail impulses
 const TRAIL_STRENGTH = 0.2; // relative to a tap
 const HOLD_STRENGTH = 0.2; // a held press's dips, relative to a tap (timing: mode.holdRhythm)
-// A press stops dipping this long after it went down. Nobody holds still
-// that long, but a release can still go missing (let go over an OS overlay
-// that takes no focus), and a forgotten press would otherwise dip on at full
-// frame rate forever. It also bounds how long a hold alone keeps the sim
-// from parking (see the packed tier's level creep in water.js).
+// A press that hasn't moved for this long is forgotten (no more dips).
+// Nobody holds still that long, but a release can still go missing (let go
+// over an OS overlay that takes no focus), and a forgotten press would
+// otherwise dip on at full frame rate forever. It also bounds how long a
+// still hold keeps the sim from parking (see the packed tier's level creep
+// in water.js).
 const HOLD_MAX = 5 * 60 * 1000; // ms
 const THEME_INTERVAL = 2; // s between <meta name=theme-color> updates
 
@@ -53,6 +54,12 @@ const palette = new Palette(Number.isFinite(seed) ? seed >>> 0 : undefined);
 const view = { w: 1, h: 1, dpr: 1 };
 const fallback = new Fallback(backdrop, settings);
 let water = null;
+// The renderer in use, water.js's or fallback.js's. Both provide what this
+// file relies on: resize(view), redraw(palette), frame(dt, palette) -> still
+// animating?, addDrop(x, y, strength, key, kind) -> impulse used? (kind:
+// undefined = tap, 'trail' or 'hold'; key: the pointer's record), and
+// holdRhythm = { first, every } in ms: how long after a tap or trail
+// impulse a held press's first dip is due, and the spacing of the rest.
 let mode = fallback;
 
 // Updates `view`; returns whether anything changed.
@@ -156,32 +163,34 @@ function updateTheme() {
 
 // ---- input ------------------------------------------------------------
 
-// pointerId -> { x, y, carry, type, downAt, lastDropAt, inStep }: one per
-// press still down, times from performance.now(); inStep: the last impulse
-// was a dip. The record also serves the renderers as a per-pointer key
-// (fallback.js spaces its trail rings per pointer).
+// pointerId -> { x, y, carry, type, movedAt, nextDipAt }: one per press
+// still down, times from performance.now(). The record also serves the
+// renderers as a per-pointer key (fallback.js spaces its trail rings per
+// pointer).
 const pointers = new Map();
 
-// A held press keeps dipping, in step with the rings: the renderer's
-// holdRhythm says when the first dip is due after a tap or trail impulse
-// (as the tap's own rings run out) and how far apart dips follow, one per
-// ring, so the sequence stays even. A moving pointer's trail keeps
-// restarting that, so drags are unchanged. Called from tick(), so it
+// A held press keeps dipping, in step with the rings: a tap or trail
+// impulse puts its next dip holdRhythm.first ahead (as the tap's own rings
+// run out), each dip the next one holdRhythm.every ahead, one per ring, so
+// the sequence stays even. A drag's trail keeps pushing that out, so drags
+// faster than TRAIL_SPACING per `first` are unchanged; slower ones dip too,
+// as a slowly moving finger in water should. Called from tick(), so it
 // follows the current renderer (also across a context loss) and the parking
 // countdown starts at the last dip. Returns whether any press is still
 // dipping (the loop then keeps the full frame rate).
 function dipHeld(now) {
-  const { first, every } = mode.holdRhythm;
+  const { every } = mode.holdRhythm;
   let dipping = false;
-  for (const p of pointers.values()) {
-    if (now - p.downAt > HOLD_MAX) continue;
+  for (const [id, p] of pointers) {
+    if (now - p.movedAt > HOLD_MAX) {
+      pointers.delete(id);
+      continue;
+    }
     dipping = true;
-    const due = p.lastDropAt + (p.inStep ? every : first);
-    if (now < due) continue;
+    if (now < p.nextDipAt) continue;
     // Keep the beat (a late frame must not stretch the spacing), unless we
     // are a whole beat behind (a stall): then restart from now.
-    p.lastDropAt = now - due < every ? due : now;
-    p.inStep = true;
+    p.nextDipAt = (now - p.nextDipAt < every ? p.nextDipAt : now) + every;
     mode.addDrop(p.x, p.y, HOLD_STRENGTH, p, 'hold');
   }
   return dipping;
@@ -190,7 +199,7 @@ function dipHeld(now) {
 function onDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const t = performance.now();
-  const p = { x: e.clientX, y: e.clientY, carry: 0, type: e.pointerType, downAt: t, lastDropAt: t, inStep: false };
+  const p = { x: e.clientX, y: e.clientY, carry: 0, type: e.pointerType, movedAt: t, nextDipAt: t + mode.holdRhythm.first };
   pointers.set(e.pointerId, p);
   // Captured, the release reaches us wherever it happens, and a capture lost
   // any other way (lostpointercapture below) ends the press as well.
@@ -227,11 +236,12 @@ function onMove(e) {
     p.x = ev.clientX;
     p.y = ev.clientY;
   }
-  // Only impulses the renderer used count (the fallback thins out trails):
-  // a slow drag there still gets its dips.
+  // Only impulses the renderer used count (the fallback thins out trails,
+  // so a slow drag there still gets its dips): they restart the stillness
+  // clock (HOLD_MAX) and push the next dip out.
   if (applied) {
-    p.lastDropAt = performance.now();
-    p.inStep = false;
+    p.movedAt = performance.now();
+    p.nextDipAt = p.movedAt + mode.holdRhythm.first;
   }
   wake();
 }

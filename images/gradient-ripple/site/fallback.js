@@ -74,8 +74,13 @@ export class Fallback {
       if (t && Math.hypot(x - t.x, y - t.y) < TRAIL_GAP) return false;
     }
     if (key) this.trail.set(key, { x, y });
-    this.rings.push({ x, y, age: 0, s: strength });
-    if (this.rings.length > MAX_RINGS) this.rings.shift();
+    this.rings.push({ x, y, age: 0, s: strength, hold: kind === 'hold' });
+    if (this.rings.length > MAX_RINGS) {
+      // Full (several held fingers): the oldest hold ring goes first, one
+      // of many and nearly faded, so taps and trails live out their time.
+      const i = this.rings.findIndex((r) => r.hold);
+      this.rings.splice(i < 0 ? 0 : i, 1);
+    }
     return true;
   }
 
