@@ -147,7 +147,11 @@ jobs:
             echo "GET /v2/$repo/manifests/$tag → HTTP $status"
             case "$status" in
               200)
-                digest=$(awk -F': *' 'tolower($1) == "docker-content-digest" { print $2 }' "$RUNNER_TEMP/headers.txt" | tr -d '\r')
+                digest=$(awk 'tolower($1) == "docker-content-digest:" { print $2 }' "$RUNNER_TEMP/headers.txt" | tr -d '\r')
+                if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+                  cat "$RUNNER_TEMP/headers.txt"
+                  echo "::error::ghcr.io/$repo:$tag: no usable Docker-Content-Digest header ('$digest')"; exit 1
+                fi
                 printf 'found=true\ntag=%s\ndigest=%s\n' "$tag" "$digest" >> "$GITHUB_OUTPUT"
                 echo "scanning ghcr.io/$repo:$tag @ $digest"
                 exit 0 ;;
