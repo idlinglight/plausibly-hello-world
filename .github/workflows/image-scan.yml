@@ -124,13 +124,18 @@ jobs:
             exit 0
           }
 
-          # Registry pull token from GITHUB_TOKEN (credentials via stdin, not argv)
+          # Registry pull token from GITHUB_TOKEN (credentials via stdin, not
+          # argv). Observed 2026-10-29: for a package that doesn't exist yet,
+          # GHCR still issues the token and answers the manifest with 404
+          # MANIFEST_UNKNOWN. So a REFUSED token is an access problem, not
+          # "unpublished" — fail loudly instead of skipping into blindness.
           resp=$(printf 'user = "%s:%s"\n' "$GITHUB_ACTOR" "$TOKEN" | curl -sS -K - \
             "https://ghcr.io/token?service=ghcr.io&scope=repository:$repo:pull")
           bearer=$(jq -r '.token // empty' <<<"$resp")
           if [ -z "$bearer" ]; then
             echo "token endpoint: $resp"
-            skip "registry refused a pull token: not published yet (or not readable by this repo's GITHUB_TOKEN)"
+            echo "::error::ghcr.io/$repo: registry refused a pull token — check the package's 'Manage Actions access' grants this repo read"
+            exit 1
           fi
 
           accept='application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json'

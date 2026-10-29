@@ -1,8 +1,10 @@
 name: _build-image
 
 # Reusable: verify + publish ONE image folder (images/<image>/). Not triggered
-# directly — each image has a thin caller (image-<name>.yml) that owns the
-# triggers and passes the folder name. Spec: /CLAUDE.md "Image contract".
+# directly. Callers own the triggers and pass the folder name: one thin
+# image-<name>.yml per image (PR / main / dispatch, paths-filtered) and the
+# build-image-branch.yml fan-out (build-image/**, all images).
+# Spec: /CLAUDE.md "Image contract".
 #
 #   verify   every trigger, PRs included: lint the Dockerfile against the
 #            contract, build BOTH platforms, load amd64, smoke-test it

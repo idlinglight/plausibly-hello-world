@@ -1,0 +1,69 @@
+name: build-image-branch
+
+# Push ANY state to build-image/** → every image folder is verified and
+# published as sha-<short7> (never latest), without merging:
+#   git push origin HEAD:build-image/<topic>
+# Works before a workflow file is on main (unlike workflow_dispatch), and
+# also for commits GitHub already has (e.g. an open PR's head). Delete the
+# branch afterwards; the image tags stay.
+#
+# Why this fan-out instead of build-image/** in each image caller: on.push
+# `paths:` is evaluated against the push's OWN diff, not against main.
+# Verified 2026-10-29 with a throwaway probe workflow:
+#   - new branch whose commits are all already on GitHub (re-pushing a PR
+#     head) → empty diff → a paths-filtered workflow does NOT run
+#   - new branch with new commits → diff against the parent of the oldest
+#     new commit → runs only if THOSE commits touch the paths
+# So with paths, the typical `git push origin HEAD:build-image/x` silently
+# builds nothing. This workflow has no paths filter and simply builds all
+# images (cheap: COPY-only, seconds each), found via images/*/ — new
+# folders need no change here.
+on:
+  push:
+    branches:
+      - 'build-image/**'
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # same discovery as image-scan.yml
+      - id: list
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          names=()
+          for f in images/*/Dockerfile; do
+            n=${f#images/}; n=${n%/Dockerfile}
+            if [[ ! "$n" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+              echo "::error::images/$n: not a valid image name"; exit 1
+            fi
+            names+=("$n")
+          done
+          images=$(printf '%s\n' "${names[@]}" | jq -Rnc '[inputs | select(length > 0)]')
+          echo "images: $images"
+          echo "images=$images" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.images != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.discover.outputs.images) }}
+    # Ceiling for _build-image.yml, which narrows per job (see there).
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_build-image.yml
+    with:
+      image: ${{ matrix.image }}
