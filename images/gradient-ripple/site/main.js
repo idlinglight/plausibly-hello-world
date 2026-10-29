@@ -8,9 +8,14 @@
 // Debug: ?force=webgl1 | rgba8 | nogl (comma-separated) exercises the lower
 // tiers; ?seed=<int> gives a reproducible palette.
 //
-// Loop: full frame rate only while ripples are alive; otherwise the gradient
-// drifts so slowly that ~12 fps is indistinguishable, so we wake up rarely.
-// Hidden tab: no frames at all, and the drift clock stops.
+// Input: a tap drops one impulse, a drag a trail of weak ones, and a press
+// held (nearly) still keeps dipping in place, so the tap's rings carry on as
+// one even sequence for as long as it stays down.
+//
+// Loop: full frame rate only while ripples are alive or a press is held;
+// otherwise the gradient drifts so slowly that ~12 fps is indistinguishable,
+// so we wake up rarely. Hidden tab: no frames at all, and the drift clock
+// stops.
 
 import { Palette } from './palette.js';
 import { createWater } from './water.js';
@@ -19,6 +24,14 @@ import { Fallback } from './fallback.js';
 const IDLE_MS = 83;
 const TRAIL_SPACING = 10; // CSS px between drag-trail impulses
 const TRAIL_STRENGTH = 0.2; // relative to a tap
+const HOLD_STRENGTH = 0.2; // a held press's dips, relative to a tap (timing: mode.holdRhythm)
+// A press that hasn't moved for this long is forgotten (no more dips).
+// Nobody holds still that long, but a release can still go missing (let go
+// over an OS overlay that takes no focus), and a forgotten press would
+// otherwise dip on at full frame rate forever. It also bounds how long a
+// still hold keeps the sim from parking (see the packed tier's level creep
+// in water.js).
+const HOLD_MAX = 5 * 60 * 1000; // ms
 const THEME_INTERVAL = 2; // s between <meta name=theme-color> updates
 
 const root = document.documentElement;
@@ -41,6 +54,12 @@ const palette = new Palette(Number.isFinite(seed) ? seed >>> 0 : undefined);
 const view = { w: 1, h: 1, dpr: 1 };
 const fallback = new Fallback(backdrop, settings);
 let water = null;
+// The renderer in use, water.js's or fallback.js's. Both provide what this
+// file relies on: resize(view), redraw(palette), frame(dt, palette) -> still
+// animating?, addDrop(x, y, strength, key, kind) -> impulse used? (kind:
+// undefined = tap, 'trail' or 'hold'; key: the pointer's record), and
+// holdRhythm = { first, every } in ms: how long after a tap or trail
+// impulse a held press's first dip is due, and the spacing of the rest.
 let mode = fallback;
 
 // Updates `view`; returns whether anything changed.
@@ -99,10 +118,13 @@ function tick(now) {
   last = now;
   if ((window.devicePixelRatio || 1) !== view.dpr) onResize();
   palette.advance(dt * (settings.reducedMotion ? 0.3 : 1));
+  // Pointer records are stamped with performance.now() in the event
+  // handlers, so the dips are timed on that clock too, not on the rAF one.
+  const dipping = pointers.size > 0 && dipHeld(performance.now());
   const busy = mode.frame(dt, palette);
   themeAge += dt;
   if (themeAge >= THEME_INTERVAL) updateTheme();
-  if (busy) rafId = requestAnimationFrame(tick);
+  if (busy || dipping) rafId = requestAnimationFrame(tick);
   else timerId = setTimeout(idleWake, IDLE_MS);
 }
 
@@ -141,14 +163,51 @@ function updateTheme() {
 
 // ---- input ------------------------------------------------------------
 
-// pointerId -> { x, y, carry }. The record also serves the renderers as a
-// per-pointer key (fallback.js spaces its trail rings per pointer).
+// pointerId -> { x, y, carry, type, movedAt, nextDipAt }: one per press
+// still down, times from performance.now(). The record also serves the
+// renderers as a per-pointer key (fallback.js spaces its trail rings per
+// pointer).
 const pointers = new Map();
+
+// A held press keeps dipping, in step with the rings: a tap or trail
+// impulse puts its next dip holdRhythm.first ahead (as the tap's own rings
+// run out), each dip the next one holdRhythm.every ahead, one per ring, so
+// the sequence stays even. A drag's trail keeps pushing that out, so drags
+// faster than TRAIL_SPACING per `first` are unchanged; slower ones dip too,
+// as a slowly moving finger in water should. Called from tick(), so it
+// follows the current renderer (also across a context loss) and the parking
+// countdown starts at the last dip. Returns whether any press is still
+// dipping (the loop then keeps the full frame rate).
+function dipHeld(now) {
+  const { every } = mode.holdRhythm;
+  let dipping = false;
+  for (const [id, p] of pointers) {
+    if (now - p.movedAt > HOLD_MAX) {
+      pointers.delete(id);
+      continue;
+    }
+    dipping = true;
+    if (now < p.nextDipAt) continue;
+    // Keep the beat (a late frame must not stretch the spacing), unless we
+    // are a whole beat behind (a stall): then restart from now.
+    p.nextDipAt = (now - p.nextDipAt < every ? p.nextDipAt : now) + every;
+    mode.addDrop(p.x, p.y, HOLD_STRENGTH, p, 'hold');
+  }
+  return dipping;
+}
 
 function onDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  const p = { x: e.clientX, y: e.clientY, carry: 0 };
+  const t = performance.now();
+  const p = { x: e.clientX, y: e.clientY, carry: 0, type: e.pointerType, movedAt: t, nextDipAt: t + mode.holdRhythm.first };
   pointers.set(e.pointerId, p);
+  // Captured, the release reaches us wherever it happens, and a capture lost
+  // any other way (lostpointercapture below) ends the press as well.
+  try {
+    e.target.setPointerCapture(e.pointerId);
+  } catch (err) {
+    // no capturable target, or the pointer is already gone: nothing to do
+  }
   mode.addDrop(e.clientX, e.clientY, 1, p);
   wake();
 }
@@ -156,12 +215,13 @@ function onDown(e) {
 function onMove(e) {
   const p = pointers.get(e.pointerId);
   if (!p) return;
-  if (e.pointerType === 'mouse' && e.buttons === 0) {
-    pointers.delete(e.pointerId); // released outside the window
+  if (e.buttons === 0 && (e.pointerType === 'mouse' || e.pointerType === 'pen')) {
+    pointers.delete(e.pointerId); // released where we didn't see it (a pen: lifted to hover)
     return;
   }
   const list = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
   const events = list.length ? list : [e];
+  let applied = false;
   for (const ev of events) {
     const dx = ev.clientX - p.x;
     const dy = ev.clientY - p.y;
@@ -169,12 +229,19 @@ function onMove(e) {
     // Emit impulses every TRAIL_SPACING px along the path.
     let s = TRAIL_SPACING - p.carry;
     while (s <= dist) {
-      mode.addDrop(p.x + (dx * s) / dist, p.y + (dy * s) / dist, TRAIL_STRENGTH, p);
+      if (mode.addDrop(p.x + (dx * s) / dist, p.y + (dy * s) / dist, TRAIL_STRENGTH, p, 'trail')) applied = true;
       s += TRAIL_SPACING;
     }
     p.carry = (p.carry + dist) % TRAIL_SPACING;
     p.x = ev.clientX;
     p.y = ev.clientY;
+  }
+  // Only impulses the renderer used count (the fallback thins out trails,
+  // so a slow drag there still gets its dips): they restart the stillness
+  // clock (HOLD_MAX) and push the next dip out.
+  if (applied) {
+    p.movedAt = performance.now();
+    p.nextDipAt = p.movedAt + mode.holdRhythm.first;
   }
   wake();
 }
@@ -187,6 +254,20 @@ addEventListener('pointerdown', onDown);
 addEventListener('pointermove', onMove);
 addEventListener('pointerup', onUp);
 addEventListener('pointercancel', onUp);
+addEventListener('lostpointercapture', onUp); // also right after every release: deleting twice is harmless
+// A release we may never see (switched app or window): end every hold.
+addEventListener('blur', () => pointers.clear());
+// A long-press on a touch screen fires contextmenu; the menu or selection
+// UI it can bring up would interrupt the press, so that one is suppressed.
+// Any other contextmenu is a real request (right click, Mac Ctrl+click, pen
+// barrel button, Menu key): the menu opens, and as it may swallow the
+// release, every hold ends.
+addEventListener('contextmenu', (e) => {
+  let touchHeld = false;
+  for (const p of pointers.values()) if (p.type === 'touch') touchHeld = true;
+  if (touchHeld && (e.pointerType === undefined || e.pointerType === 'touch')) e.preventDefault();
+  else pointers.clear();
+});
 
 // ---- lifecycle --------------------------------------------------------
 
@@ -201,8 +282,10 @@ else addEventListener('resize', onResize);
 // another monitor), which no resize event reports: tick() compares it.
 
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) stop();
-  else start();
+  if (document.hidden) {
+    pointers.clear(); // no dipping on in the background, nor after coming back
+    stop();
+  } else start();
 });
 
 // ---- go ---------------------------------------------------------------

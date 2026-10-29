@@ -6,6 +6,8 @@
 const CSS_INTERVAL = 0.1; // s between backdrop gradient updates
 const MAX_RINGS = 48;
 const TRAIL_GAP = 48; // CSS px between drag-trail rings
+const RING_SPEED = 140; // CSS px/s
+const RING_GAP = 16; // CSS px between a tap's three rings
 
 export class Fallback {
   constructor(backdrop, settings) {
@@ -18,6 +20,10 @@ export class Fallback {
     this.cssAge = Infinity;
     this.dirty = false; // ring canvas has something on it
     this.trail = new WeakMap(); // pointer record (main.js) -> last ring position
+    // For main.js (ms): a held press's rings carry on a tap's three at the
+    // same spacing, one ring per dip.
+    const gap = (1000 * RING_GAP) / RING_SPEED;
+    this.holdRhythm = { first: 3 * gap, every: gap };
   }
 
   activate() {
@@ -56,17 +62,26 @@ export class Fallback {
 
   // `key`: the pointer's record from main.js, so each finger's trail is
   // spaced on its own (a WeakMap, so ended pointers are forgotten).
-  addDrop(x, y, strength, key) {
-    if (!this.ctx) return;
-    if (strength < 1 && key) {
+  // `kind`: 'trail' or 'hold' (a held press's dip: one ring). Returns
+  // whether the impulse was used (main.js only counts those as the
+  // pointer's latest).
+  addDrop(x, y, strength, key, kind) {
+    if (!this.ctx) return false;
+    if (kind === 'trail' && key) {
       // Drag trail: much sparser than the WebGL impulses, or it turns into
       // a wireframe tube.
       const t = this.trail.get(key);
-      if (t && Math.hypot(x - t.x, y - t.y) < TRAIL_GAP) return;
+      if (t && Math.hypot(x - t.x, y - t.y) < TRAIL_GAP) return false;
     }
     if (key) this.trail.set(key, { x, y });
-    this.rings.push({ x, y, age: 0, s: strength });
-    if (this.rings.length > MAX_RINGS) this.rings.shift();
+    this.rings.push({ x, y, age: 0, s: strength, hold: kind === 'hold' });
+    if (this.rings.length > MAX_RINGS) {
+      // Full (several held fingers): the oldest hold ring goes first, one
+      // of many and nearly faded, so taps and trails live out their time.
+      const i = this.rings.findIndex((r) => r.hold);
+      this.rings.splice(i < 0 ? 0 : i, 1);
+    }
+    return true;
   }
 
   frame(dt, pal) {
@@ -102,7 +117,7 @@ export class Fallback {
       const fade = (1 - k) * (1 - k) * Math.sqrt(r.s) * (rm ? 0.5 : 1);
       const count = r.s < 1 ? 1 : 3;
       for (let j = 0; j < count; j++) {
-        const rad = r.age * 140 - j * 16;
+        const rad = r.age * RING_SPEED - j * RING_GAP;
         if (rad <= 1) continue;
         const a = fade * (0.45 - j * 0.12);
         ctx.lineWidth = 2.2 - j * 0.5;

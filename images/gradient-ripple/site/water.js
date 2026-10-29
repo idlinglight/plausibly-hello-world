@@ -1,7 +1,7 @@
 // water.js: WebGL heightfield water over the drifting gradient.
 //
 // Passes (all full-screen triangles):
-//   drop    state -> state'   add queued click/tap/drag impulses
+//   drop    state -> state'   add queued tap/drag/hold impulses
 //   sim     state -> state'   damped wave equation, leapfrog, 9-point
 //                             isotropic Laplacian (round rings, not
 //                             diamonds), a little viscosity against grid
@@ -27,6 +27,13 @@
 // isn't filterable it is RGBA8 too, with sqrt-companded values (precision
 // where it matters: near zero). If nothing works, createWater() returns null
 // and main.js uses the CSS + canvas-2D fallback.
+//
+// Known, packed tier only: for slow, smooth motion the per-step velocity
+// damping is less than half a fixed-point step, so it never rounds through
+// and the mean water level creeps up while the sim runs (measured: ~1e-3 per
+// second on a 128x192 grid, ~1.5e-3 on 320x200, against RANGE = 4; the float
+// tiers stay within ~1e-4). Invisible (rendering uses slopes only) and zeroed
+// when the sim parks; main.js's HOLD_MAX keeps a still hold from running it up.
 
 import { SIGMA, CHROMA_KEEP } from './palette.js';
 
@@ -46,6 +53,13 @@ const T = {
   caustic: 0.4,
   dropPx: 44, // impulse radius (crater + rims)
   dropAmp: -0.35, // impulse depth (sim units)
+  // A tap's rings follow each other this fast (s; measured: spectral peak of
+  // its train at 100-150 px, 6.4-6.6 Hz, also on a coarse 4 px grid). A held
+  // press dips once per ring, so its trains overlap into one even sequence.
+  ringPeriod: 0.155,
+  // ...starting this long after the tap (s): one period after the tap's
+  // second ring, which comes early (measured 130-145 ms after the first).
+  holdFirst: 0.29,
   settle: 10, // seconds after the last impulse before the sim parks...
   fadeOut: 2.5, // ...with the last of these spent fading the shading to zero
   maxSteps: 8, // sim steps per frame at most (slow frames slow the sim)
@@ -339,6 +353,9 @@ class Water {
     this.acc = 0; // fractional sim steps carried between frames
     this.label = '';
     this.listening = false;
+    // For main.js (ms): the first dip's rings add onto the tap's last one,
+    // so the train fades into the steady sequence without a step.
+    this.holdRhythm = { first: 1000 * T.holdFirst, every: 1000 * T.ringPeriod };
   }
 
   // (Re)create every GL resource; also used after context restore.
@@ -603,17 +620,21 @@ class Water {
     this.draw(this.surf);
   }
 
-  addDrop(x, y, strength) {
-    if (!this.ready || !this.state) return;
+  // `kind` 'hold': a dip as wide as a tap (so its rings have a tap's period)
+  // at `strength` of its depth. Returns whether the impulse was queued.
+  addDrop(x, y, strength, key, kind) {
+    if (!this.ready || !this.state) return false;
     const rm = this.settings.reducedMotion;
     const v = this.view;
+    const size = kind === 'hold' ? 1 : strength;
     this.drops.push(
       (x / v.w) * this.gw,
       (1 - y / v.h) * this.gh,
-      (T.dropPx * (0.55 + 0.45 * strength)) / this.cellPx,
+      (T.dropPx * (0.55 + 0.45 * size)) / this.cellPx,
       T.dropAmp * strength * (rm ? 0.45 : 1),
     );
     this.activeUntil = this.clock + T.settle;
+    return true;
   }
 
   applyDrops() {

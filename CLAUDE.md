@@ -72,6 +72,13 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   the lower render tiers, `?seed=<int>` fixes the palette;
   `<html data-renderer>` shows the active path. Favicon raster files were
   exported once from `favicon.svg` by hand — re-export when the SVG changes.
+  Input: a tap makes one impulse, a drag a trail, and a held press keeps
+  dipping in place, one dip per ring, so the tap's rings carry on as one
+  even sequence (up to a generous cap). Strength and cap sit at the top of
+  `main.js`; each renderer sets the rhythm (`holdRhythm`, from its measured
+  or drawn ring spacing). In the packed `rgba8` tier the mean water level
+  creeps while the sim runs — pre-existing, invisible, reset on parking,
+  bounded for holds by that cap (details in `water.js`).
 
 ## CI
 
