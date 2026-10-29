@@ -53,6 +53,13 @@ const T = {
   caustic: 0.4,
   dropPx: 44, // impulse radius (crater + rims)
   dropAmp: -0.35, // impulse depth (sim units)
+  // A tap's rings follow each other this fast (s; measured: spectral peak of
+  // its train at 100-150 px, 6.4-6.6 Hz, also on a coarse 4 px grid). A held
+  // press dips once per ring, so its trains overlap into one even sequence.
+  ringPeriod: 0.155,
+  // ...starting this long after the tap (s): one period after the tap's
+  // second ring, which comes early (measured 130-145 ms after the first).
+  holdFirst: 0.29,
   settle: 10, // seconds after the last impulse before the sim parks...
   fadeOut: 2.5, // ...with the last of these spent fading the shading to zero
   maxSteps: 8, // sim steps per frame at most (slow frames slow the sim)
@@ -346,6 +353,9 @@ class Water {
     this.acc = 0; // fractional sim steps carried between frames
     this.label = '';
     this.listening = false;
+    // For main.js (ms): the first dip's rings add onto the tap's last one,
+    // so the train fades into the steady sequence without a step.
+    this.holdRhythm = { first: 1000 * T.holdFirst, every: 1000 * T.ringPeriod };
   }
 
   // (Re)create every GL resource; also used after context restore.
@@ -610,15 +620,17 @@ class Water {
     this.draw(this.surf);
   }
 
-  // Returns whether the impulse was queued.
-  addDrop(x, y, strength) {
+  // `kind` 'hold': a dip as wide as a tap (so its rings have a tap's period)
+  // at `strength` of its depth. Returns whether the impulse was queued.
+  addDrop(x, y, strength, key, kind) {
     if (!this.ready || !this.state) return false;
     const rm = this.settings.reducedMotion;
     const v = this.view;
+    const size = kind === 'hold' ? 1 : strength;
     this.drops.push(
       (x / v.w) * this.gw,
       (1 - y / v.h) * this.gh,
-      (T.dropPx * (0.55 + 0.45 * strength)) / this.cellPx,
+      (T.dropPx * (0.55 + 0.45 * size)) / this.cellPx,
       T.dropAmp * strength * (rm ? 0.45 : 1),
     );
     this.activeUntil = this.clock + T.settle;

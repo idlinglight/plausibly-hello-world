@@ -9,7 +9,8 @@
 // tiers; ?seed=<int> gives a reproducible palette.
 //
 // Input: a tap drops one impulse, a drag a trail of weak ones, and a press
-// held (nearly) still keeps dipping in place for as long as it stays down.
+// held (nearly) still keeps dipping in place, so the tap's rings carry on as
+// one even sequence for as long as it stays down.
 //
 // Loop: full frame rate only while ripples are alive or a press is held;
 // otherwise the gradient drifts so slowly that ~12 fps is indistinguishable,
@@ -23,8 +24,7 @@ import { Fallback } from './fallback.js';
 const IDLE_MS = 83;
 const TRAIL_SPACING = 10; // CSS px between drag-trail impulses
 const TRAIL_STRENGTH = 0.2; // relative to a tap
-const HOLD_INTERVAL = 600; // ms without an impulse before a held press dips again
-const HOLD_STRENGTH = 0.6; // relative to a tap
+const HOLD_STRENGTH = 0.2; // a held press's dips, relative to a tap (timing: mode.holdRhythm)
 // A press stops dipping this long after it went down. Nobody holds still
 // that long, but a release can still go missing (let go over an OS overlay
 // that takes no focus), and a forgotten press would otherwise dip on at full
@@ -156,27 +156,33 @@ function updateTheme() {
 
 // ---- input ------------------------------------------------------------
 
-// pointerId -> { x, y, carry, type, downAt, lastDropAt }: one per press
-// still down, times from performance.now(). The record also serves the
-// renderers as a per-pointer key (fallback.js spaces its trail rings per
-// pointer).
+// pointerId -> { x, y, carry, type, downAt, lastDropAt, inStep }: one per
+// press still down, times from performance.now(); inStep: the last impulse
+// was a dip. The record also serves the renderers as a per-pointer key
+// (fallback.js spaces its trail rings per pointer).
 const pointers = new Map();
 
-// A held press keeps dipping: once its last impulse (tap, trail or dip) is
-// HOLD_INTERVAL old, another one goes in where it is. A moving pointer's
-// trail keeps resetting that clock, so drags are unchanged. Called from
-// tick(), so it follows the current renderer (also across a context loss)
-// and the parking countdown starts at the last dip. Returns whether any
-// press is still dipping (the loop then keeps the full frame rate).
+// A held press keeps dipping, in step with the rings: the renderer's
+// holdRhythm says when the first dip is due after a tap or trail impulse
+// (as the tap's own rings run out) and how far apart dips follow, one per
+// ring, so the sequence stays even. A moving pointer's trail keeps
+// restarting that, so drags are unchanged. Called from tick(), so it
+// follows the current renderer (also across a context loss) and the parking
+// countdown starts at the last dip. Returns whether any press is still
+// dipping (the loop then keeps the full frame rate).
 function dipHeld(now) {
-  const interval = HOLD_INTERVAL * (settings.reducedMotion ? 2 : 1);
+  const { first, every } = mode.holdRhythm;
   let dipping = false;
   for (const p of pointers.values()) {
     if (now - p.downAt > HOLD_MAX) continue;
     dipping = true;
-    if (now - p.lastDropAt < interval) continue;
-    p.lastDropAt = now;
-    mode.addDrop(p.x, p.y, HOLD_STRENGTH, p);
+    const due = p.lastDropAt + (p.inStep ? every : first);
+    if (now < due) continue;
+    // Keep the beat (a late frame must not stretch the spacing), unless we
+    // are a whole beat behind (a stall): then restart from now.
+    p.lastDropAt = now - due < every ? due : now;
+    p.inStep = true;
+    mode.addDrop(p.x, p.y, HOLD_STRENGTH, p, 'hold');
   }
   return dipping;
 }
@@ -184,7 +190,7 @@ function dipHeld(now) {
 function onDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const t = performance.now();
-  const p = { x: e.clientX, y: e.clientY, carry: 0, type: e.pointerType, downAt: t, lastDropAt: t };
+  const p = { x: e.clientX, y: e.clientY, carry: 0, type: e.pointerType, downAt: t, lastDropAt: t, inStep: false };
   pointers.set(e.pointerId, p);
   // Captured, the release reaches us wherever it happens, and a capture lost
   // any other way (lostpointercapture below) ends the press as well.
@@ -214,7 +220,7 @@ function onMove(e) {
     // Emit impulses every TRAIL_SPACING px along the path.
     let s = TRAIL_SPACING - p.carry;
     while (s <= dist) {
-      if (mode.addDrop(p.x + (dx * s) / dist, p.y + (dy * s) / dist, TRAIL_STRENGTH, p, true)) applied = true;
+      if (mode.addDrop(p.x + (dx * s) / dist, p.y + (dy * s) / dist, TRAIL_STRENGTH, p, 'trail')) applied = true;
       s += TRAIL_SPACING;
     }
     p.carry = (p.carry + dist) % TRAIL_SPACING;
@@ -223,7 +229,10 @@ function onMove(e) {
   }
   // Only impulses the renderer used count (the fallback thins out trails):
   // a slow drag there still gets its dips.
-  if (applied) p.lastDropAt = performance.now();
+  if (applied) {
+    p.lastDropAt = performance.now();
+    p.inStep = false;
+  }
   wake();
 }
 

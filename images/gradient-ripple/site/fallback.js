@@ -6,6 +6,8 @@
 const CSS_INTERVAL = 0.1; // s between backdrop gradient updates
 const MAX_RINGS = 48;
 const TRAIL_GAP = 48; // CSS px between drag-trail rings
+const RING_SPEED = 140; // CSS px/s
+const RING_GAP = 16; // CSS px between a tap's three rings
 
 export class Fallback {
   constructor(backdrop, settings) {
@@ -18,6 +20,10 @@ export class Fallback {
     this.cssAge = Infinity;
     this.dirty = false; // ring canvas has something on it
     this.trail = new WeakMap(); // pointer record (main.js) -> last ring position
+    // For main.js (ms): a held press's rings carry on a tap's three at the
+    // same spacing, one ring per dip.
+    const gap = (1000 * RING_GAP) / RING_SPEED;
+    this.holdRhythm = { first: 3 * gap, every: gap };
   }
 
   activate() {
@@ -56,11 +62,12 @@ export class Fallback {
 
   // `key`: the pointer's record from main.js, so each finger's trail is
   // spaced on its own (a WeakMap, so ended pointers are forgotten).
-  // `trail`: a drag-trail impulse. Returns whether the impulse was used
-  // (main.js only counts those as the pointer's latest).
-  addDrop(x, y, strength, key, trail) {
+  // `kind`: 'trail' or 'hold' (a held press's dip: one ring). Returns
+  // whether the impulse was used (main.js only counts those as the
+  // pointer's latest).
+  addDrop(x, y, strength, key, kind) {
     if (!this.ctx) return false;
-    if (trail && key) {
+    if (kind === 'trail' && key) {
       // Drag trail: much sparser than the WebGL impulses, or it turns into
       // a wireframe tube.
       const t = this.trail.get(key);
@@ -105,7 +112,7 @@ export class Fallback {
       const fade = (1 - k) * (1 - k) * Math.sqrt(r.s) * (rm ? 0.5 : 1);
       const count = r.s < 1 ? 1 : 3;
       for (let j = 0; j < count; j++) {
-        const rad = r.age * 140 - j * 16;
+        const rad = r.age * RING_SPEED - j * RING_GAP;
         if (rad <= 1) continue;
         const a = fade * (0.45 - j * 0.12);
         ctx.lineWidth = 2.2 - j * 0.5;
