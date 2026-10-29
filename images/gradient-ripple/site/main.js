@@ -25,6 +25,12 @@ const TRAIL_SPACING = 10; // CSS px between drag-trail impulses
 const TRAIL_STRENGTH = 0.2; // relative to a tap
 const HOLD_INTERVAL = 600; // ms without an impulse before a held press dips again
 const HOLD_STRENGTH = 0.6; // relative to a tap
+// A press stops dipping this long after it went down. Nobody holds still
+// that long, but a release can still go missing (let go over an OS overlay
+// that takes no focus), and a forgotten press would otherwise dip on at full
+// frame rate forever. It also bounds how long a hold alone keeps the sim
+// from parking (see the packed tier's level creep in water.js).
+const HOLD_MAX = 5 * 60 * 1000; // ms
 const THEME_INTERVAL = 2; // s between <meta name=theme-color> updates
 
 const root = document.documentElement;
@@ -105,11 +111,13 @@ function tick(now) {
   last = now;
   if ((window.devicePixelRatio || 1) !== view.dpr) onResize();
   palette.advance(dt * (settings.reducedMotion ? 0.3 : 1));
-  if (pointers.size) dipHeld(now);
+  // Pointer records are stamped with performance.now() in the event
+  // handlers, so the dips are timed on that clock too, not on the rAF one.
+  const dipping = pointers.size > 0 && dipHeld(performance.now());
   const busy = mode.frame(dt, palette);
   themeAge += dt;
   if (themeAge >= THEME_INTERVAL) updateTheme();
-  if (busy || pointers.size) rafId = requestAnimationFrame(tick);
+  if (busy || dipping) rafId = requestAnimationFrame(tick);
   else timerId = setTimeout(idleWake, IDLE_MS);
 }
 
@@ -148,29 +156,43 @@ function updateTheme() {
 
 // ---- input ------------------------------------------------------------
 
-// pointerId -> { x, y, carry, lastDropAt }: one per press still down. The
-// record also serves the renderers as a per-pointer key (fallback.js spaces
-// its trail rings per pointer).
+// pointerId -> { x, y, carry, type, downAt, lastDropAt }: one per press
+// still down, times from performance.now(). The record also serves the
+// renderers as a per-pointer key (fallback.js spaces its trail rings per
+// pointer).
 const pointers = new Map();
 
 // A held press keeps dipping: once its last impulse (tap, trail or dip) is
 // HOLD_INTERVAL old, another one goes in where it is. A moving pointer's
 // trail keeps resetting that clock, so drags are unchanged. Called from
 // tick(), so it follows the current renderer (also across a context loss)
-// and the parking countdown starts at the last dip.
+// and the parking countdown starts at the last dip. Returns whether any
+// press is still dipping (the loop then keeps the full frame rate).
 function dipHeld(now) {
   const interval = HOLD_INTERVAL * (settings.reducedMotion ? 2 : 1);
+  let dipping = false;
   for (const p of pointers.values()) {
+    if (now - p.downAt > HOLD_MAX) continue;
+    dipping = true;
     if (now - p.lastDropAt < interval) continue;
     p.lastDropAt = now;
-    mode.addDrop(p.x, p.y, HOLD_STRENGTH, p, true);
+    mode.addDrop(p.x, p.y, HOLD_STRENGTH, p);
   }
+  return dipping;
 }
 
 function onDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  const p = { x: e.clientX, y: e.clientY, carry: 0, lastDropAt: performance.now() };
+  const t = performance.now();
+  const p = { x: e.clientX, y: e.clientY, carry: 0, type: e.pointerType, downAt: t, lastDropAt: t };
   pointers.set(e.pointerId, p);
+  // Captured, the release reaches us wherever it happens, and a capture lost
+  // any other way (lostpointercapture below) ends the press as well.
+  try {
+    e.target.setPointerCapture(e.pointerId);
+  } catch (err) {
+    // no capturable target, or the pointer is already gone: nothing to do
+  }
   mode.addDrop(e.clientX, e.clientY, 1, p);
   wake();
 }
@@ -178,12 +200,13 @@ function onDown(e) {
 function onMove(e) {
   const p = pointers.get(e.pointerId);
   if (!p) return;
-  if (e.pointerType === 'mouse' && e.buttons === 0) {
-    pointers.delete(e.pointerId); // released outside the window
+  if (e.buttons === 0 && (e.pointerType === 'mouse' || e.pointerType === 'pen')) {
+    pointers.delete(e.pointerId); // released where we didn't see it (a pen: lifted to hover)
     return;
   }
   const list = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
   const events = list.length ? list : [e];
+  let applied = false;
   for (const ev of events) {
     const dx = ev.clientX - p.x;
     const dy = ev.clientY - p.y;
@@ -191,14 +214,16 @@ function onMove(e) {
     // Emit impulses every TRAIL_SPACING px along the path.
     let s = TRAIL_SPACING - p.carry;
     while (s <= dist) {
-      mode.addDrop(p.x + (dx * s) / dist, p.y + (dy * s) / dist, TRAIL_STRENGTH, p);
-      p.lastDropAt = performance.now();
+      if (mode.addDrop(p.x + (dx * s) / dist, p.y + (dy * s) / dist, TRAIL_STRENGTH, p, true)) applied = true;
       s += TRAIL_SPACING;
     }
     p.carry = (p.carry + dist) % TRAIL_SPACING;
     p.x = ev.clientX;
     p.y = ev.clientY;
   }
+  // Only impulses the renderer used count (the fallback thins out trails):
+  // a slow drag there still gets its dips.
+  if (applied) p.lastDropAt = performance.now();
   wake();
 }
 
@@ -210,14 +235,19 @@ addEventListener('pointerdown', onDown);
 addEventListener('pointermove', onMove);
 addEventListener('pointerup', onUp);
 addEventListener('pointercancel', onUp);
-addEventListener('lostpointercapture', onUp);
+addEventListener('lostpointercapture', onUp); // also right after every release: deleting twice is harmless
 // A release we may never see (switched app or window): end every hold.
 addEventListener('blur', () => pointers.clear());
-// A long-press on a touch screen fires contextmenu, and a menu popping up
-// mid-hold can swallow the release; so can a right click while the left
-// button is held. A plain right click keeps its menu.
+// A long-press on a touch screen fires contextmenu; the menu or selection
+// UI it can bring up would interrupt the press, so that one is suppressed.
+// Any other contextmenu is a real request (right click, Mac Ctrl+click, pen
+// barrel button, Menu key): the menu opens, and as it may swallow the
+// release, every hold ends.
 addEventListener('contextmenu', (e) => {
-  if (pointers.size || (e.pointerType && e.pointerType !== 'mouse')) e.preventDefault();
+  let touchHeld = false;
+  for (const p of pointers.values()) if (p.type === 'touch') touchHeld = true;
+  if (touchHeld && (e.pointerType === undefined || e.pointerType === 'touch')) e.preventDefault();
+  else pointers.clear();
 });
 
 // ---- lifecycle --------------------------------------------------------

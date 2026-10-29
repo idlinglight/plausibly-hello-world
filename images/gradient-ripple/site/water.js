@@ -27,6 +27,13 @@
 // isn't filterable it is RGBA8 too, with sqrt-companded values (precision
 // where it matters: near zero). If nothing works, createWater() returns null
 // and main.js uses the CSS + canvas-2D fallback.
+//
+// Known, packed tier only: for slow, smooth motion the per-step velocity
+// damping is less than half a fixed-point step, so it never rounds through
+// and the mean water level creeps up while the sim runs (measured: ~1e-3 per
+// second on a 128x192 grid, ~1.5e-3 on 320x200, against RANGE = 4; the float
+// tiers stay within ~1e-4). Invisible (rendering uses slopes only) and zeroed
+// when the sim parks; main.js's HOLD_MAX keeps a still hold from running it up.
 
 import { SIGMA, CHROMA_KEEP } from './palette.js';
 
@@ -603,8 +610,9 @@ class Water {
     this.draw(this.surf);
   }
 
+  // Returns whether the impulse was queued.
   addDrop(x, y, strength) {
-    if (!this.ready || !this.state) return;
+    if (!this.ready || !this.state) return false;
     const rm = this.settings.reducedMotion;
     const v = this.view;
     this.drops.push(
@@ -614,6 +622,7 @@ class Water {
       T.dropAmp * strength * (rm ? 0.45 : 1),
     );
     this.activeUntil = this.clock + T.settle;
+    return true;
   }
 
   applyDrops() {
