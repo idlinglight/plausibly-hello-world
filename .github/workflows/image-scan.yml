@@ -277,7 +277,7 @@ jobs:
               echo "| Severity | Vulnerability | Package | Installed | Fix state |"
               echo "| --- | --- | --- | --- | --- |"
               q '.matches | sorted | select(fixable | not)
-                 | "| \(.vulnerability.severity) | \(vuln) | \(.artifact.name) | \(.artifact.version) | \(.vulnerability.fix.state) |"'
+                 | "| \(.vulnerability.severity) | \(vuln) | \(.artifact.name) | \(.artifact.version) | \(.vulnerability.fix.state | if (. // "") == "" then "unknown" else . end) |"'
               echo
               echo "</details>"
             fi
