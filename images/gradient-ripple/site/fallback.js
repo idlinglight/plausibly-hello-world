@@ -17,6 +17,7 @@ export class Fallback {
     this.view = { w: 1, h: 1, dpr: 1 };
     this.cssAge = Infinity;
     this.dirty = false; // ring canvas has something on it
+    this.trail = new WeakMap(); // pointer record (main.js) -> last ring position
   }
 
   activate() {
@@ -42,20 +43,28 @@ export class Fallback {
     this.view = view;
     if (!this.canvas) return;
     const s = Math.min(view.dpr, 2);
+    const w = Math.max(1, Math.round(view.w * s));
+    const h = Math.max(1, Math.round(view.h * s));
     this.scale = s;
-    this.canvas.width = Math.max(1, Math.round(view.w * s));
-    this.canvas.height = Math.max(1, Math.round(view.h * s));
+    // Assigning width/height reallocates and clears even if unchanged.
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
+      this.dirty = false;
+    }
   }
 
-  addDrop(x, y, strength) {
+  // `key`: the pointer's record from main.js, so each finger's trail is
+  // spaced on its own (a WeakMap, so ended pointers are forgotten).
+  addDrop(x, y, strength, key) {
     if (!this.ctx) return;
-    if (strength < 1) {
+    if (strength < 1 && key) {
       // Drag trail: much sparser than the WebGL impulses, or it turns into
       // a wireframe tube.
-      const t = this.lastTrail;
+      const t = this.trail.get(key);
       if (t && Math.hypot(x - t.x, y - t.y) < TRAIL_GAP) return;
     }
-    this.lastTrail = { x, y };
+    if (key) this.trail.set(key, { x, y });
     this.rings.push({ x, y, age: 0, s: strength });
     if (this.rings.length > MAX_RINGS) this.rings.shift();
   }

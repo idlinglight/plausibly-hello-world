@@ -14,7 +14,8 @@
 // The sim runs on a coarse grid (2.5-4 CSS px per cell) at a fixed step rate,
 // so wave speed in CSS px/s is the same on every device. When nothing has
 // been touched for a few seconds the sim parks (state zeroed, no sim passes)
-// and only the gradient is redrawn, at a low frame rate (see main.js).
+// and only the gradient is redrawn, at a low frame rate (see main.js). The
+// shading fades out before that, so faint leftover rings never snap flat.
 //
 // Render-target formats, best first; each candidate must give a complete
 // framebuffer *and* survive a write/read-back test, otherwise the next is
@@ -45,13 +46,13 @@ const T = {
   caustic: 0.4,
   dropPx: 44, // impulse radius (crater + rims)
   dropAmp: -0.35, // impulse depth (sim units)
-  settle: 9, // seconds after the last impulse before the sim parks
+  settle: 10, // seconds after the last impulse before the sim parks...
+  fadeOut: 2.5, // ...with the last of these spent fading the shading to zero
   maxSteps: 8, // sim steps per frame at most (slow frames slow the sim)
   maxRenderScale: 1.5, // device-pixel-ratio cap
   maxRenderPixels: 2.4e6, // drawing-buffer pixel cap (4K screens, TVs)
 };
 const MAX_DROPS = 16;
-const DEG = Math.PI / 180;
 
 const VERT = `attribute vec2 aPos;
 varying vec2 vUv;
@@ -326,8 +327,7 @@ class Water {
     this.settings = settings;
     this.opts = opts;
     this.ready = false;
-    this.lost = false;
-    this.view = { w: 1, h: 1, dpr: 1 };
+    this.view = opts.view || { w: 1, h: 1, dpr: 1 }; // main.js's live, measured view
     this.gw = 0;
     this.gh = 0;
     this.cur = 0;
@@ -383,14 +383,15 @@ class Water {
       this.listening = true;
       this.canvas.addEventListener('webglcontextlost', (e) => {
         e.preventDefault(); // tells the browser we want it restored
-        this.lost = true;
         this.ready = false;
         this.opts.onLost();
       });
       this.canvas.addEventListener('webglcontextrestored', () => {
-        this.lost = false;
         if (this.init()) this.opts.onRestored();
-        else this.opts.onFail();
+        // Lost again while re-initialising: another 'restored' will follow
+        // and retries. Only a genuine failure is reported (main.js stays on
+        // the fallback, but a later loss/restore cycle can still recover).
+        else if (!this.gl.isContextLost()) this.opts.onFail();
       });
     }
     this.ready = true;
@@ -698,9 +699,11 @@ class Water {
     const rm = this.settings.reducedMotion;
     const bw = this.canvas.width;
     const bh = this.canvas.height;
-    const a = pal.angle * DEG;
-    const dx = Math.sin(a);
-    const dy = Math.cos(a);
+    const line = pal.line(bw, bh);
+    // Over the last T.fadeOut seconds before parking, fade the surface's
+    // effect to zero, so whatever faint rings are left never snap flat.
+    const k = Math.min(1, Math.max(0, (this.activeUntil - this.clock) / T.fadeOut));
+    const fade = this.live ? k * k * (3 - 2 * k) : 0;
     gl.useProgram(p.prog);
     gl.uniform2f(u.uRes, bw, bh);
     gl.uniform3fv(u.uLab0, pal.lab.subarray(0, 3));
@@ -708,10 +711,10 @@ class Water {
     gl.uniform3fv(u.uLab2, pal.lab.subarray(6, 9));
     gl.uniform3fv(u.uChroma, pal.chroma);
     gl.uniform3fv(u.uPos, pal.pos);
-    gl.uniform2f(u.uDir, dx, dy);
-    gl.uniform1f(u.uInvLen, 1 / (Math.abs(bw * dx) + Math.abs(bh * dy)));
-    gl.uniform1f(u.uSlope, T.heightPx / this.cellPx);
-    gl.uniform1f(u.uCurv, T.heightPx / (this.cellPx * this.cellPx));
+    gl.uniform2f(u.uDir, line.dx, line.dy);
+    gl.uniform1f(u.uInvLen, line.invLen);
+    gl.uniform1f(u.uSlope, (fade * T.heightPx) / this.cellPx);
+    gl.uniform1f(u.uCurv, (fade * T.heightPx) / (this.cellPx * this.cellPx));
     gl.uniform1f(u.uRefract, T.refractPx * this.scale);
     gl.uniform1f(u.uShade, T.shade);
     gl.uniform1f(u.uSpec, T.spec * (rm ? 0.5 : 1));

@@ -103,7 +103,9 @@ function lightnessFloor(hDeg) {
 // Ambers and yellows need extra chroma at that lightness to read as "sunny"
 // rather than mustard or khaki.
 function chromaBoost(hDeg) {
-  const c = Math.max(0, Math.cos((hDeg - 95) * 1.6 * DEG));
+  const d = Math.abs(hDeg - 95);
+  if (d >= 56.25) return 0; // cos below is periodic: keep it to the one lobe
+  const c = Math.cos(d * 1.6 * DEG);
   return 0.05 * c * c;
 }
 
@@ -201,13 +203,22 @@ export class Palette {
     return s + ')';
   }
 
-  // Position along the gradient line (CSS semantics) of point (x, y), in CSS
-  // px with y pointing down, for a w x h box.
-  tAt(x, y, w, h) {
+  // The gradient line for a w x h box, CSS semantics: unit direction (y up)
+  // and 1 / length, so t = 0.5 + dot(p - centre, dir) * invLen. Used by the
+  // shader uniforms and tAt(). Returns a reused object.
+  line(w, h) {
     const a = this.angle * DEG;
-    const dx = Math.sin(a);
-    const dy = Math.cos(a);
-    const len = Math.abs(w * dx) + Math.abs(h * dy);
-    return 0.5 + ((x - w / 2) * dx + (h / 2 - y) * dy) / len;
+    const l = this._line || (this._line = { dx: 0, dy: 0, invLen: 1 });
+    l.dx = Math.sin(a);
+    l.dy = Math.cos(a);
+    l.invLen = 1 / (Math.abs(w * l.dx) + Math.abs(h * l.dy));
+    return l;
+  }
+
+  // Position along the gradient line of point (x, y), in CSS px with y
+  // pointing down, for a w x h box.
+  tAt(x, y, w, h) {
+    const l = this.line(w, h);
+    return 0.5 + ((x - w / 2) * l.dx + (h / 2 - y) * l.dy) * l.invLen;
   }
 }
