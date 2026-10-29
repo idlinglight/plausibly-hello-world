@@ -58,6 +58,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       images: ${{ steps.list.outputs.images }}
+      bases: ${{ steps.list.outputs.bases }}
       grype: ${{ steps.list.outputs.grype }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -76,13 +77,18 @@ jobs:
             names+=("$n")
           done
           images=$(printf '%s\n' "${names[@]}" | jq -Rnc '[inputs | select(length > 0)]')
+          # {name: FROM ref} — lets the report say whether a newer base exists
+          bases=$(for n in "${names[@]}"; do
+                    printf '%s\t%s\n' "$n" "$(awk 'toupper($1) == "FROM" { print $2; exit }' "images/$n/Dockerfile")"
+                  done | jq -Rnc '[inputs | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {}')
           grype=$(awk 'toupper($1) == "FROM" { print $2; exit }' .github/tool-images/grype/Dockerfile)
           if [[ ! "$grype" =~ @sha256:[0-9a-f]{64}$ ]]; then
             echo "::error file=.github/tool-images/grype/Dockerfile::scanner image must be digest-pinned, got '$grype'"; exit 1
           fi
-          echo "images: $images"; echo "scanner: $grype"
+          echo "images: $images"; echo "bases: $bases"; echo "scanner: $grype"
           {
             echo "images=$images"
+            echo "bases=$bases"
             echo "grype=$grype"
           } >> "$GITHUB_OUTPUT"
 
@@ -207,9 +213,21 @@ jobs:
           REF: ${{ steps.probe.outputs.ref }}
           TAG: ${{ steps.probe.outputs.tag }}
           DIGEST: ${{ steps.probe.outputs.digest }}
+          BASE: ${{ fromJSON(needs.discover.outputs.bases)[matrix.image] }}
         run: |
           set -euo pipefail
           j="$RUNNER_TEMP/scan/grype.json"
+          # Is a fix even available to us? Compare the Dockerfile's pinned
+          # base digest with what its tag points to upstream right now.
+          base_tag=${BASE%@*}; base_pin=${BASE#*@}
+          upstream=$(docker buildx imagetools inspect "$base_tag" 2>/dev/null | awk '$1 == "Digest:" { print $2; exit }' || true)
+          if [ -z "$upstream" ]; then
+            base_hint="could not resolve \`$base_tag\` upstream"
+          elif [ "$upstream" = "$base_pin" ]; then
+            base_hint="\`$base_tag\` upstream is still the pinned digest — a fix needs a new upstream build (or a deliberate channel move)"
+          else
+            base_hint="\`$base_tag\` upstream has a newer digest \`$upstream\` — expect a Dependabot bump (after its 3-day cooldown) or bump manually"
+          fi
           # "fixable" = the distro/ecosystem has a fixed version
           defs='
             def rank: {"Critical":0,"High":1,"Medium":2,"Low":3,"Negligible":4}[.] // 5;
@@ -229,6 +247,8 @@ jobs:
             else echo "### \`$IMAGE\`: FAIL — $gate fixable HIGH/CRITICAL"; fi
             echo
             echo "\`$REF:$TAG\` · \`$DIGEST\` · linux/amd64 · $(q '"\(.distro.name) \(.distro.version) · grype \(.descriptor.version) · DB built \(.descriptor.db.status.built // .descriptor.db.built // "?")"')"
+            echo
+            echo "Base: $base_hint."
             echo
             echo "| Severity | Fixable | Not fixable |"
             echo "| --- | ---: | ---: |"
@@ -257,6 +277,6 @@ jobs:
             fi
           } | tee -a "$GITHUB_STEP_SUMMARY"
           if [ "$gate" -gt 0 ]; then
-            echo "::error title=Fixable HIGH/CRITICAL::$IMAGE:$TAG has $gate — merge the pending Dependabot digest bump, or bump the base digest manually"
+            echo "::error title=Fixable HIGH/CRITICAL::$IMAGE:$TAG has $gate. Base: $base_hint"
             exit 1
           fi
