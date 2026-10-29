@@ -1,0 +1,25 @@
+# Grype config for .github/workflows/image-scan.yml (mounted read-only).
+# Ignore rules only — each one pinned to vulnerability + package + exact
+# installed version, so it stops matching on its own once the package
+# moves. Every ignored match is listed in the scan's job summary with its
+# reason; nothing disappears silently. Remove a rule once its version is
+# gone from all images. A change here runs the scan on the PR.
+ignore:
+  # Decided by the repo owner, 2026-10-29. The bug is in zlib's gzFile API
+  # (gz_vacate() via non-blocking gzwrite/gzprintf). nginx uses only the
+  # deflate/inflate stream API; the nginx 1.30.6 binary doesn't import
+  # gzwrite, so no request path reaches it. The only other zlib users in
+  # the image are apk-tools/libapk, which never run. Fixed in Alpine
+  # 1.3.2-r1; upstream nginx-unprivileged:1.30-alpine-slim hasn't been
+  # rebuilt with it yet (still the pinned digest).
+  # Sources: https://security.alpinelinux.org/vuln/CVE-2026-85091
+  #          https://www.vulncheck.com/advisories/zlib-1.3.1.2-through-1.3.2-heap-buffer-overflow-via-gz-vacate
+  - vulnerability: CVE-2026-85091
+    package:
+      name: zlib
+      version: 1.3.2-r0
+      type: apk
+    reason: >-
+      gzFile API only (gz_vacate via non-blocking gzwrite/gzprintf); nginx uses
+      deflate/inflate streams, binary doesn't import gzwrite; apk-tools never
+      runs. Owner decision 2026-10-29.

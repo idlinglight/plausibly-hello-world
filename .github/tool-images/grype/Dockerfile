@@ -7,5 +7,6 @@
 # as the image folders. Digest-pinned, enforced by the workflow.
 #
 # This folder is in image-scan.yml's pull_request `paths:` — a bump PR runs
-# the new scanner against the published images before merge.
+# the new scanner against the published images before merge. grype.yaml
+# next to this file is the scanner's config (reviewed ignore rules).
 FROM ghcr.io/anchore/grype:v0.121.0@sha256:621d56d1d68106b787022c81546f7e0a36202a25d1239f0c20195fab8c16f7ea
