@@ -83,7 +83,7 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in
   publish. Prove them before merge by pushing the PR head to a
   `build-image/<topic>` branch.
-- **Weekly scan** (Fri 19:30 Europe/Vienna, after Dependabot): Grype as a
+- **Weekly scan** (Friday evening, after Dependabot's run): Grype as a
   digest-pinned container, fails on **fixable** HIGH/CRITICAL. If its summary
   says the upstream tag still points at the pinned digest, the fix waits on
   nginxinc rebuilding — a digest bump can't help yet, and `RUN` is not allowed.
@@ -91,16 +91,19 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   to vulnerability + package + exact installed version (so it stops matching
   on its own), with the reasoning and the owner's decision date. Ignored
   matches are listed in the scan summary. Delete a rule once its version is
-  gone from all images. Current: CVE-2026-85091 (zlib 1.3.2-r0, gzFile API
-  not reachable from nginx) — delete once the base ships zlib 1.3.2-r1.
-- A failed scheduled scan emails whoever last changed the `cron:` line.
-  GitHub disables schedules in public repos after **60 days without repo
-  activity** — merging the weekly Dependabot PRs keeps it alive; if it was
-  disabled anyway, re-enable it in the Actions tab.
-- Repo Actions policy (owner-managed): only selected actions — GitHub-owned
-  plus `docker/{build-push,login,metadata,setup-buildx,setup-qemu}-action` —
-  and SHA pinning enforced. Other tools run as pinned containers from
-  `run:` steps; a new action needs the owner to extend the list.
+  gone from all images.
+- Who hears about a failed scheduled scan: GitHub notifies the account that
+  created the workflow or last changed its `cron:` line (or re-enabled it),
+  through that account's own notification settings (web and/or email,
+  Settings → Notifications → Actions) — nothing is mailed unless enabled
+  there. GitHub disables schedules in public repos after **60 days without
+  repo activity**; merging the weekly Dependabot PRs keeps it alive, and a
+  disabled schedule is re-enabled in the Actions tab.
+- The repo's Actions policy is owner-managed (selected actions only, SHA
+  pinning enforced). Read the current allow-list with
+  `gh api repos/idlinglight/plausibly-hello-world/actions/permissions/selected-actions`
+  before adding a `uses:`. Tools outside it run as pinned containers from
+  `run:` steps, or the owner extends the list.
 
 ## Supply-chain policy
 
@@ -108,9 +111,8 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   published **≥ 3 days** ago — same rule as Dependabot's cooldown.
 - Actions are SHA-pinned with a `# vX.Y.Z` comment; images digest-pinned.
 - Dependabot version updates: weekly, **Friday 19:00 Europe/Vienna**, 3-day
-  cooldown for every ecosystem incl. github-actions (supported now — verified
-  2026-10-29; older sister-repo notes saying otherwise are outdated). Docker:
-  one PR per dependency across all folders (`group-by: dependency-name`).
+  cooldown for every ecosystem. Details and per-dependency rules live in
+  `.github/dependabot.yml`.
 - Dependabot alerts and security-update PRs are deliberately off
   (security-update PRs skip the cooldown); base images never get alerts
   anyway — the weekly scan covers that gap.
