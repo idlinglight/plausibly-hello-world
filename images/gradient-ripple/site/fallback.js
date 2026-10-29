@@ -56,9 +56,11 @@ export class Fallback {
 
   // `key`: the pointer's record from main.js, so each finger's trail is
   // spaced on its own (a WeakMap, so ended pointers are forgotten).
-  addDrop(x, y, strength, key) {
+  // `hold`: a held press dipping again in place; main.js already spaces
+  // those in time, so they skip the trail's distance check.
+  addDrop(x, y, strength, key, hold) {
     if (!this.ctx) return;
-    if (strength < 1 && key) {
+    if (strength < 1 && key && !hold) {
       // Drag trail: much sparser than the WebGL impulses, or it turns into
       // a wireframe tube.
       const t = this.trail.get(key);

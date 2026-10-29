@@ -1,7 +1,7 @@
 // water.js: WebGL heightfield water over the drifting gradient.
 //
 // Passes (all full-screen triangles):
-//   drop    state -> state'   add queued click/tap/drag impulses
+//   drop    state -> state'   add queued tap/drag/hold impulses
 //   sim     state -> state'   damped wave equation, leapfrog, 9-point
 //                             isotropic Laplacian (round rings, not
 //                             diamonds), a little viscosity against grid
