@@ -1,0 +1,252 @@
+name: image-scan
+
+# Weekly CVE scan of every published image (images/*/ → one matrix job
+# each, so new folders are covered automatically). Closes the gap that
+# docker base images never get Dependabot alerts. Fails on FIXABLE
+# HIGH/CRITICAL findings; a failed scheduled run notifies the repo owner
+# by mail — that is the alert. Usual fix: merge the pending Dependabot
+# digest bump (opened 30 min earlier), else bump the digest manually. A
+# finding Alpine has fixed but nginxinc hasn't rebuilt yet stays red until
+# upstream ships a new digest (no RUN apk upgrade — contract is COPY-only).
+#
+# Scanner: Grype, run as a digest-pinned container from a plain `docker
+# run` (pin: .github/tool-images/grype/Dockerfile) — not trivy-action /
+# setup-trivy, and not anchore/scan-action:
+#   - March 2026: aquasecurity's release credentials were stolen (again,
+#     after an incomplete rotation); 76/77 trivy-action tags and all
+#     setup-trivy tags were force-pushed to an infostealer, plus malicious
+#     trivy v0.69.4 binaries/images and Docker Hub 0.69.5/0.69.6
+#     (GHSA-69fq-xp46-6x23, CVE-2026-33634). Only SHA/digest pins were safe.
+#   - No action code runs in the scan job at all, and the scanner container
+#     gets no credentials, no docker socket, no workspace: the image is
+#     pulled on the host and handed over as a read-only tarball.
+#   - The repo's Actions policy only allows GitHub-owned actions anyway.
+#   - Grype/Anchore: no known incident as of 2026-10-29.
+# Only linux/amd64 is scanned: the arm64 variant is built from the same
+# base index digest, i.e. the same Alpine package set.
+#
+# Image not published yet (new folder, or before the first main build)
+# → that matrix job warns and passes.
+on:
+  schedule:
+    # Fridays 19:30 Vienna local time, DST-safe: 30 min after Dependabot's
+    # weekly run (19:00), so a fix-carrying bump PR is usually already open
+    # when this reports. `timezone` on schedule: GitHub docs, 2026-10-29.
+    - cron: '30 19 * * 5'
+      timezone: Europe/Vienna
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to scan in every image
+        default: latest
+        type: string
+  # Pre-merge test of THIS file / a scanner bump: scans :latest, falling
+  # back to sha-<PR head short7> (exists after pushing the PR head to
+  # build-image/**) — so it is testable before any :latest exists.
+  pull_request:
+    paths:
+      - '.github/workflows/image-scan.yml'
+      - '.github/tool-images/grype/**'
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+      grype: ${{ steps.list.outputs.grype }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: list
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          names=()
+          for f in images/*/Dockerfile; do
+            n=${f#images/}; n=${n%/Dockerfile}
+            if [[ ! "$n" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+              echo "::error::images/$n: not a valid image name"; exit 1
+            fi
+            names+=("$n")
+          done
+          images=$(printf '%s\n' "${names[@]}" | jq -Rnc '[inputs | select(length > 0)]')
+          grype=$(awk 'toupper($1) == "FROM" { print $2; exit }' .github/tool-images/grype/Dockerfile)
+          if [[ ! "$grype" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error file=.github/tool-images/grype/Dockerfile::scanner image must be digest-pinned, got '$grype'"; exit 1
+          fi
+          echo "images: $images"; echo "scanner: $grype"
+          {
+            echo "images=$images"
+            echo "grype=$grype"
+          } >> "$GITHUB_OUTPUT"
+
+  scan:
+    needs: discover
+    if: needs.discover.outputs.images != '[]'
+    name: scan (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Pull-only. Enough while GHCR packages are still private: packages
+    # published by this repo's workflows grant the repo read access.
+    permissions:
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.discover.outputs.images) }}
+    env:
+      IMAGE: ${{ matrix.image }}
+    steps:
+      - id: probe
+        name: Resolve tag
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_TAG: ${{ inputs.tag }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          repo="${GITHUB_REPOSITORY,,}/$IMAGE"
+          echo "ref=ghcr.io/$repo" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            candidates=(latest "sha-${PR_HEAD_SHA::7}")
+          else
+            candidates=("${INPUT_TAG:-latest}")
+          fi
+          skip() { # <reason>
+            echo "::warning title=Not published::ghcr.io/$repo: $1 — skipped"
+            echo "### \`$IMAGE\`: skipped — $1" >> "$GITHUB_STEP_SUMMARY"
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          # Registry pull token from GITHUB_TOKEN (credentials via stdin, not argv)
+          resp=$(printf 'user = "%s:%s"\n' "$GITHUB_ACTOR" "$TOKEN" | curl -sS -K - \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:$repo:pull")
+          bearer=$(jq -r '.token // empty' <<<"$resp")
+          if [ -z "$bearer" ]; then
+            echo "token endpoint: $resp"
+            skip "registry refused a pull token: not published yet (or not readable by this repo's GITHUB_TOKEN)"
+          fi
+
+          accept='application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json'
+          for tag in "${candidates[@]}"; do
+            status=$(curl -sS -o "$RUNNER_TEMP/manifest.json" -D "$RUNNER_TEMP/headers.txt" -w '%{http_code}' \
+              -H "Authorization: Bearer $bearer" -H "Accept: $accept" \
+              "https://ghcr.io/v2/$repo/manifests/$tag")
+            echo "GET /v2/$repo/manifests/$tag → HTTP $status"
+            case "$status" in
+              200)
+                digest=$(awk -F': *' 'tolower($1) == "docker-content-digest" { print $2 }' "$RUNNER_TEMP/headers.txt" | tr -d '\r')
+                printf 'found=true\ntag=%s\ndigest=%s\n' "$tag" "$digest" >> "$GITHUB_OUTPUT"
+                echo "scanning ghcr.io/$repo:$tag @ $digest"
+                exit 0 ;;
+              404)
+                cat "$RUNNER_TEMP/manifest.json"; echo ;;
+              *)
+                cat "$RUNNER_TEMP/manifest.json"; echo
+                echo "::error::ghcr.io/$repo:$tag: unexpected HTTP $status"; exit 1 ;;
+            esac
+          done
+          skip "no tag ${candidates[*]} published yet"
+
+      - name: Pull image (linux/amd64), export it for the scanner
+        if: steps.probe.outputs.found == 'true'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ steps.probe.outputs.ref }}
+          DIGEST: ${{ steps.probe.outputs.digest }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker pull --platform linux/amd64 "$REF@$DIGEST"
+          docker logout ghcr.io
+          mkdir -p "$RUNNER_TEMP/scan" "$RUNNER_TEMP/grype-db"
+          docker tag "$REF@$DIGEST" "scan-target/$IMAGE:amd64"
+          docker save -o "$RUNNER_TEMP/scan/image.tar" "scan-target/$IMAGE:amd64"
+
+      # The scanner container gets: the tarball (read-only), a DB cache dir,
+      # network for the DB download. No token, no docker socket, no workspace.
+      - name: Scan (Grype)
+        if: steps.probe.outputs.found == 'true'
+        env:
+          GRYPE_IMAGE: ${{ needs.discover.outputs.grype }}
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --read-only --tmpfs /tmp:mode=1777 \
+            --cap-drop ALL --security-opt no-new-privileges \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp -e TMPDIR=/tmp \
+            -e GRYPE_DB_CACHE_DIR=/db \
+            -e GRYPE_CHECK_FOR_APP_UPDATE=false \
+            -v "$RUNNER_TEMP/grype-db:/db" \
+            -v "$RUNNER_TEMP/scan/image.tar:/in/image.tar:ro" \
+            "$GRYPE_IMAGE" docker-archive:/in/image.tar -o json \
+            > "$RUNNER_TEMP/scan/grype.json"
+          jq -c '{matches: (.matches | length), distro: "\(.distro.name) \(.distro.version)", grype: .descriptor.version}' \
+            "$RUNNER_TEMP/scan/grype.json"
+
+      - name: Report
+        if: steps.probe.outputs.found == 'true'
+        env:
+          REF: ${{ steps.probe.outputs.ref }}
+          TAG: ${{ steps.probe.outputs.tag }}
+          DIGEST: ${{ steps.probe.outputs.digest }}
+        run: |
+          set -euo pipefail
+          j="$RUNNER_TEMP/scan/grype.json"
+          # "fixable" = the distro/ecosystem has a fixed version
+          defs='
+            def rank: {"Critical":0,"High":1,"Medium":2,"Low":3,"Negligible":4}[.] // 5;
+            def fixable: .vulnerability.fix.state == "fixed";
+            def gate: fixable and (.vulnerability.severity | IN("Critical","High"));
+            def vuln: .vulnerability | if (.dataSource // "") == "" then .id else "[\(.id)](\(.dataSource))" end;
+            def sorted: .matches | sort_by((.vulnerability.severity | rank), .artifact.name, .vulnerability.id) | .[];
+          '
+          q() { jq -r "$defs $1" "$j"; }
+          gate=$(q '[.matches[] | select(gate)] | length')
+          nfix=$(q '[.matches[] | select(fixable)] | length')
+          nopen=$(q '[.matches[] | select(fixable | not)] | length')
+          # $m / $s below are jq variables, single quotes intended
+          # shellcheck disable=SC2016
+          {
+            if [ "$gate" -eq 0 ]; then echo "### \`$IMAGE\`: PASS — no fixable HIGH/CRITICAL"
+            else echo "### \`$IMAGE\`: FAIL — $gate fixable HIGH/CRITICAL"; fi
+            echo
+            echo "\`$REF:$TAG\` · \`$DIGEST\` · linux/amd64 · $(q '"\(.distro.name) \(.distro.version) · grype \(.descriptor.version) · DB built \(.descriptor.db.status.built // .descriptor.db.built // "?")"')"
+            echo
+            echo "| Severity | Fixable | Not fixable |"
+            echo "| --- | ---: | ---: |"
+            q '[.matches[] | {s: .vulnerability.severity, f: fixable}] as $m
+               | ["Critical","High","Medium","Low","Negligible","Unknown"][] as $s
+               | "| \($s) | \([$m[] | select(.s == $s and .f)] | length) | \([$m[] | select(.s == $s and (.f | not))] | length) |"'
+            if [ "$nfix" -gt 0 ]; then
+              echo
+              echo "#### Fixable ($nfix)"
+              echo
+              echo "| Severity | Vulnerability | Package | Installed | Fixed in |"
+              echo "| --- | --- | --- | --- | --- |"
+              q 'sorted | select(fixable)
+                 | "| \(.vulnerability.severity) | \(vuln) | \(.artifact.name) | \(.artifact.version) | \((.vulnerability.fix.versions // []) | join(", ")) |"'
+            fi
+            if [ "$nopen" -gt 0 ]; then
+              echo
+              echo "<details><summary>Not fixable yet ($nopen)</summary>"
+              echo
+              echo "| Severity | Vulnerability | Package | Installed | Fix state |"
+              echo "| --- | --- | --- | --- | --- |"
+              q 'sorted | select(fixable | not)
+                 | "| \(.vulnerability.severity) | \(vuln) | \(.artifact.name) | \(.artifact.version) | \(.vulnerability.fix.state) |"'
+              echo
+              echo "</details>"
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$gate" -gt 0 ]; then
+            echo "::error title=Fixable HIGH/CRITICAL::$IMAGE:$TAG has $gate — merge the pending Dependabot digest bump, or bump the base digest manually"
+            exit 1
+          fi

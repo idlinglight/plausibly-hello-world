@@ -1,0 +1,285 @@
+name: _build-image
+
+# Reusable: verify + publish ONE image folder (images/<image>/). Not triggered
+# directly — each image has a thin caller (image-<name>.yml) that owns the
+# triggers and passes the folder name. Spec: /CLAUDE.md "Image contract".
+#
+#   verify   every trigger, PRs included: lint the Dockerfile against the
+#            contract, build BOTH platforms, load amd64, smoke-test it
+#            read-only. A base-image bump PR is therefore proven before
+#            merge — not only after, when publish would be the first build.
+#   publish  needs verify, never on pull_request: multi-arch push to
+#            ghcr.io/<owner>/<repo>/<image>, tags sha-<short7> (always) +
+#            latest (default branch only).
+#
+# Only GitHub-owned actions are used (actions/checkout) — the repo's Actions
+# policy allows nothing else. Docker work is the runner's docker/buildx CLI
+# on a digest-pinned BuildKit (.github/tool-images/buildkit/Dockerfile).
+# No QEMU on purpose: the contract makes Dockerfiles COPY-only, so arm64
+# builds need no emulation, and a RUN fails loudly (lint step) instead of
+# silently needing it.
+#
+# Permissions: a called workflow's GITHUB_TOKEN is capped by the caller job's
+# `permissions:` — it can narrow them, never widen them. So the caller grants
+# the ceiling (contents: read + packages: write); this file narrows per job:
+# verify (runs the Dockerfile + the image) only gets contents: read.
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Folder name under images/ — also the GHCR image name
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      IMAGE: ${{ inputs.image }}
+    steps:
+      # persist-credentials: false — nothing here needs git auth afterwards,
+      # and the build/smoke steps run code from the image.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Dockerfile contract lint
+        run: |
+          set -euo pipefail
+          if [[ ! "$IMAGE" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+            echo "::error::inputs.image '$IMAGE' is not a valid image name"; exit 1
+          fi
+          df="images/$IMAGE/Dockerfile"
+          [ -f "$df" ] || { echo "::error::$df not found"; exit 1; }
+          fail=0
+          # Base: nginx-unprivileged, stable (even minor) alpine-slim, digest-pinned
+          mapfile -t froms < <(awk 'toupper($1) == "FROM" { print $2 }' "$df")
+          if [ "${#froms[@]}" -ne 1 ]; then
+            echo "::error file=$df::expected exactly one FROM, found ${#froms[@]}"; fail=1
+          elif [[ ! "${froms[0]}" =~ ^nginxinc/nginx-unprivileged:[0-9]+\.([0-9]+)(\.[0-9]+)?-alpine-slim@sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error file=$df::base must be nginxinc/nginx-unprivileged:<stable>-alpine-slim@sha256:<digest>, got '${froms[0]}'"; fail=1
+          elif (( BASH_REMATCH[1] % 2 )); then
+            echo "::error file=$df::nginx 1.${BASH_REMATCH[1]} is a mainline (odd) minor — stable channel only"; fail=1
+          fi
+          # COPY-only: no RUN (multi-arch without QEMU)
+          if grep -nEi '^[[:space:]]*RUN([[:space:]]|$)' "$df"; then
+            echo "::error file=$df::RUN found — the contract is COPY-only"; fail=1
+          fi
+          [ "$fail" -eq 0 ] && echo "OK: ${froms[0]}, no RUN"
+          exit "$fail"
+
+      - id: vars
+        run: echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up buildx (pinned BuildKit)
+        run: |
+          set -euo pipefail
+          buildkit=$(awk 'toupper($1) == "FROM" { print $2; exit }' .github/tool-images/buildkit/Dockerfile)
+          if [[ ! "$buildkit" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error file=.github/tool-images/buildkit/Dockerfile::BuildKit image must be digest-pinned, got '$buildkit'"; exit 1
+          fi
+          docker buildx version
+          docker buildx create --name phw --driver docker-container \
+            --driver-opt "image=$buildkit" --use --bootstrap
+
+      # Same platforms as publish, result kept in the builder's cache only:
+      # proves the (possibly just bumped) base exists for arm64 too.
+      - name: Build linux/amd64 + linux/arm64
+        env:
+          SHA_SHORT: ${{ steps.vars.outputs.sha_short }}
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg "GIT_SHA=$SHA_SHORT" \
+            --output type=cacheonly \
+            "images/$IMAGE"
+
+      - name: Load linux/amd64
+        env:
+          SHA_SHORT: ${{ steps.vars.outputs.sha_short }}
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --build-arg "GIT_SHA=$SHA_SHORT" \
+            --tag "phw-verify/$IMAGE:$SHA_SHORT" \
+            --load \
+            "images/$IMAGE"
+
+      - name: Smoke test (image contract, --read-only --tmpfs /tmp)
+        env:
+          SHA_SHORT: ${{ steps.vars.outputs.sha_short }}
+        run: |
+          set -euo pipefail
+          c=phw-smoke
+          docker run -d --name "$c" --read-only --tmpfs /tmp \
+            -p 127.0.0.1:8080:8080 "phw-verify/$IMAGE:$SHA_SHORT" >/dev/null
+          trap 'echo "--- container log ---"; docker logs "$c" 2>&1 || true; docker rm -f "$c" >/dev/null 2>&1 || true' EXIT
+          base=http://127.0.0.1:8080
+
+          for _ in $(seq 1 30); do
+            curl -fsS -o /dev/null "$base/healthz" 2>/dev/null && break
+            if [ "$(docker inspect -f '{{.State.Running}}' "$c")" != true ]; then
+              echo "::error title=Image contract::container exited during startup"; exit 1
+            fi
+            sleep 1
+          done
+
+          failed=0
+          rows=()
+          report() { # <PASS|FAIL> <check> <detail>
+            rows+=("| $1 | $2 | $3 |")
+            if [ "$1" = PASS ]; then echo "PASS  $2: $3"
+            else echo "::error title=Image contract::$2: $3"; failed=1; fi
+          }
+          expect() { # <check> <expected> <actual>
+            if [ "$2" = "$3" ]; then report PASS "$1" "\`$3\`"
+            else report FAIL "$1" "expected \`$2\`, got \`$3\`"; fi
+          }
+          get() { # <path> → sets code, ctype, body
+            local out
+            out=$(curl -sS -o "$RUNNER_TEMP/body" -w '%{http_code} %{content_type}' "$base$1" || true)
+            code=${out%% *}; ctype=${out#* }; ctype=${ctype%%;*}
+            body=$(cat "$RUNNER_TEMP/body" 2>/dev/null || true)
+          }
+
+          get /healthz
+          expect "GET /healthz status" 200 "$code"
+          expect "GET /healthz body" ok "$body"
+          get /version.txt
+          expect "GET /version.txt status" 200 "$code"
+          expect "GET /version.txt body = short SHA" "$SHA_SHORT" "$body"
+          get /
+          expect "GET / status" 200 "$code"
+          expect "GET / content-type" text/html "$ctype"
+
+          # uid of the container's PID 1 as seen from the host (no exec, so
+          # it works for any image); real + effective must both be non-root
+          pid=$(docker inspect -f '{{.State.Pid}}' "$c")
+          read -r _ ruid euid _ < <(grep '^Uid:' "/proc/$pid/status")
+          if [ "$ruid" != 0 ] && [ "$euid" != 0 ]; then report PASS "process uid ≠ 0" "uid \`$euid\`"
+          else report FAIL "process uid ≠ 0" "real \`$ruid\`, effective \`$euid\`"; fi
+
+          expect "still running after checks" true "$(docker inspect -f '{{.State.Running}}' "$c")"
+
+          {
+            echo "### Image contract: \`$IMAGE\` @ \`$SHA_SHORT\` (linux/amd64, read-only rootfs)"
+            echo
+            echo "| Result | Check | Detail |"
+            echo "| --- | --- | --- |"
+            printf '%s\n' "${rows[@]}"
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$failed"
+
+  publish:
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Job-level permissions replace the workflow-level set, hence both lines.
+    permissions:
+      contents: read
+      packages: write
+    # Serialize publishes per image and ref: a slower older run can't
+    # overwrite :latest after a newer one (a queued run supersedes an
+    # older queued one, which then shows as cancelled).
+    concurrency:
+      group: publish-${{ inputs.image }}-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      IMAGE: ${{ inputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: vars
+        env:
+          IS_DEFAULT_BRANCH: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        run: |
+          {
+            echo "sha_short=${GITHUB_SHA::7}"
+            echo "ref=ghcr.io/${GITHUB_REPOSITORY,,}/$IMAGE"
+            echo "latest=$IS_DEFAULT_BRANCH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set up buildx (pinned BuildKit)
+        run: |
+          set -euo pipefail
+          buildkit=$(awk 'toupper($1) == "FROM" { print $2; exit }' .github/tool-images/buildkit/Dockerfile)
+          if [[ ! "$buildkit" =~ @sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error file=.github/tool-images/buildkit/Dockerfile::BuildKit image must be digest-pinned, got '$buildkit'"; exit 1
+          fi
+          docker buildx version
+          docker buildx create --name phw --driver docker-container \
+            --driver-opt "image=$buildkit" --use --bootstrap
+
+      - name: Log in to GHCR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      # OCI labels on each platform's config; source + description also as
+      # index annotations, which is what GHCR's package page reads for
+      # multi-arch images.
+      - name: Build and push linux/amd64 + linux/arm64
+        env:
+          SHA_SHORT: ${{ steps.vars.outputs.sha_short }}
+          REF: ${{ steps.vars.outputs.ref }}
+          LATEST: ${{ steps.vars.outputs.latest }}
+          REPO_DESCRIPTION: ${{ github.event.repository.description }}
+        run: |
+          set -euo pipefail
+          src="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          desc="$IMAGE${REPO_DESCRIPTION:+ — $REPO_DESCRIPTION}"
+          tags=(--tag "$REF:sha-$SHA_SHORT")
+          [ "$LATEST" = true ] && tags+=(--tag "$REF:latest")
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            --build-arg "GIT_SHA=$SHA_SHORT" \
+            "${tags[@]}" \
+            --label "org.opencontainers.image.title=$IMAGE" \
+            --label "org.opencontainers.image.description=$desc" \
+            --label "org.opencontainers.image.source=$src" \
+            --label "org.opencontainers.image.url=$src/tree/main/images/$IMAGE" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=sha-$SHA_SHORT" \
+            --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --annotation "index:org.opencontainers.image.source=$src" \
+            --annotation "index:org.opencontainers.image.description=$desc" \
+            --push \
+            "images/$IMAGE"
+
+      - name: Check pushed platforms
+        env:
+          SHA_SHORT: ${{ steps.vars.outputs.sha_short }}
+          REF: ${{ steps.vars.outputs.ref }}
+          LATEST: ${{ steps.vars.outputs.latest }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect "$REF:sha-$SHA_SHORT" | tee "$RUNNER_TEMP/inspect.txt"
+          platforms=$(docker buildx imagetools inspect "$REF:sha-$SHA_SHORT" --format '{{json .Manifest}}' \
+            | jq -r '[.manifests[].platform | select(.os != "unknown") | "\(.os)/\(.architecture)"] | sort | join(",")')
+          {
+            echo "### Published \`$IMAGE\`"
+            echo
+            echo "- \`$REF:sha-$SHA_SHORT\`"
+            [ "$LATEST" = true ] && echo "- \`$REF:latest\`"
+            echo "- platforms: \`$platforms\`"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/inspect.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$platforms" != "linux/amd64,linux/arm64" ]; then
+            echo "::error::expected linux/amd64,linux/arm64 in the pushed index, got '$platforms'"; exit 1
+          fi
+
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io

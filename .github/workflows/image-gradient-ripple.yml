@@ -1,0 +1,57 @@
+name: image-gradient-ripple
+
+# Thin caller for images/gradient-ripple — all logic is in _build-image.yml.
+# Adding an image = new folder images/<name>/ + a copy of this file named
+# image-<name>.yml with every "gradient-ripple" replaced by <name>
+# (name:, both paths: lists, with.image). Nothing else to register: the
+# weekly scan and Dependabot pick new folders up via images/*.
+#
+# Triggers:
+#   - pull_request: verify only (lint, build both platforms, smoke test)
+#   - push to main: verify + publish sha-<short7> and latest
+#   - push to build-image/**: verify + publish sha-<short7> of ANY state
+#     without merging — `git push origin HEAD:build-image/<topic>`
+#     (works before this file is on main, unlike workflow_dispatch)
+#   - workflow_dispatch: verify + publish the chosen ref; the one trigger
+#     WITHOUT a paths filter — use it to force a build
+#
+# paths: also lists the reusable workflow and the BuildKit pin, so a change
+# to how images are built re-verifies (PR) and re-publishes (main) all images.
+#
+# paths on a NEW branch (e.g. the first push to build-image/<topic>) is
+# evaluated against GitHub's diff for that push, NOT against main — see
+# CLAUDE.md "build-image branches" for the observed behaviour. If such a
+# push didn't start a run: `gh workflow run image-gradient-ripple.yml
+# --ref build-image/<topic>` (once this file is on main).
+on:
+  push:
+    branches:
+      - main
+      - 'build-image/**'
+    paths:
+      - 'images/gradient-ripple/**'
+      - '.github/workflows/image-gradient-ripple.yml'
+      - '.github/workflows/_build-image.yml'
+      - '.github/tool-images/buildkit/**'
+  pull_request:
+    paths:
+      - 'images/gradient-ripple/**'
+      - '.github/workflows/image-gradient-ripple.yml'
+      - '.github/workflows/_build-image.yml'
+      - '.github/tool-images/buildkit/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The ceiling for everything in _build-image.yml (a called workflow can
+    # only narrow these): publish needs packages: write; verify narrows
+    # itself to contents: read; publish never runs on pull_request.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_build-image.yml
+    with:
+      image: gradient-ripple
