@@ -1,0 +1,45 @@
+name: _discover-images
+
+# Reusable: the image folders under images/ (one with a Dockerfile = one
+# image), as a JSON list for matrix jobs. The single place for the folder
+# glob + name rule; used by build-image-branch.yml and image-scan.yml.
+# (_build-image.yml re-checks its input against the same rule.)
+on:
+  workflow_call:
+    outputs:
+      images:
+        description: JSON list of image folder names, e.g. ["gradient-ripple"]
+        value: ${{ jobs.list.outputs.images }}
+
+permissions:
+  contents: read
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      images: ${{ steps.list.outputs.images }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: images
+      - id: list
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          names=()
+          for f in images/*/Dockerfile; do
+            n=${f#images/}; n=${n%/Dockerfile}
+            # valid GHCR repository path component
+            if [[ ! "$n" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
+              echo "::error::images/$n: not a valid image name (lowercase, digits, . _ -)"; exit 1
+            fi
+            names+=("$n")
+          done
+          images=$(printf '%s\n' "${names[@]}" | jq -Rnc '[inputs | select(length > 0)]')
+          echo "images: $images"
+          echo "images=$images" >> "$GITHUB_OUTPUT"

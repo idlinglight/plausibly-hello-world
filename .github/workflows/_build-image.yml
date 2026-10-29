@@ -12,7 +12,7 @@ name: _build-image
 #            merge — not only after, when publish would be the first build.
 #   publish  needs verify, never on pull_request: multi-arch push to
 #            ghcr.io/<owner>/<repo>/<image>, tags sha-<short7> (always) +
-#            latest (default branch only).
+#            latest (default branch head only).
 #
 # BuildKit runs digest-pinned (.github/tool-images/buildkit/Dockerfile)
 # instead of setup-buildx's floating default. No setup-qemu-action on
@@ -46,6 +46,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    outputs:
+      buildkit: ${{ steps.vars.outputs.buildkit }}
+      sha_short: ${{ steps.vars.outputs.sha_short }}
     env:
       IMAGE: ${{ inputs.image }}
     steps:
@@ -58,28 +61,44 @@ jobs:
       - name: Dockerfile contract lint
         run: |
           set -euo pipefail
+          # same rule as _discover-images.yml: a valid GHCR path component
           if [[ ! "$IMAGE" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
             echo "::error::inputs.image '$IMAGE' is not a valid image name"; exit 1
           fi
           df="images/$IMAGE/Dockerfile"
           [ -f "$df" ] || { echo "::error::$df not found"; exit 1; }
           fail=0
+          err() { echo "::error file=$df::$1"; fail=1; }
+          lines() { tr '\n' ' ' <<<"$1"; }
+
           # Base: nginx-unprivileged, stable (even minor) alpine-slim, digest-pinned
           mapfile -t froms < <(awk 'toupper($1) == "FROM" { print $2 }' "$df")
           if [ "${#froms[@]}" -ne 1 ]; then
-            echo "::error file=$df::expected exactly one FROM, found ${#froms[@]}"; fail=1
-          elif [[ ! "${froms[0]}" =~ ^nginxinc/nginx-unprivileged:[0-9]+\.([0-9]+)(\.[0-9]+)?-alpine-slim@sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error file=$df::base must be nginxinc/nginx-unprivileged:<stable>-alpine-slim@sha256:<digest>, got '${froms[0]}'"; fail=1
-          elif (( BASH_REMATCH[1] % 2 )); then
-            echo "::error file=$df::nginx 1.${BASH_REMATCH[1]} is a mainline (odd) minor — stable channel only"; fail=1
+            err "expected exactly one FROM, found ${#froms[@]}"
+          elif [[ ! "${froms[0]}" =~ ^nginxinc/nginx-unprivileged:([0-9]+)\.([0-9]+)(\.[0-9]+)?-alpine-slim@sha256:[0-9a-f]{64}$ ]]; then
+            err "base must be nginxinc/nginx-unprivileged:<stable>-alpine-slim@sha256:<digest>, got '${froms[0]}'"
+          elif (( 10#${BASH_REMATCH[2]} % 2 )); then
+            err "nginx ${BASH_REMATCH[1]}.${BASH_REMATCH[2]} is a mainline (odd) minor — stable channel only"
           fi
-          # COPY-only: no RUN (multi-arch without QEMU)
-          if grep -nEi '^[[:space:]]*RUN([[:space:]]|$)' "$df"; then
-            echo "::error file=$df::RUN found — the contract is COPY-only"; fail=1
+
+          # COPY-only: no RUN (would need QEMU for arm64), no ADD (remote
+          # URLs, git sources, auto-extraction), no ONBUILD (deferred
+          # instructions for whoever builds FROM this image)
+          if bad=$(grep -nEi '^[[:space:]]*(RUN|ADD|ONBUILD)([[:space:]]|$)' "$df"); then
+            err "COPY-only contract — RUN/ADD/ONBUILD found: $(lines "$bad")"
           fi
-          [ "$fail" -eq 0 ] && echo "OK: ${froms[0]}, no RUN"
+          # ...and only from the build context: COPY --from=<image> pulls a
+          # second, unpinned image; so would an unpinned `# syntax=` frontend
+          if bad=$(grep -nEi '^[[:space:]]*COPY[[:space:]].*--from' "$df"); then
+            err "COPY --from not allowed (single-stage, the base is the only image): $(lines "$bad")"
+          fi
+          if bad=$(grep -nEi '^#[[:space:]]*syntax[[:space:]]*=' "$df" | grep -vE '@sha256:[0-9a-f]{64}'); then
+            err "a '# syntax=' frontend must be digest-pinned: $(lines "$bad")"
+          fi
+          if [ "$fail" -eq 0 ]; then echo "OK: ${froms[0]}, COPY-only"; fi
           exit "$fail"
 
+      # Shared with publish via job outputs.
       - id: vars
         run: |
           set -euo pipefail
@@ -128,12 +147,11 @@ jobs:
             -p 127.0.0.1:8080:8080 "phw-verify/$IMAGE:$SHA_SHORT" >/dev/null
           trap 'echo "--- container log ---"; docker logs "$c" 2>&1 || true; docker rm -f "$c" >/dev/null 2>&1 || true' EXIT
           base=http://127.0.0.1:8080
+          running() { docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null || echo false; }
 
           for _ in $(seq 1 30); do
             curl -fsS -o /dev/null "$base/healthz" 2>/dev/null && break
-            if [ "$(docker inspect -f '{{.State.Running}}' "$c")" != true ]; then
-              echo "::error title=Image contract::container exited during startup"; exit 1
-            fi
+            [ "$(running)" = true ] || break   # exited: the checks below report it
             sleep 1
           done
 
@@ -166,13 +184,21 @@ jobs:
           expect "GET / content-type" text/html "$ctype"
 
           # uid of the container's PID 1 as seen from the host (no exec, so
-          # it works for any image); real + effective must both be non-root
-          pid=$(docker inspect -f '{{.State.Pid}}' "$c")
-          read -r _ ruid euid _ < <(grep '^Uid:' "/proc/$pid/status")
-          if [ "$ruid" != 0 ] && [ "$euid" != 0 ]; then report PASS "process uid ≠ 0" "uid \`$euid\`"
-          else report FAIL "process uid ≠ 0" "real \`$ruid\`, effective \`$euid\`"; fi
+          # it works for any image). Contract: uid 101, real and effective.
+          pid=$(docker inspect -f '{{.State.Pid}}' "$c" 2>/dev/null || echo 0)
+          ruid=; euid=
+          if [ "$pid" != 0 ]; then
+            read -r _ ruid euid _ <<<"$(grep '^Uid:' "/proc/$pid/status" 2>/dev/null || true)" || true
+          fi
+          if [ -z "$euid" ]; then
+            report FAIL "process uid = 101" "container not running (pid \`$pid\`)"
+          elif [ "$ruid" = 101 ] && [ "$euid" = 101 ]; then
+            report PASS "process uid = 101" "uid \`$euid\`"
+          else
+            report FAIL "process uid = 101" "real \`$ruid\`, effective \`$euid\`"
+          fi
 
-          expect "still running after checks" true "$(docker inspect -f '{{.State.Running}}' "$c")"
+          expect "still running after checks" true "$(running)"
 
           {
             echo "### Image contract: \`$IMAGE\` @ \`$SHA_SHORT\` (linux/amd64, read-only rootfs)"
@@ -192,9 +218,13 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # Serialize publishes per image and ref: a slower older run can't
-    # overwrite :latest after a newer one (a queued run supersedes an
-    # older queued one, which then shows as cancelled).
+    # :latest must never move backwards. Serialization alone doesn't order
+    # runs (an older run whose verify finished later would publish last),
+    # so: (1) publishes of an image+ref run one at a time, and (2) inside
+    # that critical section, latest is only tagged if this commit is STILL
+    # the default branch head. Together: whichever run publishes last, a
+    # stale one skips latest. (A queued publish superseded by a newer
+    # queued one is cancelled — that commit then has no sha- tag; rare.)
     concurrency:
       group: publish-${{ inputs.image }}-${{ github.ref }}
       cancel-in-progress: false
@@ -203,19 +233,27 @@ jobs:
         with:
           persist-credentials: false
 
-      - id: vars
+      - id: head
+        name: Still the default branch head? (gates :latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
-          buildkit=$(awk 'toupper($1) == "FROM" { print $2; exit }' .github/tool-images/buildkit/Dockerfile)
-          if [[ ! "$buildkit" =~ @sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error file=.github/tool-images/buildkit/Dockerfile::BuildKit image must be digest-pinned, got '$buildkit'"; exit 1
+          latest=false
+          if [ "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH" ]; then
+            head=$(gh api "repos/$GITHUB_REPOSITORY/commits/$DEFAULT_BRANCH" --jq .sha)
+            if [ "$head" = "$GITHUB_SHA" ]; then
+              latest=true
+            else
+              echo "::notice::$DEFAULT_BRANCH moved on to ${head::7} — publishing sha-${GITHUB_SHA::7} without :latest"
+            fi
           fi
-          echo "buildkit=$buildkit" >> "$GITHUB_OUTPUT"
-          echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
         with:
-          driver-opts: image=${{ steps.vars.outputs.buildkit }}
+          driver-opts: image=${{ needs.verify.outputs.buildkit }}
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -233,7 +271,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}/${{ inputs.image }}
           tags: |
             type=sha,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ steps.head.outputs.latest }}
           labels: |
             org.opencontainers.image.title=${{ inputs.image }}
           annotations: |
@@ -246,7 +284,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            GIT_SHA=${{ steps.vars.outputs.sha_short }}
+            GIT_SHA=${{ needs.verify.outputs.sha_short }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}

@@ -28,30 +28,9 @@ permissions:
 
 jobs:
   discover:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      images: ${{ steps.list.outputs.images }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      # same discovery as image-scan.yml
-      - id: list
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          names=()
-          for f in images/*/Dockerfile; do
-            n=${f#images/}; n=${n%/Dockerfile}
-            if [[ ! "$n" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
-              echo "::error::images/$n: not a valid image name"; exit 1
-            fi
-            names+=("$n")
-          done
-          images=$(printf '%s\n' "${names[@]}" | jq -Rnc '[inputs | select(length > 0)]')
-          echo "images: $images"
-          echo "images=$images" >> "$GITHUB_OUTPUT"
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_discover-images.yml
 
   build:
     needs: discover
