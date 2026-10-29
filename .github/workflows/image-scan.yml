@@ -20,7 +20,8 @@ name: image-scan
 #   - No action code runs in the scan job at all, and the scanner container
 #     gets no credentials, no docker socket, no workspace: the image is
 #     pulled on the host and handed over as a read-only tarball.
-#   - The repo's Actions policy only allows GitHub-owned actions anyway.
+#   - Scanner actions aren't on the repo's Actions allowlist anyway
+#     (actions/* + five docker/* actions, SHA pinning enforced).
 #   - Grype/Anchore: no known incident as of 2026-10-29.
 # Only linux/amd64 is scanned: the arm64 variant is built from the same
 # base index digest, i.e. the same Alpine package set.

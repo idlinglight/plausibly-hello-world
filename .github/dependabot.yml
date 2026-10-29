@@ -21,8 +21,12 @@
 #   re-verified on the PR and re-published on merge.
 # * tool-images/grype: triggers image-scan's PR run → the new scanner scans
 #   the real published images before merge.
-# * github-actions: only actions/checkout (repo policy: GitHub-owned
-#   actions only). A bump in _build-image.yml re-verifies every image.
+# * github-actions: the repo's Actions allowlist is actions/* + five
+#   docker/* actions (owner setting, SHA pinning enforced) — a bump can't
+#   introduce anything else. Bumps in _build-image.yml re-verify every
+#   image on the PR; but login-action + metadata-action only run in
+#   publish — prove those before merge with
+#   `git push origin <PR head>:build-image/<topic>` (builds all images).
 version: 2
 updates:
   # Base images (images/*/Dockerfile) + tool images run from workflow
