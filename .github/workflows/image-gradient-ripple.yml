@@ -1,0 +1,53 @@
+name: image-gradient-ripple
+
+# Thin caller for images/gradient-ripple — all logic is in _build-image.yml.
+# Adding an image = new folder images/<name>/ + a copy of this file named
+# image-<name>.yml with every "gradient-ripple" replaced by <name>
+# (name:, both paths: lists, with.image). Nothing else to register: the
+# build-image/** fan-out, the weekly scan and Dependabot all find new
+# folders via images/*.
+#
+# Triggers:
+#   - pull_request: verify only (lint, build both platforms, smoke test)
+#   - push to main: verify + publish sha-<short7> and latest
+#   - workflow_dispatch: verify + publish sha-<short7> of the chosen ref
+#     (any branch; latest only for main) — the one trigger here WITHOUT a
+#     paths filter, so it is the way to force a build. Needs this file on
+#     main; before that, use build-image/** (build-image-branch.yml).
+#
+# paths: also lists the reusable workflow and the BuildKit pin, so a change
+# to how images are built re-verifies (PR) and re-publishes (main) all
+# images. build-image/** is deliberately NOT a trigger here: paths on a
+# new branch's first push is evaluated against that push's own diff (empty
+# when the commits already exist on GitHub), see build-image-branch.yml.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'images/gradient-ripple/**'
+      - '.github/workflows/image-gradient-ripple.yml'
+      - '.github/workflows/_build-image.yml'
+      - '.github/tool-images/buildkit/**'
+  pull_request:
+    paths:
+      - 'images/gradient-ripple/**'
+      - '.github/workflows/image-gradient-ripple.yml'
+      - '.github/workflows/_build-image.yml'
+      - '.github/tool-images/buildkit/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The ceiling for everything in _build-image.yml (a called workflow can
+    # only narrow these): publish needs packages: write; verify narrows
+    # itself to contents: read; publish never runs on pull_request.
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_build-image.yml
+    with:
+      image: gradient-ripple

@@ -1,0 +1,48 @@
+name: build-image-branch
+
+# Push ANY state to build-image/** → every image folder is verified and
+# published as sha-<short7> (never latest), without merging:
+#   git push origin HEAD:build-image/<topic>
+# Works before a workflow file is on main (unlike workflow_dispatch), and
+# also for commits GitHub already has (e.g. an open PR's head). Delete the
+# branch afterwards; the image tags stay.
+#
+# Why this fan-out instead of build-image/** in each image caller: on.push
+# `paths:` is evaluated against the push's OWN diff, not against main.
+# Verified 2026-10-29 with a throwaway probe workflow:
+#   - new branch whose commits are all already on GitHub (re-pushing a PR
+#     head) → empty diff → a paths-filtered workflow does NOT run
+#   - new branch with new commits → diff against the parent of the oldest
+#     new commit → runs only if THOSE commits touch the paths
+# So with paths, the typical `git push origin HEAD:build-image/x` silently
+# builds nothing. This workflow has no paths filter and simply builds all
+# images (cheap: COPY-only, seconds each), found via images/*/ — new
+# folders need no change here.
+on:
+  push:
+    branches:
+      - 'build-image/**'
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/_discover-images.yml
+
+  build:
+    needs: discover
+    if: needs.discover.outputs.images != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.discover.outputs.images) }}
+    # Ceiling for _build-image.yml, which narrows per job (see there).
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_build-image.yml
+    with:
+      image: ${{ matrix.image }}

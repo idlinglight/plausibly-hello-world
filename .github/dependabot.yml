@@ -1,0 +1,72 @@
+# Dependabot VERSION updates — this file's presence on main is the enable
+# switch; no settings toggle involved. Policy: /CLAUDE.md "Supply-chain
+# policy". cooldown = the repo's 3-day rule for anything newly pinned.
+#
+# Deliberately NOT covered here — repo-settings toggles, verified 2026-10-29:
+# * Dependabot ALERTS: off, on purpose (CLAUDE.md). Here they could only
+#   ever fire for the pinned actions — no package manifests, static files.
+# * Dependabot SECURITY-UPDATE PRs: off, on purpose. They ignore cooldown
+#   and bump straight to latest, i.e. they systematically break the 3-day
+#   guard. Keep them off.
+# * Docker base images never get alerts at all (not in the dependency
+#   graph). That gap is covered by .github/workflows/image-scan.yml: every
+#   published :latest, Fridays 19:30 Vienna — right after this schedule, so
+#   a fix-carrying bump PR is usually open by the time the scan reports.
+#
+# ── Review notes for bump PRs ───────────────────────────────────────────
+# * images/* digest bumps: the image's PR run builds both platforms and
+#   smoke-tests the contract BEFORE merge — green means the new base works.
+#   Merge → main build publishes sha-<short7> + latest.
+# * tool-images/buildkit: in every image caller's paths → all images are
+#   re-verified on the PR and re-published on merge.
+# * tool-images/grype: triggers image-scan's PR run → the new scanner scans
+#   the real published images before merge.
+# * github-actions: the repo's Actions allowlist is actions/* + five
+#   docker/* actions (owner setting, SHA pinning enforced) — a bump can't
+#   introduce anything else. Bumps in _build-image.yml re-verify every
+#   image on the PR; but login-action + metadata-action only run in
+#   publish — prove those before merge with
+#   `git push origin <PR head>:build-image/<topic>` (builds all images).
+version: 2
+updates:
+  # Base images (images/*/Dockerfile) + tool images run from workflow
+  # `run:` steps (.github/tool-images/*/Dockerfile, pin holders, never built).
+  - package-ecosystem: docker
+    directories:
+      - /images/*          # globs: GitHub docs, 2026-10-29 — new folders join automatically
+      - /.github/tool-images/*
+    schedule:
+      interval: weekly
+      day: friday
+      time: "19:00"
+      timezone: Europe/Vienna
+    cooldown:
+      default-days: 3
+    groups:
+      # One PR per dependency across ALL folders: a base-digest bump for
+      # N image folders arrives as one PR (and one review), while nginx,
+      # buildkit and grype bumps stay separate PRs.
+      docker:
+        group-by: dependency-name
+    ignore:
+      # nginx: stay on the stable (even-minor) channel — 1.30 → 1.31 is a
+      # mainline switch, and 1.30 → 1.32 (next stable line) is also
+      # deliberate. Digest bumps within 1.30-alpine-slim still arrive.
+      - dependency-name: nginxinc/nginx-unprivileged
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+
+  # cooldown IS supported for github-actions now (default-days only, no
+  # semver-*-days) — GitHub docs re-checked 2026-10-29; the sister repos'
+  # "unsupported (2026-07-26)" note is outdated.
+  # Actions are SHA-pinned with version comments; Dependabot bumps both.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: friday
+      time: "19:00"
+      timezone: Europe/Vienna
+    cooldown:
+      default-days: 3
