@@ -7,7 +7,10 @@
 // body ends the round. One fruit at a time. A swallowed fruit (a meal)
 // travels down the body, MEAL_SPEED cells per step, shown as a bulge; when
 // it reaches the tail the snake grows by one segment there (the tail stays
-// put for a step).
+// put for a step). At most one growth per GROW_SPACING steps: a meal that
+// arrives sooner waits at the tail. (Keeps the drawn easing of each growth
+// separate, see render.js; with fruit spawning 3+ cells away it rarely
+// waits.)
 
 export const UP = 0;
 export const RIGHT = 1;
@@ -17,6 +20,7 @@ export const DX = [0, 1, 0, -1];
 export const DY = [-1, 0, 1, 0];
 
 export const MEAL_SPEED = 1.6;
+export const GROW_SPACING = 3;
 const QUEUE_MAX = 2; // turns buffered between steps, so quick double turns work
 const FRUIT_MIN_DIST = 3; // new fruit keeps this far from the head if it can
 
@@ -58,12 +62,9 @@ export class Game {
       this.occ[c] = 1;
     }
     this.prevTail = this.cells[this.cells.length - 1];
-    this.grow = 0; // steps the tail still stays put
     this.meals = []; // per swallowed fruit on its way down: this.steps when eaten
-    // For drawing: the cells the tail last left (most recent first), and
-    // the steps (this.steps after them) in which the snake recently grew.
-    this.vacated = [];
-    this.grewAt = [];
+    this.lastGrow = -Infinity; // this.steps after the last step that grew
+    this.vacated = []; // for drawing: cells the tail last left, most recent first
     this.eaten = 0;
     this.steps = 0;
     this.alive = true;
@@ -108,7 +109,9 @@ export class Game {
 
   // Will the tail stay put on the next step (the snake grows)?
   get growingNext() {
-    return this.grow > 0 || (this.meals.length > 0 && this.arrived(this.meals[0]));
+    return (
+      this.meals.length > 0 && this.arrived(this.meals[0]) && this.steps + 1 - this.lastGrow >= GROW_SPACING
+    );
   }
 
   // One step. Returns 'move', 'eat', 'die' or 'full' (no room for fruit:
@@ -116,13 +119,9 @@ export class Game {
   step() {
     if (!this.alive) return 'die';
     if (this.queue.length) this.dir = this.queue.shift();
-    while (this.meals.length && this.arrived(this.meals[0])) {
-      this.meals.shift();
-      this.grow++;
-    }
     const next = this.neighbor(this.head, this.dir);
     const tail = this.cells[this.cells.length - 1];
-    const tailMoves = this.grow === 0;
+    const tailMoves = !this.growingNext;
     // The tail's cell is free to enter if the tail moves out this step.
     if (this.occ[next] && !(tailMoves && next === tail)) {
       this.alive = false;
@@ -136,15 +135,12 @@ export class Game {
       this.vacated.unshift(tail);
       if (this.vacated.length > 3) this.vacated.length = 3;
     } else {
-      this.grow--;
+      this.meals.shift();
+      this.lastGrow = this.steps + 1;
     }
     this.cells.unshift(next);
     this.occ[next] = 1;
     this.steps++;
-    if (!tailMoves) {
-      this.grewAt.unshift(this.steps);
-      if (this.grewAt.length > 3) this.grewAt.length = 3;
-    }
     if (next === this.fruit) {
       this.eaten++;
       this.meals.push(this.steps);
@@ -161,16 +157,13 @@ export class Game {
   upcomingGrowth(horizon, out = []) {
     out.length = 0;
     let n = this.cells.length;
-    let g = this.grow;
+    let last = this.lastGrow;
     let i = 0;
-    for (let j = this.steps + 1; j <= this.steps + horizon; j++) {
-      while (i < this.meals.length && (j - 1 - this.meals[i]) * MEAL_SPEED >= n - 1) {
+    for (let j = this.steps + 1; j <= this.steps + horizon && i < this.meals.length; j++) {
+      if ((j - 1 - this.meals[i]) * MEAL_SPEED >= n - 1 && j - last >= GROW_SPACING) {
         i++;
-        g++;
-      }
-      if (g > 0) {
-        g--;
         n++;
+        last = j;
         out.push(j);
       }
     }

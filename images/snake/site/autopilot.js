@@ -71,7 +71,7 @@ export class Autopilot {
       this.hungry++;
     }
     const { cells, fruit, head } = game;
-    const grow = game.grow + game.meals.length;
+    const grow = game.meals.length;
     const back = (game.dir + 2) % 4;
     const neck = this.nb[head * 4 + back]; // no reversing into it
 

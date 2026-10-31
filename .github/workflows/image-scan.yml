@@ -67,8 +67,10 @@ jobs:
     name: scan (${{ matrix.image }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Read-only. packages: read is enough while GHCR packages are private:
-    # packages published by this repo's workflows grant the repo read access.
+    # Read-only. The phw-* packages are public, so pulls need no token; were
+    # one private, packages: read would still do: packages this repo's
+    # workflows publish are linked to it (OCI source label) and grant it
+    # read access.
     permissions:
       contents: read
       packages: read

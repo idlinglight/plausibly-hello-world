@@ -17,14 +17,16 @@
 // Growth: in the rules the tail stays put for one step. Drawn like that it
 // stops dead and reads as a hitch, so the drawn tail end eases instead: it
 // starts slowing GROW_LEAD steps early (growth is known in advance) and
-// never drops below half speed. Meanwhile it reaches back into the cell the
+// bottoms out at half speed. Growth steps are GROW_SPACING apart (game.js),
+// so two easings never overlap. Meanwhile it reaches back into the cell the
 // tail just left, so the drawn snake is never shorter than the cells it
-// holds (nothing to run into that isn't drawn).
+// holds (nothing to run into that isn't drawn); if the snake is back in
+// that cell, only up to its edge. On death the reach stays as it was.
 //
 // Death: the head bumps into what it hit, a burst marks the spot, and a ring
 // stays around the hit cell while the snake fades to grey.
 
-import { DX, DY, MEAL_SPEED } from './game.js';
+import { DX, DY, MEAL_SPEED, GROW_SPACING } from './game.js';
 
 const C = {
   board: '#133229',
@@ -58,7 +60,7 @@ const TAPER_MIN = 0.5; // … down to this much of BODY_W
 const TAPER_STEPS = 10;
 const LUMP = 1.32; // a meal on its way down: a bulge this much thicker than the body …
 const LUMP_MERGE = 1.2; // … flattening into the tail over its last this-many cells
-const GROW_LEAD = 2; // steps before a growth step that the tail starts easing
+const GROW_LEAD = GROW_SPACING - 1; // steps before a growth step that the tail starts easing
 const EYE_MS = 45; // the eyes turn with the head over roughly this long
 const RING_MS = 480;
 const POP_MS = 280; // new fruit grows in
@@ -90,6 +92,7 @@ export class Renderer {
     this.eyeAngle = null;
     this.lastDraw = 0;
     this.growSoon = []; // scratch for game.upcomingGrowth()
+    this.reachLive = 0; // tail reach in the last frame before death
     // Last frame, for tests: body length drawn (cells), and how far the tip
     // has come (game.steps + alpha). Tail end speed = 1 - dLength / dTip.
     this.lengthDrawn = 0;
@@ -174,6 +177,7 @@ export class Renderer {
     this.deathAt = -1;
     this.fruitBorn = now;
     this.eyeAngle = null;
+    this.reachLive = 0;
   }
 
   ate(cell, now) {
@@ -368,7 +372,9 @@ export class Renderer {
       put(cx(gone) + stepX(gone, last) * alpha, cy(gone) + stepY(gone, last) * alpha);
     }
     const tailIdx = m - 1;
-    if (n > 1 && !dead) {
+    if (n > 1 && dead) {
+      reach = this.reachLive;
+    } else if (n > 1) {
       const u = game.steps + alpha;
       const ease = (k) => {
         const v = u - k; // growth step k shows during u in [k, k + 1)
@@ -376,13 +382,24 @@ export class Renderer {
         const x = (v + GROW_LEAD) / (GROW_LEAD + 1);
         return x * x * (3 - 2 * x) - Math.min(1, Math.max(0, v));
       };
-      for (const k of game.grewAt) reach += ease(k);
+      reach = ease(game.lastGrow);
       for (const k of game.upcomingGrowth(GROW_LEAD + 1, this.growSoon)) reach += ease(k);
-      if (reach > 0) {
-        for (const c of game.vacated) {
-          if (game.occ[c]) break; // the snake is back in it: stop short
-          put(cx(c), cy(c));
+      this.reachLive = reach;
+    }
+    if (reach > 0) {
+      let from = cells[n - 1];
+      for (const c of game.vacated) {
+        if (game.occ[c]) {
+          // The snake is back in it: reach only up to its edge, unless the
+          // (lagging) tail end is past that already.
+          const moving = game.prevTail !== cells[n - 1];
+          if (from !== cells[n - 1] || !moving || alpha > 0.5) {
+            put(cx(from) + stepX(from, c) * 0.5, cy(from) + stepY(from, c) * 0.5);
+          }
+          break;
         }
+        put(cx(c), cy(c));
+        from = c;
       }
     }
     A[0] = 0;
@@ -401,18 +418,22 @@ export class Renderer {
     this.lengthDrawn = total;
     this.tipDrawn = game.steps + alpha;
 
+    // The segment holding distance s from the tip (binary search).
+    const segAt = (s) => {
+      let lo = 0;
+      let hi = Math.max(0, m - 2);
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (A[mid + 1] <= s) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    };
     // Adds the stretch of body from distance s0 to s1 (from the tip) to the
     // path, as straight pieces (round caps join them), with torus copies.
     const addRange = (s0, s1, r) => {
       if (s1 <= s0 || m < 2) return;
-      let lo = 0;
-      let hi = m - 2;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (A[mid + 1] <= s0) lo = mid + 1;
-        else hi = mid;
-      }
-      for (let k = lo; k < m - 1 && A[k] < s1; k++) {
+      for (let k = segAt(s0); k < m - 1 && A[k] < s1; k++) {
         const len = A[k + 1] - A[k];
         if (len <= 0) continue;
         const t0 = Math.max(0, (s0 - A[k]) / len);
@@ -433,8 +454,8 @@ export class Renderer {
     let px = P[0];
     let py = P[1];
     const pointAt = (s) => {
-      let k = 0;
-      while (k < m - 2 && A[k + 1] < s) k++;
+      if (m < 2) return;
+      const k = segAt(s);
       const len = A[k + 1] - A[k];
       const t = len > 0 ? Math.min(1, Math.max(0, (s - A[k]) / len)) : 0;
       px = P[k * 2] + D[k * 2] * t;
@@ -464,8 +485,9 @@ export class Renderer {
 
     // Body: colour steps from the tip; past FADE_LEN one colour; the tail
     // end tapers.
+    // (A grey, dead snake is one colour: one stroke.)
     for (let b = 0, s0 = 0; s0 < taperStart; b++, s0 += BAND_LEN) {
-      const s1 = b >= bands ? taperStart : Math.min(taperStart, s0 + BAND_LEN);
+      const s1 = b >= bands || grey ? taperStart : Math.min(taperStart, s0 + BAND_LEN);
       ctx.beginPath();
       addRange(s0, s1, BODY_W / 2);
       ctx.lineWidth = BODY_W;
