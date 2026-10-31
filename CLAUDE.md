@@ -84,15 +84,16 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   creeps while the sim runs — pre-existing, invisible, reset on parking,
   bounded for holds by that cap (details in `water.js`).
 - **snake**: canvas 2D, no WebGL. The board wraps at the edges and is sized
-  to the viewport at the start of each round (a resize mid-round rescales
-  the same board). While nobody plays, an autopilot plays a demo
-  (`autopilot.js`); each round picks a target length, after which it gets
-  careless and soon crashes, so a round lasts a minute or two. Any direction
-  input starts a person's round; 30 s without input hands it back to the
-  autopilot. `prefers-reduced-motion`: no demo, a still board until someone
-  plays. `?seed=<int>` makes fruit and autopilot reproducible;
-  `<html data-mode>` (`demo`, `demo-end`, `play`, `paused`, `over`, `idle`)
-  shows the state. Best score lives in `localStorage` (per browser, optional).
+  to the viewport when a round starts; on a resize a person's round keeps
+  its board (rescaled), the demo starts over on a fitting one. While nobody
+  plays, an autopilot plays a demo (`autopilot.js`); each round picks a
+  target length, after which it gets careless and soon crashes, so a round
+  lasts a minute or two. Any direction input starts a person's round; 30 s
+  without input hands it to the autopilot. `prefers-reduced-motion`: no
+  demo, a still board until someone plays, and an abandoned round pauses.
+  `?seed=<int>` makes fruit and autopilot reproducible; `<html data-mode>`
+  (`demo`, `demo-end`, `play`, `paused`, `over`, `idle`) shows the state.
+  Best score lives in `localStorage` (per browser, optional).
   `game.js` and `autopilot.js` have no DOM, so they also run under plain
   node. Favicon raster files are exports of `favicon.svg` (`.ico` = one
   32 px PNG inside an ICO; the touch icon without the rounded corners).

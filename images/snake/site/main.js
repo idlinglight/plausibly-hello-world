@@ -11,7 +11,8 @@
 //             a while the demo takes over again
 //   idle      prefers-reduced-motion: nothing moves until someone plays
 // Any direction input outside `play` starts a fresh round for the person.
-// A player who stops steering for PLAY_IDLE_MS hands over to the autopilot.
+// A player who stops steering for PLAY_IDLE_MS hands over to the autopilot
+// (with reduced motion: the round pauses).
 //
 // Loop: the game steps at a fixed rate; frames in between draw the snake
 // part of the way (render.js). Frames run only while something moves; a
@@ -74,6 +75,7 @@ let handedOver = false; // demo continuing a person's round
 let newBest = false;
 let tongueAt = 0;
 let nextTongue = 0;
+let press = null; // the pointer press being tracked for swipes
 let best = loadBest();
 
 // ── Layout ──────────────────────────────────────────────────────────────
@@ -191,6 +193,7 @@ function resume() {
 
 function ended(now, ev) {
   endedAt = now;
+  press = null; // a swipe still in progress must not start the next round
   if (ev === 'die') renderer.died(now);
   if (mode === 'demo') {
     setMode('demo-end');
@@ -228,9 +231,14 @@ function frame(now) {
 
 function tick(now) {
   if (mode === 'play' && now - lastInput > PLAY_IDLE_MS) {
-    // Nobody's steering any more: the autopilot carries on.
+    // Nobody's steering any more: the autopilot carries on (from the
+    // current length), or with reduced motion the round just pauses.
+    if (reduced) {
+      pause();
+      return;
+    }
     game.queue.length = 0;
-    autopilot.newRound(game);
+    autopilot.newRound(game, game.cells.length);
     handedOver = true;
     tickMs = 1000 / DEMO_TPS;
     setMode('demo');
@@ -306,7 +314,7 @@ function tap(x, y) {
     }
     return;
   }
-  if (mode === 'paused' && pausedFrom === 'play') {
+  if (mode === 'paused') {
     resume();
     return;
   }
@@ -336,15 +344,21 @@ window.addEventListener('keydown', (e) => {
   const d = KEYS[e.code];
   if (d !== undefined) {
     e.preventDefault();
-    steer(d);
+    // Auto-repeat of a held key: harmless while playing, but it must not
+    // start a round (it would outlast the restart grace).
+    if (!e.repeat || mode === 'play') steer(d);
     return;
+  }
+  if (e.repeat) {
+    if (e.code === 'Space') e.preventDefault();
+    return; // a held Space / P would toggle pause on and off
   }
   switch (e.code) {
     case 'Space': // pauses a person's round; elsewhere starts one
       e.preventDefault();
       if (mode === 'paused') resume();
       else if (mode === 'play') pause();
-      else if (!e.repeat) steer(RIGHT);
+      else steer(RIGHT);
       break;
     case 'KeyP': // pauses anything that moves, the demo too
       if (mode === 'paused') resume();
@@ -356,14 +370,13 @@ window.addEventListener('keydown', (e) => {
     case 'Enter':
     case 'NumpadEnter':
       if (mode === 'paused') resume();
-      else if (mode !== 'play' && !e.repeat) steer(RIGHT);
+      else if (mode !== 'play') steer(RIGHT);
       break;
   }
 });
 
 // Swipes: once a press has moved far enough, its main axis is a direction;
 // the press can keep going and turn again (the start point follows).
-let press = null;
 window.addEventListener('pointerdown', (e) => {
   if (!e.isPrimary || e.button > 0) return;
   if (e.target instanceof Element && e.target.closest('button')) return;
@@ -410,9 +423,11 @@ window.addEventListener('resize', () => {
   requestAnimationFrame(() => {
     resizeQueued = false;
     measure();
-    // A person's round keeps its board (rescaled); otherwise a board that no
-    // longer suits the viewport is replaced.
-    if ((mode === 'demo' || mode === 'demo-end' || mode === 'idle') && gridIsStale()) rest();
+    // A person's round (also one the autopilot took over) keeps its board,
+    // rescaled; otherwise a board that no longer suits the viewport is
+    // replaced.
+    const replaceable = (mode === 'demo' && !handedOver) || mode === 'demo-end' || mode === 'idle';
+    if (replaceable && gridIsStale()) rest();
     else fit(false);
     wake();
   });
@@ -422,7 +437,8 @@ if (motionQuery) {
   const onMotion = (e) => {
     reduced = e.matches;
     renderer.reduced = reduced;
-    if (reduced && (mode === 'demo' || mode === 'demo-end')) startIdle();
+    const demo = mode === 'demo' || mode === 'demo-end' || (mode === 'paused' && pausedFrom === 'demo');
+    if (reduced && demo) startIdle();
     else if (!reduced && mode === 'idle') startDemo();
   };
   if (motionQuery.addEventListener) motionQuery.addEventListener('change', onMotion);
@@ -436,7 +452,7 @@ function updateScore() {
   bestValue.textContent = String(best);
 }
 
-const START_TEXT = coarse ? 'Swipe or tap to play' : 'Arrow keys, WASD or click to play';
+const HOW_TO = coarse ? 'swipe or tap to play' : 'arrow keys, WASD or click to play';
 
 function overText() {
   const again = coarse ? 'tap to play again' : 'press a key or click to play again';
@@ -453,7 +469,7 @@ function updateHud() {
     case 'demo':
     case 'demo-end':
     case 'idle':
-      hint.textContent = handedOver ? 'Autopilot — ' + START_TEXT.toLowerCase() : START_TEXT;
+      hint.textContent = handedOver ? 'Autopilot — ' + HOW_TO : HOW_TO[0].toUpperCase() + HOW_TO.slice(1);
       break;
     case 'paused':
       hint.textContent = coarse ? 'Paused — tap to go on' : 'Paused — press Space or click to go on';

@@ -65,7 +65,7 @@ export class Renderer {
     this.deathAt = -1;
     this.reduced = false;
     this.pos = new Float32Array(0); // segment positions, x/y pairs
-    this.offs = [];
+    this.offs = new Float64Array(8); // copies(): up to 4 offset pairs
   }
 
   // Places a cols x rows board centred in `area` (CSS px: x, y, w, h) on a
@@ -232,14 +232,22 @@ export class Renderer {
     return this.bandColors[b];
   }
 
-  // Calls fn(dx, dy) for each copy of a shape spanning [x0, x1] x [y0, y1]
-  // that is needed to show it on the torus: (0, 0), plus shifted copies
-  // where it pokes out over an edge.
-  copies(x0, x1, y0, y1, fn) {
-    const { cols, rows } = this;
-    const xs = x0 < 0 ? [0, cols] : x1 > cols ? [0, -cols] : [0];
-    const ys = y0 < 0 ? [0, rows] : y1 > rows ? [0, -rows] : [0];
-    for (const dx of xs) for (const dy of ys) fn(dx, dy);
+  // The copies of a shape spanning [x0, x1] x [y0, y1] needed to show it
+  // on the torus: (0, 0), plus shifted ones where it pokes out over an edge.
+  // Writes the offsets to this.offs as x/y pairs; returns how many. (No
+  // arrays or callbacks per call: this runs for every segment, every frame.)
+  copies(x0, x1, y0, y1) {
+    const { cols, rows, offs } = this;
+    const sx = x0 < 0 ? cols : x1 > cols ? -cols : 0;
+    const sy = y0 < 0 ? rows : y1 > rows ? -rows : 0;
+    let k = 0;
+    for (let a = 0; a < (sx ? 2 : 1); a++) {
+      for (let b = 0; b < (sy ? 2 : 1); b++) {
+        offs[k++] = a * sx;
+        offs[k++] = b * sy;
+      }
+    }
+    return k / 2;
   }
 
   drawSnake(ctx, game, alpha, now, tongue) {
@@ -276,26 +284,29 @@ export class Renderer {
       pos[i * 2 + 1] = y;
     }
 
-    // Wrapped vector from segment i + 1 to segment i.
+    // seg(i): wrapped vector from segment i + 1 to segment i, into sx, sy.
+    const offs = this.offs;
+    let sx = 0;
+    let sy = 0;
     const seg = (i) => {
-      let dx = pos[i * 2] - pos[i * 2 + 2];
-      let dy = pos[i * 2 + 1] - pos[i * 2 + 3];
-      if (dx > cols / 2) dx -= cols;
-      else if (dx < -cols / 2) dx += cols;
-      if (dy > rows / 2) dy -= rows;
-      else if (dy < -rows / 2) dy += rows;
-      return [dx, dy];
+      sx = pos[i * 2] - pos[i * 2 + 2];
+      sy = pos[i * 2 + 1] - pos[i * 2 + 3];
+      if (sx > cols / 2) sx -= cols;
+      else if (sx < -cols / 2) sx += cols;
+      if (sy > rows / 2) sy -= rows;
+      else if (sy < -rows / 2) sy += rows;
     };
     const addSeg = (i, r) => {
       const ax = pos[i * 2 + 2];
       const ay = pos[i * 2 + 3];
-      const [dx, dy] = seg(i);
-      const bx = ax + dx;
-      const by = ay + dy;
-      this.copies(Math.min(ax, bx) - r, Math.max(ax, bx) + r, Math.min(ay, by) - r, Math.max(ay, by) + r, (ox, oy) => {
-        ctx.moveTo(ax + ox, ay + oy);
-        ctx.lineTo(bx + ox, by + oy);
-      });
+      seg(i);
+      const bx = ax + sx;
+      const by = ay + sy;
+      const m = this.copies(Math.min(ax, bx) - r, Math.max(ax, bx) + r, Math.min(ay, by) - r, Math.max(ay, by) + r);
+      for (let k = 0; k < m; k++) {
+        ctx.moveTo(ax + offs[k * 2], ay + offs[k * 2 + 1]);
+        ctx.lineTo(bx + offs[k * 2], by + offs[k * 2 + 1]);
+      }
     };
 
     // Death: flash a few times, then fade to a dim, grey snake.
@@ -357,16 +368,18 @@ export class Renderer {
       const l = (game.steps + alpha - at) * LUMP_SPEED;
       if (l <= 0 || l >= n - 1) continue;
       const i = Math.floor(l);
-      const [dx, dy] = seg(i);
-      const x = pos[i * 2] - dx * (l - i);
-      const y = pos[i * 2 + 1] - dy * (l - i);
+      seg(i);
+      const x = pos[i * 2] - sx * (l - i);
+      const y = pos[i * 2 + 1] - sy * (l - i);
       const r = (BODY_W / 2) * taper(l) * (1 + (LUMP - 1) * Math.min(1, l / 1.5));
       ctx.fillStyle = this.bandColor(Math.floor(l / BAND), grey, fade);
-      this.copies(x - r, x + r, y - r, y + r, (ox, oy) => {
-        ctx.beginPath();
-        ctx.arc(x + ox, y + oy, r, 0, Math.PI * 2);
-        ctx.fill();
-      });
+      ctx.beginPath();
+      const m = this.copies(x - r, x + r, y - r, y + r);
+      for (let k = 0; k < m; k++) {
+        ctx.moveTo(x + offs[k * 2] + r, y + offs[k * 2 + 1]);
+        ctx.arc(x + offs[k * 2], y + offs[k * 2 + 1], r, 0, Math.PI * 2);
+      }
+      ctx.fill();
     }
 
     // Head, eyes, tongue.
@@ -375,18 +388,19 @@ export class Renderer {
     let vx = DX[game.dir];
     let vy = DY[game.dir];
     if (n > 1) {
-      const [dx, dy] = seg(0);
-      const len = Math.hypot(dx, dy);
+      seg(0);
+      const len = Math.hypot(sx, sy);
       if (len > 0.05) {
-        vx = dx / len;
-        vy = dy / len;
+        vx = sx / len;
+        vy = sy / len;
       }
     }
     const headColor = grey ? tint(C.dead.map((v) => v * 1.12)) : rgb(C.head);
     const pupilColor = grey ? tint([11, 29, 24]) : C.pupil;
-    this.copies(hx - 0.9, hx + 0.9, hy - 0.9, hy + 0.9, (ox, oy) => {
-      const x = hx + ox;
-      const y = hy + oy;
+    const heads = this.copies(hx - 0.9, hx + 0.9, hy - 0.9, hy + 0.9);
+    for (let k = 0; k < heads; k++) {
+      const x = hx + offs[k * 2];
+      const y = hy + offs[k * 2 + 1];
       if (tongue > 0 && !dead) {
         const out = Math.sin(Math.PI * tongue) * 0.36;
         const tx = x + vx * (HEAD_R + out);
@@ -430,6 +444,6 @@ export class Renderer {
         ctx.fillStyle = C.pupil;
         ctx.fill();
       }
-    });
+    }
   }
 }

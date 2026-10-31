@@ -29,16 +29,19 @@ export class Autopilot {
     this.grid = '';
     this.lastEaten = -1;
     this.hungry = 0; // steps since the last fruit
-    this.lastSteps = 0;
-    this.target = 0; // length at which it gets greedy
+    this.target = 0; // length at which it gets careless
   }
 
-  // Target length for a new round: 15 to 5-12 % of the board.
-  newRound(game) {
+  // Call at the start of each round, and when taking over a person's round
+  // (base: its current length, so a long snake isn't careless at once).
+  // Target: base + 15 to 5-12 % of the board.
+  newRound(game, base = 0) {
     const n = game.cols * game.rows;
     const lo = Math.min(15, Math.floor(n * 0.1));
     const hi = Math.max(lo, Math.min(80, Math.floor(n * 0.12)));
-    this.target = lo + Math.floor(this.rng() * (hi - lo + 1));
+    this.target = base + lo + Math.floor(this.rng() * (hi - lo + 1));
+    this.lastEaten = game.eaten;
+    this.hungry = 0;
   }
 
   // (Re)builds the lookup tables when the board size changes.
@@ -58,8 +61,7 @@ export class Autopilot {
   // Returns the direction (0-3) to take next.
   choose(game) {
     this.setup(game);
-    if (game.steps < this.lastSteps || !this.target) this.newRound(game);
-    this.lastSteps = game.steps;
+    if (!this.target) this.newRound(game);
     if (game.eaten !== this.lastEaten) {
       this.lastEaten = game.eaten;
       this.hungry = 0;
