@@ -40,9 +40,14 @@ and deployments can rely on it without per-image knowledge:
   `RUN` (multi-arch would need QEMU), `ADD`, `ONBUILD`, `COPY --from` and an
   unpinned `# syntax=` (both would pull a second, unpinned image). Static
   files ship as-is — no npm, no bundler, so there's no JS dependency tree.
-- **Published as** `ghcr.io/idlinglight/plausibly-hello-world/<name>` (public),
-  tags `sha-<short7>` (every build) and `latest` (only when the commit is
-  still main's head at publish time), `linux/amd64` + `linux/arm64`.
+- **Published as** `ghcr.io/idlinglight/phw-<name>` (public), `<name>` =
+  the folder name, tags `sha-<short7>` (every build) and `latest` (only when
+  the commit is still main's head at publish time), `linux/amd64` +
+  `linux/arm64`. Flat and `phw-`-prefixed on purpose: GitHub's package list
+  hides a leading `<repo>/` path part, so the earlier nested names
+  (`…/plausibly-hello-world/<name>`, until 2026-10-31) showed as bare folder
+  names. The rule lives in `_build-image.yml` (step "Published name") and
+  `image-scan.yml`.
 
 Local check:
 
@@ -62,9 +67,14 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   from JS via the CSSOM (`el.style.foo = …`) is fine under `style-src 'self'`;
   `setAttribute('style', …)` is not. Use relative asset paths so an image
   also works behind a path prefix. Ship a favicon (`favicon.svg`,
-  `favicon.ico`, `apple-touch-icon.png`) so logs stay free of 404s.
+  `favicon.ico`, `apple-touch-icon.png`) so logs stay free of 404s. Page
+  title: `<Name> · phw` (e.g. `Snake · phw`): name first, as tabs truncate.
 - The CSP sets `frame-ancestors 'none'` (+ `X-Frame-Options: DENY`): pages
   can't be iframed. Loosen per image if embedding is ever wanted.
+- `nginx.conf` is the same file in every image (JSON access log incl. the
+  Host header, security headers, endpoints): a copy per folder, since each
+  build context is its own folder. Change it in all images together; a new
+  image starts from a copy.
 
 ### Per-image notes
 
@@ -79,12 +89,35 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   or drawn ring spacing). In the packed `rgba8` tier the mean water level
   creeps while the sim runs — pre-existing, invisible, reset on parking,
   bounded for holds by that cap (details in `water.js`).
+- **snake**: canvas 2D, no WebGL. The board wraps at the edges and is sized
+  to the viewport when a round starts; on a resize a person's round keeps
+  its board (rescaled), the demo starts over on a fitting one. While nobody
+  plays, an autopilot plays a demo (`autopilot.js`); each round picks a
+  target length, after which it gets careless and soon crashes, so a round
+  lasts a minute or two. Any direction input starts a person's round; 30 s
+  without input hands it to the autopilot. `prefers-reduced-motion`: no
+  demo, a still board until someone plays, and an abandoned round pauses.
+  Growth: a swallowed fruit travels down the body as a bulge
+  (`MEAL_SPEED` in `game.js`); the snake grows when it reaches the tail
+  (at most once per `GROW_SPACING` steps), and the drawn tail eases into
+  it instead of stopping for a step.
+  Rendering: the body is drawn along its path (corners stay put between
+  steps, no flicker); on death the head bumps into the cell it hit, which
+  keeps a coral ring while the round is over (`render.js` header).
+  `?seed=<int>` makes fruit and autopilot reproducible; `<html data-mode>`
+  (`demo`, `demo-end`, `play`, `paused`, `over`, `idle`) shows the state.
+  Best score lives in `localStorage` (per browser, optional).
+  `game.js` and `autopilot.js` have no DOM, so they also run under plain
+  node. Favicon raster files are exports of `favicon.svg` (`.ico` = one
+  32 px PNG inside an ICO; the touch icon without the rounded corners).
 
 ## CI
 
 - **Adding an image**: `images/<name>/` + a copy of `image-gradient-ripple.yml`
   named `image-<name>.yml`, every `gradient-ripple` replaced. The scan, the
-  `build-image/**` fan-out and Dependabot find new folders on their own.
+  `build-image/**` fan-out and Dependabot find new folders on their own. The
+  first publish creates `phw-<name>` already public and linked to this repo
+  (observed 2026-10-31): nothing to set in the package settings.
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
   and BuildKit bumps are proven before merge. Push to main also publishes.
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in

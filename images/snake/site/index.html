@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Snake · phw</title>
+  <meta name="description" content="A small snake game that plays itself until you take over: arrow keys, swipes or taps.">
+  <meta name="theme-color" content="#0b1c18">
+  <link rel="icon" href="favicon.ico" sizes="32x32">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="main.js"></script>
+</head>
+<body>
+  <canvas id="board" aria-hidden="true"></canvas>
+  <header id="hud">
+    <p class="stat"><span id="score-label">score</span> <span id="score" class="num">0</span></p>
+    <button id="pause" type="button" aria-label="Pause" aria-pressed="false"></button>
+    <p class="stat stat-best"><span>best</span> <span id="best" class="num">0</span></p>
+  </header>
+  <p id="hint" role="status" aria-live="polite"></p>
+  <div id="safe" aria-hidden="true"></div>
+  <p class="sr-only">A snake game. Use the arrow keys or WASD, swipe, or tap beside the snake's head to steer; eat the fruit to grow, and don't run into yourself. The edges wrap around. Space or P pauses. While nobody plays, the snake plays itself.</p>
+  <noscript><p class="noscript">This little snake game needs JavaScript.</p></noscript>
+</body>
+</html>

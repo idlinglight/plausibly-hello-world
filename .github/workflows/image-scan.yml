@@ -67,8 +67,10 @@ jobs:
     name: scan (${{ matrix.image }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Read-only. packages: read is enough while GHCR packages are private:
-    # packages published by this repo's workflows grant the repo read access.
+    # Read-only. The phw-* packages are public, so pulls need no token; were
+    # one private, packages: read would still do: packages this repo's
+    # workflows publish are linked to it (OCI source label) and grant it
+    # read access.
     permissions:
       contents: read
       packages: read
@@ -95,7 +97,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          repo="${GITHUB_REPOSITORY,,}/$IMAGE"
+          repo="${GITHUB_REPOSITORY_OWNER,,}/phw-$IMAGE"   # published name: same rule as _build-image.yml
           echo "ref=ghcr.io/$repo" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             candidates=(latest "sha-${PR_HEAD_SHA::7}")
