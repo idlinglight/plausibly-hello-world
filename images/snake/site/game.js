@@ -59,6 +59,7 @@ export class Game {
     this.eaten = 0;
     this.steps = 0;
     this.alive = true;
+    this.crash = -1; // the cell the head ran into, once dead
     this.fruit = -1;
     this.placeFruit();
   }
@@ -103,6 +104,7 @@ export class Game {
     // The tail's cell is free to enter if the tail moves out this step.
     if (this.occ[next] && !(tailMoves && next === tail)) {
       this.alive = false;
+      this.crash = next;
       return 'die';
     }
     this.prevTail = tail;
