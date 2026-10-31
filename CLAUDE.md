@@ -107,7 +107,9 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
 
 - **Adding an image**: `images/<name>/` + a copy of `image-gradient-ripple.yml`
   named `image-<name>.yml`, every `gradient-ripple` replaced. The scan, the
-  `build-image/**` fan-out and Dependabot find new folders on their own.
+  `build-image/**` fan-out and Dependabot find new folders on their own. The
+  first publish creates `phw-<name>` already public and linked to this repo
+  (observed 2026-10-31): nothing to set in the package settings.
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
   and BuildKit bumps are proven before merge. Push to main also publishes.
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in
