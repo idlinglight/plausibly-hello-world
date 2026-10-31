@@ -40,9 +40,14 @@ and deployments can rely on it without per-image knowledge:
   `RUN` (multi-arch would need QEMU), `ADD`, `ONBUILD`, `COPY --from` and an
   unpinned `# syntax=` (both would pull a second, unpinned image). Static
   files ship as-is — no npm, no bundler, so there's no JS dependency tree.
-- **Published as** `ghcr.io/idlinglight/plausibly-hello-world/<name>` (public),
-  tags `sha-<short7>` (every build) and `latest` (only when the commit is
-  still main's head at publish time), `linux/amd64` + `linux/arm64`.
+- **Published as** `ghcr.io/idlinglight/phw-<name>` (public), `<name>` =
+  the folder name, tags `sha-<short7>` (every build) and `latest` (only when
+  the commit is still main's head at publish time), `linux/amd64` +
+  `linux/arm64`. Flat and `phw-`-prefixed on purpose: GitHub's package list
+  hides a leading `<repo>/` path part, so the earlier nested names
+  (`…/plausibly-hello-world/<name>`, until 2026-10-31) showed as bare folder
+  names. The rule lives in `_build-image.yml` (step "Published name") and
+  `image-scan.yml`.
 
 Local check:
 

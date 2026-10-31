@@ -95,7 +95,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          repo="${GITHUB_REPOSITORY,,}/$IMAGE"
+          repo="${GITHUB_REPOSITORY_OWNER,,}/phw-$IMAGE"   # published name: same rule as _build-image.yml
           echo "ref=ghcr.io/$repo" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             candidates=(latest "sha-${PR_HEAD_SHA::7}")
