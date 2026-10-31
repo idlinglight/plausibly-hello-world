@@ -14,6 +14,13 @@
 // segment part of the way instead cuts each corner short mid-step: the
 // corners flicker at the step rate.)
 //
+// Growth: in the rules the tail stays put for one step. Drawn like that it
+// stops dead and reads as a hitch, so the drawn tail end eases instead: it
+// starts slowing GROW_LEAD steps early (growth is known in advance) and
+// never drops below half speed. Meanwhile it reaches back into the cell the
+// tail just left, so the drawn snake is never shorter than the cells it
+// holds (nothing to run into that isn't drawn).
+//
 // Death: the head bumps into what it hit, a burst marks the spot, and a ring
 // stays around the hit cell while the snake fades to grey.
 
@@ -49,7 +56,9 @@ const FADE_LEN = 24; // … from the neck colour to the tail colour over this le
 const TAPER_LEN = 2.5; // the last cells of body get thinner …
 const TAPER_MIN = 0.5; // … down to this much of BODY_W
 const TAPER_STEPS = 10;
-const LUMP = 1.32; // a meal on its way down: a bulge this much thicker than the body
+const LUMP = 1.32; // a meal on its way down: a bulge this much thicker than the body …
+const LUMP_MERGE = 1.2; // … flattening into the tail over its last this-many cells
+const GROW_LEAD = 2; // steps before a growth step that the tail starts easing
 const EYE_MS = 45; // the eyes turn with the head over roughly this long
 const RING_MS = 480;
 const POP_MS = 280; // new fruit grows in
@@ -80,6 +89,11 @@ export class Renderer {
     this.reduced = false;
     this.eyeAngle = null;
     this.lastDraw = 0;
+    this.growSoon = []; // scratch for game.upcomingGrowth()
+    // Last frame, for tests: body length drawn (cells), and how far the tip
+    // has come (game.steps + alpha). Tail end speed = 1 - dLength / dTip.
+    this.lengthDrawn = 0;
+    this.tipDrawn = 0;
     // Centre line of the body (x/y pairs), per-segment vectors, and the
     // distance from the tip at each point. Reused between frames.
     this.pts = new Float64Array(0);
@@ -301,11 +315,15 @@ export class Renderer {
     const grey = dead && (flashOff || fade < 1);
 
     // Centre line, head to tail (see the top of this file).
-    const need = (n + 2) * 2;
-    if (this.pts.length < need) {
-      this.pts = new Float64Array(need * 2);
-      this.dlt = new Float64Array(need * 2);
-      this.acc = new Float64Array(need);
+    // Points at most: tip (+1 when bumping), the n - 1 cells behind it, the
+    // tail end, up to 3 vacated cells. Typed arrays drop writes past their
+    // end silently, so size by points, with room to grow.
+    const most = n + 5;
+    if (this.acc.length < most) {
+      const cap = most * 2;
+      this.pts = new Float64Array(cap * 2);
+      this.dlt = new Float64Array(cap * 2);
+      this.acc = new Float64Array(cap);
     }
     const P = this.pts;
     const D = this.dlt;
@@ -341,10 +359,31 @@ export class Renderer {
       put(cx(prev) + stepX(prev, head) * alpha, cy(prev) + stepY(prev, head) * alpha);
     }
     for (let i = 1; i < n; i++) put(cx(cells[i]), cy(cells[i]));
+    // Growth easing (top of file): how far the drawn tail reaches back
+    // beyond the real tail end, and the cells behind it to reach into.
+    let reach = 0;
     if (n > 1) {
       const last = cells[n - 1];
       const gone = game.prevTail;
       put(cx(gone) + stepX(gone, last) * alpha, cy(gone) + stepY(gone, last) * alpha);
+    }
+    const tailIdx = m - 1;
+    if (n > 1 && !dead) {
+      const u = game.steps + alpha;
+      const ease = (k) => {
+        const v = u - k; // growth step k shows during u in [k, k + 1)
+        if (v < -GROW_LEAD || v >= 1) return 0;
+        const x = (v + GROW_LEAD) / (GROW_LEAD + 1);
+        return x * x * (3 - 2 * x) - Math.min(1, Math.max(0, v));
+      };
+      for (const k of game.grewAt) reach += ease(k);
+      for (const k of game.upcomingGrowth(GROW_LEAD + 1, this.growSoon)) reach += ease(k);
+      if (reach > 0) {
+        for (const c of game.vacated) {
+          if (game.occ[c]) break; // the snake is back in it: stop short
+          put(cx(c), cy(c));
+        }
+      }
     }
     A[0] = 0;
     for (let k = 0; k < m - 1; k++) {
@@ -358,7 +397,9 @@ export class Renderer {
       D[k * 2 + 1] = dy;
       A[k + 1] = A[k] + Math.hypot(dx, dy);
     }
-    const total = A[m - 1];
+    const total = Math.min(A[m - 1], A[tailIdx] + reach);
+    this.lengthDrawn = total;
+    this.tipDrawn = game.steps + alpha;
 
     // Adds the stretch of body from distance s0 to s1 (from the tip) to the
     // path, as straight pieces (round caps join them), with torus copies.
@@ -453,14 +494,16 @@ export class Renderer {
     }
 
     // Meals (game.js): a bulge sliding down the body (l: distance from the
-    // tip), swelling in just behind the head. Where it reaches the tail end
-    // the snake grows. Kept nearly full size in the taper so the arrival
-    // shows. Drawn with reduced motion too: it's game state, not decoration.
+    // tip), swelling in just behind the head and flattening into the tail
+    // end as the snake grows. Nearly full size in the taper until then, so
+    // the arrival shows. Drawn with reduced motion too: it's game state.
     for (const at of game.meals) {
       const l = (game.steps + alpha - at) * MEAL_SPEED;
       if (l <= 0.2 || l >= total) continue;
       pointAt(l);
-      const r = (BODY_W / 2) * (0.75 + 0.25 * widthAt(l)) * (1 + (LUMP - 1) * Math.min(1, l / 1.5));
+      const body = (BODY_W / 2) * widthAt(l);
+      const full = (BODY_W / 2) * (0.75 + 0.25 * widthAt(l)) * LUMP;
+      const r = body + (full - body) * Math.min(1, l / 1.5) * Math.min(1, (total - l) / LUMP_MERGE);
       ctx.beginPath();
       this.addCircle(ctx, px, py, r);
       ctx.fillStyle = colorAt(l);

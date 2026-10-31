@@ -60,6 +60,10 @@ export class Game {
     this.prevTail = this.cells[this.cells.length - 1];
     this.grow = 0; // steps the tail still stays put
     this.meals = []; // per swallowed fruit on its way down: this.steps when eaten
+    // For drawing: the cells the tail last left (most recent first), and
+    // the steps (this.steps after them) in which the snake recently grew.
+    this.vacated = [];
+    this.grewAt = [];
     this.eaten = 0;
     this.steps = 0;
     this.alive = true;
@@ -129,12 +133,18 @@ export class Game {
     if (tailMoves) {
       this.cells.pop();
       this.occ[tail] = 0;
+      this.vacated.unshift(tail);
+      if (this.vacated.length > 3) this.vacated.length = 3;
     } else {
       this.grow--;
     }
     this.cells.unshift(next);
     this.occ[next] = 1;
     this.steps++;
+    if (!tailMoves) {
+      this.grewAt.unshift(this.steps);
+      if (this.grewAt.length > 3) this.grewAt.length = 3;
+    }
     if (next === this.fruit) {
       this.eaten++;
       this.meals.push(this.steps);
@@ -142,6 +152,29 @@ export class Game {
       return 'eat';
     }
     return 'move';
+  }
+
+  // The steps (this.steps after each) in which the snake will grow, up to
+  // `horizon` steps ahead, into `out`. Exact for the meals already on their
+  // way; a fruit eaten later can't arrive within 3 steps (it needs at least
+  // (length - 1) / MEAL_SPEED + 1 of them).
+  upcomingGrowth(horizon, out = []) {
+    out.length = 0;
+    let n = this.cells.length;
+    let g = this.grow;
+    let i = 0;
+    for (let j = this.steps + 1; j <= this.steps + horizon; j++) {
+      while (i < this.meals.length && (j - 1 - this.meals[i]) * MEAL_SPEED >= n - 1) {
+        i++;
+        g++;
+      }
+      if (g > 0) {
+        g--;
+        n++;
+        out.push(j);
+      }
+    }
+    return out;
   }
 
   // Puts the fruit on a random free cell, preferably not right in front of
