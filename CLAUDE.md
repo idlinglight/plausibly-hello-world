@@ -67,7 +67,8 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   from JS via the CSSOM (`el.style.foo = …`) is fine under `style-src 'self'`;
   `setAttribute('style', …)` is not. Use relative asset paths so an image
   also works behind a path prefix. Ship a favicon (`favicon.svg`,
-  `favicon.ico`, `apple-touch-icon.png`) so logs stay free of 404s.
+  `favicon.ico`, `apple-touch-icon.png`) so logs stay free of 404s. Page
+  title: `<Name> · phw` (e.g. `Snake · phw`): name first, as tabs truncate.
 - The CSP sets `frame-ancestors 'none'` (+ `X-Frame-Options: DENY`): pages
   can't be iframed. Loosen per image if embedding is ever wanted.
 - `nginx.conf` is the same file in every image (JSON access log incl. the
