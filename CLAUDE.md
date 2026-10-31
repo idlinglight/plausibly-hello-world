@@ -96,6 +96,8 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   lasts a minute or two. Any direction input starts a person's round; 30 s
   without input hands it to the autopilot. `prefers-reduced-motion`: no
   demo, a still board until someone plays, and an abandoned round pauses.
+  Growth: a swallowed fruit travels down the body as a bulge
+  (`MEAL_SPEED` in `game.js`); the snake grows when it reaches the tail.
   Rendering: the body is drawn along its path (corners stay put between
   steps, no flicker); on death the head bumps into the cell it hit, which
   keeps a coral ring while the round is over (`render.js` header).

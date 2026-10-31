@@ -17,7 +17,7 @@
 // Death: the head bumps into what it hit, a burst marks the spot, and a ring
 // stays around the hit cell while the snake fades to grey.
 
-import { DX, DY } from './game.js';
+import { DX, DY, MEAL_SPEED } from './game.js';
 
 const C = {
   board: '#133229',
@@ -49,8 +49,7 @@ const FADE_LEN = 24; // … from the neck colour to the tail colour over this le
 const TAPER_LEN = 2.5; // the last cells of body get thinner …
 const TAPER_MIN = 0.5; // … down to this much of BODY_W
 const TAPER_STEPS = 10;
-const LUMP_SPEED = 1.6; // a swallowed fruit moves down the body this many cells per step
-const LUMP = 1.32; // … as a bulge this much thicker than the body
+const LUMP = 1.32; // a meal on its way down: a bulge this much thicker than the body
 const EYE_MS = 45; // the eyes turn with the head over roughly this long
 const RING_MS = 480;
 const POP_MS = 280; // new fruit grows in
@@ -76,7 +75,6 @@ export class Renderer {
     this.rows = 1;
     this.bodyColors = [];
     this.rings = []; // { x, y, t0 }: eat effect
-    this.lumps = []; // game.steps at which a fruit was swallowed
     this.fruitBorn = -Infinity;
     this.deathAt = -1;
     this.reduced = false;
@@ -159,17 +157,13 @@ export class Renderer {
   // Events from the game loop.
   newRound(now) {
     this.rings.length = 0;
-    this.lumps.length = 0;
     this.deathAt = -1;
     this.fruitBorn = now;
     this.eyeAngle = null;
   }
 
-  ate(game, cell, now) {
-    if (!this.reduced) {
-      this.rings.push({ x: cell % this.cols, y: Math.floor(cell / this.cols), t0: now });
-      this.lumps.push(game.steps);
-    }
+  ate(cell, now) {
+    if (!this.reduced) this.rings.push({ x: cell % this.cols, y: Math.floor(cell / this.cols), t0: now });
     this.fruitBorn = now;
   }
 
@@ -458,15 +452,15 @@ export class Renderer {
       ctx.stroke();
     }
 
-    // Swallowed fruit: a bulge sliding down the body (l: distance from the
-    // tip), swelling in just behind the head.
-    const lumps = this.lumps;
-    while (lumps.length && (game.steps + alpha - lumps[0]) * LUMP_SPEED > total) lumps.shift();
-    for (const at of lumps) {
-      const l = (game.steps + alpha - at) * LUMP_SPEED;
+    // Meals (game.js): a bulge sliding down the body (l: distance from the
+    // tip), swelling in just behind the head. Where it reaches the tail end
+    // the snake grows. Kept nearly full size in the taper so the arrival
+    // shows. Drawn with reduced motion too: it's game state, not decoration.
+    for (const at of game.meals) {
+      const l = (game.steps + alpha - at) * MEAL_SPEED;
       if (l <= 0.2 || l >= total) continue;
       pointAt(l);
-      const r = (BODY_W / 2) * widthAt(l) * (1 + (LUMP - 1) * Math.min(1, l / 1.5));
+      const r = (BODY_W / 2) * (0.75 + 0.25 * widthAt(l)) * (1 + (LUMP - 1) * Math.min(1, l / 1.5));
       ctx.beginPath();
       this.addCircle(ctx, px, py, r);
       ctx.fillStyle = colorAt(l);

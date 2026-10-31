@@ -4,7 +4,9 @@
 //   1. Breadth-first search from the head to the fruit. It knows the body
 //      moves: segment j of a snake of length L leaves its cell after L - j
 //      steps (later while it is still growing), so a cell counts as free if
-//      it will be vacated by the time the head gets there.
+//      it will be vacated by the time the head gets there. Meals still on
+//      their way down the body count as growth already: that errs towards
+//      cells staying taken, never towards a cell that won't be free.
 //   2. Take that path only if it is safe: after eating, the head must
 //      still be able to reach the tail, i.e. it can always follow its own
 //      tail out of whatever it just got into.
@@ -68,7 +70,8 @@ export class Autopilot {
     } else {
       this.hungry++;
     }
-    const { cells, grow, fruit, head } = game;
+    const { cells, fruit, head } = game;
+    const grow = game.grow + game.meals.length;
     const back = (game.dir + 2) % 4;
     const neck = this.nb[head * 4 + back]; // no reversing into it
 
@@ -97,7 +100,7 @@ export class Autopilot {
     for (let d = 0; d < 4; d++) {
       if (d === back) continue;
       const c = this.nb[head * 4 + d];
-      if (game.occ[c] && !(c === tail && grow === 0)) continue; // would die right away
+      if (game.occ[c] && !(c === tail && !game.growingNext)) continue; // would die right away
       if (greedy) {
         const score = (d === game.dir ? 0.5 : 0) + this.rng();
         if (score > bestScore) {

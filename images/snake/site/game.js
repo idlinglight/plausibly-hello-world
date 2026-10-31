@@ -4,8 +4,10 @@
 // are numbered y * cols + x. The snake is a list of cells, head first; a
 // cell can hold at most one segment. Each step the head moves one cell,
 // the tail follows unless the snake is growing, and running into its own
-// body ends the round. One fruit at a time; eating it grows the snake by
-// one segment.
+// body ends the round. One fruit at a time. A swallowed fruit (a meal)
+// travels down the body, MEAL_SPEED cells per step, shown as a bulge; when
+// it reaches the tail the snake grows by one segment there (the tail stays
+// put for a step).
 
 export const UP = 0;
 export const RIGHT = 1;
@@ -14,6 +16,7 @@ export const LEFT = 3;
 export const DX = [0, 1, 0, -1];
 export const DY = [-1, 0, 1, 0];
 
+export const MEAL_SPEED = 1.6;
 const QUEUE_MAX = 2; // turns buffered between steps, so quick double turns work
 const FRUIT_MIN_DIST = 3; // new fruit keeps this far from the head if it can
 
@@ -55,7 +58,8 @@ export class Game {
       this.occ[c] = 1;
     }
     this.prevTail = this.cells[this.cells.length - 1];
-    this.grow = 0;
+    this.grow = 0; // steps the tail still stays put
+    this.meals = []; // per swallowed fruit on its way down: this.steps when eaten
     this.eaten = 0;
     this.steps = 0;
     this.alive = true;
@@ -93,11 +97,25 @@ export class Game {
     return true;
   }
 
+  // Has the meal swallowed at step `at` reached the tail?
+  arrived(at) {
+    return (this.steps - at) * MEAL_SPEED >= this.cells.length - 1;
+  }
+
+  // Will the tail stay put on the next step (the snake grows)?
+  get growingNext() {
+    return this.grow > 0 || (this.meals.length > 0 && this.arrived(this.meals[0]));
+  }
+
   // One step. Returns 'move', 'eat', 'die' or 'full' (no room for fruit:
   // the board is won).
   step() {
     if (!this.alive) return 'die';
     if (this.queue.length) this.dir = this.queue.shift();
+    while (this.meals.length && this.arrived(this.meals[0])) {
+      this.meals.shift();
+      this.grow++;
+    }
     const next = this.neighbor(this.head, this.dir);
     const tail = this.cells[this.cells.length - 1];
     const tailMoves = this.grow === 0;
@@ -119,7 +137,7 @@ export class Game {
     this.steps++;
     if (next === this.fruit) {
       this.eaten++;
-      this.grow++;
+      this.meals.push(this.steps);
       if (!this.placeFruit()) return 'full';
       return 'eat';
     }

@@ -247,7 +247,7 @@ function tick(now) {
   const fruit = game.fruit;
   const ev = game.step();
   if (ev === 'eat' || ev === 'full') {
-    renderer.ate(game, fruit, now);
+    renderer.ate(fruit, now);
     if (mode === 'play') {
       tickMs = 1000 / Math.min(PLAY_TPS_MAX, PLAY_TPS + game.eaten * PLAY_TPS_GAIN);
       if (game.eaten > best) {
