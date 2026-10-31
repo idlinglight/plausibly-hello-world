@@ -65,6 +65,10 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   `favicon.ico`, `apple-touch-icon.png`) so logs stay free of 404s.
 - The CSP sets `frame-ancestors 'none'` (+ `X-Frame-Options: DENY`): pages
   can't be iframed. Loosen per image if embedding is ever wanted.
+- `nginx.conf` is the same file in every image (JSON access log incl. the
+  Host header, security headers, endpoints): a copy per folder, since each
+  build context is its own folder. Change it in all images together; a new
+  image starts from a copy.
 
 ### Per-image notes
 
@@ -79,6 +83,19 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   or drawn ring spacing). In the packed `rgba8` tier the mean water level
   creeps while the sim runs — pre-existing, invisible, reset on parking,
   bounded for holds by that cap (details in `water.js`).
+- **snake**: canvas 2D, no WebGL. The board wraps at the edges and is sized
+  to the viewport at the start of each round (a resize mid-round rescales
+  the same board). While nobody plays, an autopilot plays a demo
+  (`autopilot.js`); each round picks a target length, after which it gets
+  careless and soon crashes, so a round lasts a minute or two. Any direction
+  input starts a person's round; 30 s without input hands it back to the
+  autopilot. `prefers-reduced-motion`: no demo, a still board until someone
+  plays. `?seed=<int>` makes fruit and autopilot reproducible;
+  `<html data-mode>` (`demo`, `demo-end`, `play`, `paused`, `over`, `idle`)
+  shows the state. Best score lives in `localStorage` (per browser, optional).
+  `game.js` and `autopilot.js` have no DOM, so they also run under plain
+  node. Favicon raster files are exports of `favicon.svg` (`.ico` = one
+  32 px PNG inside an ICO; the touch icon without the rounded corners).
 
 ## CI
 
