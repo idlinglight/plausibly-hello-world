@@ -2,8 +2,9 @@
 
 A map quiz as a static page: an inline SVG map, a question card, round
 after round of "find this region". One engine for several images
-(`images/europe-quiz`, `images/vienna-districts`); each image brings its
-own data, texts and map, the engine stays the same.
+(`images/europe-quiz`, `images/vienna-districts`, `images/japan-quiz`:
+grouped rounds); each image brings its own data, texts and map, the
+engine stays the same.
 
 ```
 shared/map-quiz/
