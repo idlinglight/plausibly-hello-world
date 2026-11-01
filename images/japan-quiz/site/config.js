@@ -12,12 +12,20 @@
 import { MAP, PIECES, ISLANDS, REGIONS, PREFECTURES } from './japan.js';
 
 const misclicks = (n) => (n ? ` · ${n} misclick${n === 1 ? '' : 's'}` : ' · no misclicks');
-// The card's second line: the asked name in kanji and hiragana.
-const reading = (e) => `${e.kanji} · ${e.kana}`;
-const kanji = (e) => e.kanji;
 const CAPITALS = PREFECTURES.filter((p) => p.capitalDiffers).length; // 18: the capital's name isn't the prefecture's
 const COASTS = ['coast-main', 'coast-isles'];
 const ALL_LINES = [...COASTS, 'borders-prefectures', 'borders-regions'];
+
+// The islands, regions and prefectures rounds ask a name: the card shows
+// it, its kanji · kana under it; a misclick shows the picked one's name
+// and kanji.
+const byName = {
+  ask: (e) => e.name,
+  sub: (e) => `${e.kanji} · ${e.kana}`,
+  subLang: 'ja',
+  miss: (e) => e.name,
+  missSub: (e) => e.kanji,
+};
 
 export default {
   map: MAP,
@@ -29,11 +37,7 @@ export default {
       prompt: 'Find the island',
       answers: ISLANDS,
       lines: ['coast-main'],
-      ask: (i) => i.name,
-      sub: reading,
-      subLang: 'ja',
-      miss: (i) => i.name,
-      missSub: kanji,
+      ...byName,
       done: ({ total, misses }) => `All ${total} islands found${misclicks(misses)}. Now the ${REGIONS.length} regions.`,
     },
     {
@@ -42,11 +46,7 @@ export default {
       prompt: 'Find the region',
       answers: REGIONS,
       lines: [...COASTS, 'borders-regions'],
-      ask: (r) => r.name,
-      sub: reading,
-      subLang: 'ja',
-      miss: (r) => r.name,
-      missSub: kanji,
+      ...byName,
       done: ({ total, misses }) => `All ${total} regions found${misclicks(misses)}. Now the ${PREFECTURES.length} prefectures.`,
     },
     {
@@ -55,26 +55,25 @@ export default {
       prompt: 'Find the prefecture',
       answers: PREFECTURES,
       lines: ALL_LINES,
-      ask: (p) => p.name,
-      sub: reading,
-      subLang: 'ja',
-      miss: (p) => p.name,
-      missSub: kanji,
+      ...byName,
       done: ({ total, misses }) =>
         `All ${total} prefectures found${misclicks(misses)}. Now ${CAPITALS} capitals: find each one's prefecture.`,
     },
     {
+      // Asks the capital (only where its name differs, a data flag: Tōkyō →
+      // Shinjuku counts; the other prefectures are misclicks this round); a
+      // misclick shows name · capital, or just the name where they're the same.
       key: 'capitals',
       label: 'Capitals',
       prompt: 'Find the prefecture whose capital is',
       answers: PREFECTURES,
-      asked: (p) => p.capitalDiffers, // the others are misclicks this round
+      asked: (p) => p.capitalDiffers,
       lines: ALL_LINES,
       ask: (p) => p.capital,
       sub: (p) => `${p.capitalKanji} · ${p.capitalKana}`,
       subLang: 'ja',
-      miss: (p) => `${p.name} · ${p.capital}`,
-      missSub: (p) => `${p.kanji} · ${p.capitalKanji}`,
+      miss: (p) => (p.capitalDiffers ? `${p.name} · ${p.capital}` : p.name),
+      missSub: (p) => (p.capitalDiffers ? `${p.kanji} · ${p.capitalKanji}` : p.kanji),
       done: ({ total, misses }) => `All ${total} capitals found${misclicks(misses)}. Islands again, in a new order.`,
     },
   ],

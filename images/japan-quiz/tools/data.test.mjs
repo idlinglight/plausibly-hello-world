@@ -134,7 +134,11 @@ check('config: English texts, sub-lines, misclick labels', () => {
   assert.deepEqual([reg.ask(r), reg.sub(r), reg.miss(r), reg.missSub(r)], ['Tōhoku', '東北 · とうほく', 'Tōhoku', '東北']);
   assert.deepEqual([pre.ask(aomori), pre.sub(aomori), pre.miss(aomori), pre.missSub(aomori)], ['Aomori', '青森 · あおもり', 'Aomori', '青森']);
   assert.deepEqual([cap.ask(tokyo), cap.sub(tokyo), cap.miss(tokyo), cap.missSub(tokyo)], ['Shinjuku', '新宿 · しんじゅく', 'Tōkyō · Shinjuku', '東京 · 新宿']);
-  assert.equal(cap.miss(aomori), 'Aomori · Aomori');
+  assert.deepEqual([cap.miss(iwate), cap.missSub(iwate)], ['Iwate · Morioka', '岩手 · 盛岡']);
+  // same-name capital (not asked this round): the name alone, not "Aomori · Aomori"
+  assert.deepEqual([cap.miss(aomori), cap.missSub(aomori)], ['Aomori', '青森']);
+  assert.deepEqual([cap.miss(pref.get('kyoto')), cap.missSub(pref.get('kyoto'))], ['Kyōto', '京都']);
+  for (const r of [isl, reg, pre]) for (const k of ['ask', 'sub', 'subLang', 'miss', 'missSub']) assert.equal(r[k], isl[k], `${r.key}.${k} shared`);
   assert.equal(`${cap.prompt} ${cap.ask(iwate)}`, 'Find the prefecture whose capital is Morioka');
   assert.equal(isl.done({ total: 4, misses: 0 }), 'All 4 islands found · no misclicks. Now the 8 regions.');
   assert.equal(reg.done({ total: 8, misses: 1 }), 'All 8 regions found · 1 misclick. Now the 47 prefectures.');
