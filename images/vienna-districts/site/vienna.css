@@ -1,0 +1,28 @@
+/* Wiener Bezirke: colour tokens over the shared engine's style.css (linked
+   before this file; token list in shared/map-quiz/README.md, "Styling").
+   --sea is the plain page background here (no land around the city).
+   The water overlay: fill plus an outline of the same colour, 1.6 map
+   units wide (≈ 49 m; in map units, so it scales with the map and closes
+   the same gaps at every zoom). It closes the gaps the data leaves under
+   bridges (up to 40 m between drawn water, tools/build_map.py prints
+   them; a little more after simplification) and keeps narrow channels
+   like the Wienfluss visible at the full view. Each token block three
+   times, as in style.css: light, dark by the OS, dark by the toggle. */
+
+:root {
+  --sea: #dfdbd2;
+  --water: #9cc7e4;
+  --overlay-stroke: 1.6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --sea: #11181c;
+    --water: #3b7fae;
+  }
+}
+
+:root[data-theme="dark"] {
+  --sea: #11181c;
+  --water: #3b7fae;
+}

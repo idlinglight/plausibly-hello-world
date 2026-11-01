@@ -1,0 +1,39 @@
+{
+  "about": [
+    "The single source of truth for vienna-districts besides the two Stadt Wien files (tools/README.md): the 23 districts and the water drawn on the map.",
+    "districts: number (BEZNR) and the official name; build_map.py checks each name against the source's NAMEK. Region ids are d01 … d23.",
+    "water: which water of Realnutzungskartierung 2024 (CODE 241) is drawn. Pieces closer than 20 m form a body (a river cut by footbridges, a weir); a body is drawn if one of these seed points (EPSG:31256, metres) lies in one of its pieces. Wider bridges split a river into several bodies, each with its own seed; the overlay's stroke closes those gaps on the page. A seed outside all water, or two seeds in one body, stops the build."
+  ],
+  "districts": [
+    { "number": 1, "name": "Innere Stadt" },
+    { "number": 2, "name": "Leopoldstadt" },
+    { "number": 3, "name": "Landstraße" },
+    { "number": 4, "name": "Wieden" },
+    { "number": 5, "name": "Margareten" },
+    { "number": 6, "name": "Mariahilf" },
+    { "number": 7, "name": "Neubau" },
+    { "number": 8, "name": "Josefstadt" },
+    { "number": 9, "name": "Alsergrund" },
+    { "number": 10, "name": "Favoriten" },
+    { "number": 11, "name": "Simmering" },
+    { "number": 12, "name": "Meidling" },
+    { "number": 13, "name": "Hietzing" },
+    { "number": 14, "name": "Penzing" },
+    { "number": 15, "name": "Rudolfsheim-Fünfhaus" },
+    { "number": 16, "name": "Ottakring" },
+    { "number": 17, "name": "Hernals" },
+    { "number": 18, "name": "Währing" },
+    { "number": 19, "name": "Döbling" },
+    { "number": 20, "name": "Brigittenau" },
+    { "number": 21, "name": "Floridsdorf" },
+    { "number": 22, "name": "Donaustadt" },
+    { "number": 23, "name": "Liesing" }
+  ],
+  "water": [
+    { "name": "Donau", "seeds": [[2783, 347218], [3784, 345545], [4263, 344845], [4884, 344018], [5955, 342765], [11448, 337135]] },
+    { "name": "Neue Donau", "seeds": [[2848, 348109], [3948, 346157], [4685, 344963], [5355, 344050], [7270, 341999]] },
+    { "name": "Donaukanal", "seeds": [[2594, 345076], [2215, 344174], [2190, 343912], [2717, 342440], [2767, 342337], [2992, 342103], [3369, 341565], [3731, 341504], [4013, 341584], [4810, 341090], [5546, 340323], [5983, 339650]] },
+    { "name": "Alte Donau", "seeds": [[6471, 345048], [7582, 342817]] },
+    { "name": "Wienfluss", "seeds": [[-9503, 340843], [-1442, 338786], [-1317, 338759], [-581, 338473], [-163, 338379], [290, 338631], [968, 338932], [1566, 339184], [1649, 339436], [3676, 340787], [3564, 340713], [3821, 341087]] }
+  ]
+}

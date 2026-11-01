@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="de" data-quiz="vienna-districts">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Wiener Bezirke · phw</title>
+  <meta name="description" content="Ein Kartenquiz: Finde die 23 Wiener Gemeindebezirke, zuerst nach Namen, dann nach Nummern.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#dfdbd2">
+  <link rel="icon" href="favicon.ico" sizes="32x32">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="vienna.css">
+  <script src="theme.js"></script>
+  <script type="module" src="main.js"></script>
+</head>
+<body>
+  <div id="map" aria-hidden="true"></div>
+
+  <section id="card" aria-label="Frage">
+    <div class="card-row">
+      <p class="round"><span class="swatch" aria-hidden="true"></span><span id="round">Namen</span> <span id="progress" class="num">0 / 23</span></p>
+      <p class="score">
+        <span class="ok" title="richtig"><span aria-hidden="true">✓</span> <span id="correct" class="num">0</span><span class="sr-only"> richtig,</span></span>
+        <span class="bad" title="Fehlklicks"><span aria-hidden="true">✗</span> <span id="misses" class="num">0</span><span class="sr-only"> Fehlklicks</span></span>
+      </p>
+    </div>
+    <p id="prompt" aria-live="polite" aria-atomic="true"><span id="prompt-kind" class="sr-only">Finde</span> <span id="prompt-text"></span></p>
+  </section>
+
+  <p id="toast" role="status"></p>
+
+  <nav id="controls" aria-label="Quiz- und Kartensteuerung">
+    <div class="group">
+      <button id="reset" class="btn" type="button" aria-label="Quiz zurücksetzen">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 3.5v4h4"/></svg>
+        <span class="btn-text">Echt?</span>
+      </button>
+      <button id="theme" class="btn" type="button" aria-label="In den dunklen Modus wechseln">
+        <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></svg>
+        <svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
+      </button>
+    </div>
+    <div class="group">
+      <button id="zoom-out" class="btn" type="button" aria-label="Herauszoomen">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12h13"/></svg>
+      </button>
+      <button id="zoom-fit" class="btn" type="button" aria-label="Ganze Karte zeigen">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button id="zoom-in" class="btn" type="button" aria-label="Hineinzoomen">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12h13M12 5.5v13"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <p id="label" aria-live="polite"></p>
+  <div id="safe" aria-hidden="true"></div>
+  <p class="sr-only">Ein Kartenquiz der 23 Wiener Gemeindebezirke, gespielt durch Klicken oder Tippen auf die Karte: Zum Antworten braucht es eine Maus, Touch oder einen Stift, mit der Tastatur lässt sich kein Bezirk auswählen. Die erste Runde nennt den Namen eines Bezirks; klicke oder tippe ihn auf der Karte an. Die zweite Runde nennt seine Nummer, etwa „2. Bezirk“. Danach beginnen die Runden von vorn, in neuer Reihenfolge. Gefundene Bezirke werden eingefärbt, ein falscher Klick zeigt Namen und Nummer des angeklickten Bezirks. Die Gewässer, Donau, Donaukanal und Wienfluss, gehören zum Bezirk darunter. Zoomen geht mit den Schaltflächen, dem Mausrad oder zwei Fingern; verschieben lässt sich die Karte durch Ziehen oder mit zwei Fingern auf dem Trackpad; die Tasten Plus, Minus und 0 zoomen, die Pfeiltasten verschieben die Karte. Kartendaten: Stadt Wien, data.wien.gv.at, Lizenz CC BY 4.0.</p>
+  <noscript><p class="noscript">Dieses Kartenquiz braucht JavaScript.</p></noscript>
+</body>
+</html>
