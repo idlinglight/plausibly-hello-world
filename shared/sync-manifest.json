@@ -3,18 +3,18 @@
   "copies": {
     "images/europe-quiz/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/europe-quiz/site/contract.js": {"from": "shared/map-quiz/site/contract.js", "sha256": "7626aaf3d22496159152e4574ce50ae2fd599fb2482a15b64baa8e2e8636a269"},
-    "images/europe-quiz/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "bcea86be216d45155b1c70626573d827b42e966dee64d786f43c10ce7de62202"},
+    "images/europe-quiz/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "6438e0beb2030989da1a987b90f3f718243aa3cbb8e17ae3be1be56468a67d3e"},
     "images/europe-quiz/site/quiz.js": {"from": "shared/map-quiz/site/quiz.js", "sha256": "6a2f5a5536ef8a386f3b270b236f220208ccb4b461b2a3c897c67f95d216c07b"},
-    "images/europe-quiz/site/style.css": {"from": "shared/map-quiz/site/style.css", "sha256": "878e3e2ce67de3d283f1a85c1a3c1fa2f207f1f78e846144f43a0728654bcaba"},
+    "images/europe-quiz/site/style.css": {"from": "shared/map-quiz/site/style.css", "sha256": "0b5ac7008d33ed65671a99a50cb4926336f7c8148c1219fbedb9e683e65e374c"},
     "images/europe-quiz/site/theme.js": {"from": "shared/map-quiz/site/theme.js", "sha256": "2d6290916523f7f968bb7c7ba97de58cc571307053f6895c8176f14865b15957"},
     "images/europe-quiz/site/wheel.js": {"from": "shared/map-quiz/site/wheel.js", "sha256": "c876073b1caa67af0002b553bb1b2ccdba6d07d8fcfd29f3f09fd20d1d908924"},
     "images/gradient-ripple/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/snake/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/vienna-districts/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/vienna-districts/site/contract.js": {"from": "shared/map-quiz/site/contract.js", "sha256": "7626aaf3d22496159152e4574ce50ae2fd599fb2482a15b64baa8e2e8636a269"},
-    "images/vienna-districts/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "bcea86be216d45155b1c70626573d827b42e966dee64d786f43c10ce7de62202"},
+    "images/vienna-districts/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "6438e0beb2030989da1a987b90f3f718243aa3cbb8e17ae3be1be56468a67d3e"},
     "images/vienna-districts/site/quiz.js": {"from": "shared/map-quiz/site/quiz.js", "sha256": "6a2f5a5536ef8a386f3b270b236f220208ccb4b461b2a3c897c67f95d216c07b"},
-    "images/vienna-districts/site/style.css": {"from": "shared/map-quiz/site/style.css", "sha256": "878e3e2ce67de3d283f1a85c1a3c1fa2f207f1f78e846144f43a0728654bcaba"},
+    "images/vienna-districts/site/style.css": {"from": "shared/map-quiz/site/style.css", "sha256": "0b5ac7008d33ed65671a99a50cb4926336f7c8148c1219fbedb9e683e65e374c"},
     "images/vienna-districts/site/theme.js": {"from": "shared/map-quiz/site/theme.js", "sha256": "2d6290916523f7f968bb7c7ba97de58cc571307053f6895c8176f14865b15957"},
     "images/vienna-districts/site/wheel.js": {"from": "shared/map-quiz/site/wheel.js", "sha256": "c876073b1caa67af0002b553bb1b2ccdba6d07d8fcfd29f3f09fd20d1d908924"}
   }

@@ -17,20 +17,32 @@
 // map.svg draws context land, fading out, so wide or tall screens show map
 // rather than an empty band.
 //
+// Pieces and answers: map.svg has one shape per piece (config.items); a
+// round's answers are its pieces one by one, or groups of them
+// (rounds[].answers, normalised by contract.js roundSpecs). A piece in no
+// answer of the round is inert (class "inert": context land for that
+// round). Hover, colours and blinks act on all pieces of an answer (plus
+// its ring); colours are per piece, a ring shows the colour its pieces
+// share. A round may list line overlays (rounds[].lines, e.g. coasts and
+// borders drawn from mapgen's shared arcs): those show in that round
+// only, and its pieces draw an outline in their own fill ("seamless"), so
+// no hairline shows between the pieces of a group.
+//
 // Input: a press that moves more than SLOP px is a pan, never a click; two
 // fingers pinch-zoom (and pan); a mouse wheel zooms at the cursor, a
 // trackpad's two-finger scroll pans (onWheel; wheel.js decides per gesture), and
 // a pinch or ctrl + wheel anywhere on the page zooms the map, not the page;
 // buttons and + / - / 0 / arrow keys zoom and pan with a short animation. A click
-// picks a small region's ring if it lands inside the drawn ring, or within
-// MARKER_HIT px of it over sea, context land or that region itself (never
-// over another region); the nearest such ring wins. Otherwise it picks the
-// region shape under the pointer; sea, context land and overlays (drawn
-// above the regions, pointer-events: none) are ignored or see-through,
-// except a blocking overlay (config.blockingOverlays, e.g. water): its
-// fill and outline count as background (no answer, no misclick, no hover).
-// Rings shrink at low zoom (MARKER_R_UNITS), so they don't cover their
-// neighbours on a phone.
+// picks a small answer's ring if it lands inside the drawn ring, or within
+// MARKER_HIT px of it over sea, context land, an inert piece or that answer
+// itself (never over another answer); the nearest such ring wins. Otherwise
+// it picks the answer of the piece under the pointer; sea, context land,
+// inert pieces and overlays (drawn above the regions, pointer-events:
+// none) are ignored or see-through, except a blocking overlay
+// (config.blockingOverlays, e.g. water): its fill and outline count as
+// background (no answer, no misclick, no hover). Rings belong to the
+// round's answers (rebuilt when a round's set differs) and shrink at low
+// zoom (MARKER_R_UNITS), so they don't cover their neighbours on a phone.
 //
 // State on <html>: data-round (the round's config key, e.g. countries |
 // capitals), data-progress ("12/46"), data-zoom (s / fitScale), data-ready
@@ -43,7 +55,7 @@
 // with another seed is replaced).
 
 import config from './config.js';
-import { checkConfig } from './contract.js';
+import { checkConfig, roundSpecs } from './contract.js';
 import { Quiz } from './quiz.js';
 import { wheelKind } from './wheel.js';
 
@@ -53,8 +65,10 @@ const NAME = /^[a-z0-9]+([._-][a-z0-9]+)*$/; // an image folder name
 // Starting needs a config that fits the contract and <html data-quiz>; else
 // the page says so (data-ready="error", a toast; the details in the
 // console) and the engine stops here.
+let SPECS = null; // per round: { key, answers: [{ id, pieces }], asked, byId } (contract.js)
 try {
   checkConfig(config);
+  SPECS = roundSpecs(config);
   if (!NAME.test(root.dataset.quiz || '')) throw new Error('index.html: <html data-quiz="<image folder name>"> is missing or not a folder name (it namespaces localStorage)');
 } catch (err) {
   root.dataset.ready = 'error';
@@ -67,7 +81,6 @@ try {
   throw err;
 }
 const { map: MAP, items: ITEMS, rounds: ROUNDS, text: TEXT } = config;
-const ROUND_KEYS = ROUNDS.map((r) => r.key);
 const LANDSCAPE = '(min-aspect-ratio: 4/3)'; // same query as in style.css
 const PAD = 12; // CSS px between the map (full view) and the edges / HUD bands
 const MAX_SCALE = (config.view && config.view.maxScale) || 12; // CSS px per map unit at the closest zoom (maps are 1000 units wide)
@@ -110,8 +123,7 @@ const themeButton = document.getElementById('theme');
 const swatch = document.querySelector('#card .swatch');
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const ids = ITEMS.map((c) => c.id);
-const byId = Object.fromEntries(ITEMS.map((c) => [c.id, c]));
+const ids = ITEMS.map((c) => c.id); // the pieces
 const landscape = matchMedia(LANDSCAPE);
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const coarse = matchMedia('(pointer: coarse)').matches;
@@ -138,20 +150,23 @@ function save() {
   }
 }
 
-const restored = Quiz.restore(loadState(), ids, ROUND_KEYS);
+const restored = Quiz.restore(loadState(), ids, SPECS);
 const resumed = !!restored && (seedParam === null || restored.seed === seedParam);
 const quiz = resumed
   ? restored
-  : new Quiz(ids, seedParam ?? crypto.getRandomValues(new Uint32Array(1))[0], ROUND_KEYS);
+  : new Quiz(ids, seedParam ?? crypto.getRandomValues(new Uint32Array(1))[0], SPECS);
 
 // ── Map elements ────────────────────────────────────────────────────────
 
 let svg = null;
-let regionsG = null; // the group of region shapes (class "regions")
-const shapes = {}; // id -> <path>
+let regionsG = null; // the group of piece shapes (class "regions")
+const shapes = {}; // piece id -> <path>
 const blockers = []; // <path>s of config.blockingOverlays
 let blockPoint = null; // an SVGPoint, reused by blocked()
-const rings = {}; // id -> { g, halo, ring, x, y, size, on, r (drawn radius, px) }
+const lineEls = new Map(); // overlay id -> <path> of every round's lines (class "line")
+let markersG = null; // #markers, if any round has rings
+let ringSet = null; // what the rings in #markers were built from
+const rings = new Map(); // answer id (this round) -> { g, halo, ring, x, y, size, on, r (drawn radius, px) }
 
 // Four gradient bands along the edge of the drawn extent (style.css fills
 // them with the sea colour, opaque at the edge), over the outer half of the
@@ -187,46 +202,72 @@ function svgEl(name, attrs) {
   return el;
 }
 
-// The elements that show a region's state: its shape, and its ring.
+// The elements that show an answer's state in the current round: its
+// pieces' shapes, and its ring. (Taken before quiz.answer(): the answer
+// that completes a round moves the quiz on to the next round's answers.)
 function targets(id) {
-  const t = [];
-  if (shapes[id]) t.push(shapes[id]);
-  if (rings[id]) t.push(rings[id].ring);
+  const t = quiz.piecesOf(id).map((p) => shapes[p]).filter(Boolean);
+  if (rings.has(id)) t.push(rings.get(id).ring);
   return t;
 }
 
-function paint(id) {
-  const c = quiz.colourOf(id);
-  for (const el of targets(id)) {
-    el.classList.toggle('c1', c === 1);
-    el.classList.toggle('c2', c === 2);
-  }
+function setColour(el, c) {
+  el.classList.toggle('c1', c === 1);
+  el.classList.toggle('c2', c === 2);
+}
+
+// A ring shows the colour all its answer's pieces share (none while they differ).
+function ringColour(pieces) {
+  const c = quiz.colourOf(pieces[0]);
+  return pieces.every((p) => quiz.colourOf(p) === c) ? c : 0;
+}
+
+function paintPieces(pieces) {
+  for (const p of pieces) if (shapes[p]) setColour(shapes[p], quiz.colourOf(p));
 }
 
 function paintAll() {
-  for (const id of ids) paint(id);
+  paintPieces(ids);
+  for (const [id, m] of rings) setColour(m.ring, ringColour(quiz.piecesOf(id)));
 }
 
-// Adds a class for `ms` (restarting its CSS animation if it is running).
-const markTimers = {};
-function mark(id, cls, ms) {
-  const els = targets(id);
+// Adds a class to elements for `ms` (restarting its CSS animation if it is
+// running). Each element remembers its timers, so undoing never depends on
+// which pieces an answer has by then.
+const markTimers = new Map(); // element -> { class: timeout }
+function markEls(els, cls, ms) {
   if (!els.length) return;
   for (const el of els) el.classList.remove(cls);
   void els[0].getBoundingClientRect();
-  for (const el of els) el.classList.add(cls);
-  const key = id + ' ' + cls;
-  clearTimeout(markTimers[key]);
-  markTimers[key] = setTimeout(() => {
-    for (const el of els) el.classList.remove(cls);
-  }, ms);
+  for (const el of els) {
+    el.classList.add(cls);
+    const t = markTimers.get(el) || {};
+    clearTimeout(t[cls]);
+    t[cls] = setTimeout(() => unmarkEls([el], cls), ms);
+    markTimers.set(el, t);
+  }
 }
 
-function unmark(id, cls) {
-  const key = id + ' ' + cls;
-  clearTimeout(markTimers[key]);
-  delete markTimers[key];
-  for (const el of targets(id)) el.classList.remove(cls);
+function unmarkEls(els, cls) {
+  for (const el of els) {
+    const t = markTimers.get(el);
+    if (t) {
+      clearTimeout(t[cls]);
+      delete t[cls];
+      if (!Object.keys(t).length) markTimers.delete(el);
+    }
+    el.classList.remove(cls);
+  }
+}
+
+function clearMarks() {
+  for (const [el, t] of markTimers) {
+    for (const [cls, timer] of Object.entries(t)) {
+      clearTimeout(timer);
+      el.classList.remove(cls);
+    }
+  }
+  markTimers.clear();
 }
 
 // ── Camera ──────────────────────────────────────────────────────────────
@@ -300,7 +341,7 @@ function render() {
   svg.setAttribute('viewBox', `${num(-tx / s)} ${num(-ty / s)} ${num(view.w / s)} ${num(view.h / s)}`);
   const rpx = Math.min(MARKER_R, Math.max(MARKER_R_MIN, MARKER_R_UNITS * s));
   const r = num(rpx / s);
-  for (const m of Object.values(rings)) {
+  for (const m of rings.values()) {
     const on = m.size * s < MARKER_HIDE;
     if (on !== m.on) {
       m.on = on;
@@ -423,38 +464,43 @@ function blocked(x, y) {
   return blockers.some((b) => b.isPointInFill(blockPoint) || b.isPointInStroke(blockPoint));
 }
 
+// The answer (of the current round) at screen point (x, y), or null.
 function hitTest(x, y, type) {
   if (renderQueued) render(); // the DOM must show the current camera
   const el = document.elementFromPoint(x, y);
-  let shape = el && el.parentNode === regionsG ? el.id : null;
-  // A blocking overlay over the region counts as background (a drawn ring
-  // still wins; in a ring's wider zone it counts as sea).
-  if (shape && blocked(x, y)) shape = null;
+  const piece = el && el.parentNode === regionsG ? el.id : null;
+  // The answer of the piece under the pointer. An inert piece is context
+  // land this round; a blocking overlay over the piece counts as
+  // background (a drawn ring still wins; in a ring's wider zone both count
+  // as sea).
+  const owner = piece && !blocked(x, y) ? quiz.answerOf(piece) : null;
   const reach = MARKER_HIT[type] || MARKER_HIT.touch;
   let best = null;
   let bestD = Infinity;
-  for (const [id, m] of Object.entries(rings)) {
+  for (const [id, m] of rings) {
     if (!m.on) continue;
     const d = Math.hypot(m.x * cam.s + cam.tx - x, m.y * cam.s + cam.ty - y);
     // Inside the drawn ring the ring wins; in the wider zone only where no
-    // other region is under the pointer.
-    const hit = d <= m.r + RING_SLACK || (d <= reach && (shape === null || shape === id));
+    // other answer is under the pointer.
+    const hit = d <= m.r + RING_SLACK || (d <= reach && (owner === null || owner === id));
     if (hit && d < bestD) {
       best = id;
       bestD = d;
     }
   }
-  return best || shape;
+  return best || owner;
 }
 
-let hovered = null;
+let hovered = null; // answer id
+let hoveredEls = []; // the elements hover was added to
 let hoverAt = null;
 
 function setHover(id) {
   if (id === hovered) return;
-  for (const el of hovered ? targets(hovered) : []) el.classList.remove('hover');
+  for (const el of hoveredEls) el.classList.remove('hover');
   hovered = id;
-  for (const el of id ? targets(id) : []) el.classList.add('hover');
+  hoveredEls = id ? targets(id) : [];
+  for (const el of hoveredEls) el.classList.add('hover');
   if (svg) svg.classList.toggle('over', !!id);
 }
 
@@ -611,16 +657,21 @@ function onGesture(e) {
 
 function pick(x, y, type) {
   const id = hitTest(x, y, type);
-  if (!id) return; // sea or context land
+  if (!id) return; // sea, context land or an inert piece
+  const els = targets(id); // before answer(): the round's last answer moves on to the next round
   const res = quiz.answer(id);
   if (res.result === 'correct') {
-    paint(id);
-    unmark(id, 'flash'); // picked right after a misclick on it
+    paintPieces(res.pieces);
+    if (rings.has(id)) setColour(rings.get(id).ring, ringColour(res.pieces));
+    unmarkEls(els, 'flash'); // picked right after a misclick on it
     if (labelId === id) hideLabel();
-    mark(id, 'pulse', PULSE_MS);
-    if (res.completed) roundDone(res.completed);
+    markEls(els, 'pulse', PULSE_MS);
+    if (res.completed) {
+      roundDone(res.completed);
+      enterRound();
+    }
   } else if (res.result === 'miss') {
-    mark(id, 'flash', LABEL_MS);
+    markEls(els, 'flash', LABEL_MS);
     showLabel(id, x, y, type);
   } else {
     return;
@@ -637,10 +688,21 @@ function hideLabel() {
   labelId = null;
 }
 
+// The misclick label: the round's miss text, and its missSub as a second,
+// language-tagged part (e.g. "Aomori 青森").
 function showLabel(id, x, y, type) {
-  const c = byId[id];
+  const round = ROUNDS[quiz.kind];
+  const a = SPECS[quiz.kind].byId.get(id);
   labelId = id;
-  labelEl.textContent = ROUNDS[quiz.kind].miss(c);
+  const parts = [round.miss(a)];
+  if (round.missSub) {
+    const sub = document.createElement('span');
+    sub.className = 'label-sub';
+    if (round.subLang) sub.lang = round.subLang;
+    sub.textContent = round.missSub(a);
+    parts.push(' ', sub);
+  }
+  labelEl.replaceChildren(...parts);
   const w = labelEl.offsetWidth;
   const h = labelEl.offsetHeight;
   const lift = type === 'mouse' ? 16 : 44; // above the finger
@@ -663,21 +725,70 @@ function toast(text, ms = TOAST_MS) {
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
 }
 
-function roundDone({ kind, misses }) {
-  toast(ROUNDS[kind].done({ total: quiz.total, misses }));
+function roundDone({ kind, misses, total }) {
+  toast(ROUNDS[kind].done({ total, misses }));
+}
+
+// A round starts (at load, after a completed round, after a reset): rings,
+// colours, inert pieces and line overlays as this round has them.
+function enterRound() {
+  if (!svg) return;
+  const was = hovered;
+  setHover(null);
+  if (buildRings()) render();
+  paintAll();
+  const round = ROUNDS[quiz.kind];
+  for (const p of ids) shapes[p].classList.toggle('inert', quiz.answerOf(p) === null);
+  regionsG.classList.toggle('seamless', Array.isArray(round.lines));
+  for (const [oid, el] of lineEls) el.classList.toggle('off', !(round.lines || []).includes(oid));
+  // the pointer is still over the map: hover what lies there now
+  if (was && lastMouse && !press) setHover(hitTest(lastMouse.x, lastMouse.y, 'mouse'));
+}
+
+// Rings for the round's answers that have a marker, rebuilt only when the
+// set differs from the one drawn (one-piece rounds: never). True if rebuilt.
+function buildRings() {
+  if (!markersG) return false;
+  const spec = SPECS[quiz.kind];
+  const list = spec.answers.map((a) => spec.byId.get(a.id)).filter((c) => c.marker);
+  const key = JSON.stringify(list.map((c) => [c.id, c.marker, c.size]));
+  if (key === ringSet) return false;
+  ringSet = key;
+  markersG.replaceChildren();
+  rings.clear();
+  for (const c of list) {
+    const [x, y] = c.marker;
+    const g = svgEl('g', {});
+    const halo = svgEl('circle', { class: 'marker-halo', cx: x, cy: y, r: 1 });
+    const ring = svgEl('circle', { class: 'marker', cx: x, cy: y, r: 1 });
+    g.append(halo, ring);
+    markersG.append(g);
+    rings.set(c.id, { g, halo, ring, x, y, size: c.size, on: true });
+  }
+  return true;
 }
 
 // ── HUD ─────────────────────────────────────────────────────────────────
 
 function updateHud() {
   const round = ROUNDS[quiz.kind];
-  const c = byId[quiz.target];
+  const a = SPECS[quiz.kind].byId.get(quiz.target);
   roundEl.textContent = round.label;
   progressEl.textContent = `${quiz.done} / ${quiz.total}`;
   correctEl.textContent = String(quiz.correct);
   missesEl.textContent = String(quiz.misses);
   promptKind.textContent = round.prompt;
-  promptText.textContent = round.ask(c);
+  promptText.textContent = round.ask(a);
+  if (promptSub) {
+    // shown under the prompt, read with it (aria-live) from the sr-only copy
+    const text = round.sub ? round.sub(a) : '';
+    promptSub.textContent = text;
+    promptSubSr.textContent = text ? ` ${text}` : '';
+    for (const el of [promptSub, promptSubSr]) {
+      if (text && round.subLang) el.lang = round.subLang;
+      else el.removeAttribute('lang');
+    }
+  }
   if (swatch) swatch.classList.toggle('b', quiz.colour === 2);
   root.dataset.round = round.key;
   root.dataset.progress = `${quiz.done}/${quiz.total}`;
@@ -711,12 +822,9 @@ resetButton.addEventListener('click', () => {
   }
   disarmReset();
   quiz.reset();
-  for (const id of ids) {
-    unmark(id, 'flash');
-    unmark(id, 'pulse');
-  }
+  clearMarks();
   hideLabel();
-  paintAll();
+  enterRound();
   updateHud();
   save();
   toast(TEXT.newGame, 2500);
@@ -733,6 +841,23 @@ function labelTheme() {
 }
 new MutationObserver(labelTheme).observe(root, { attributes: true, attributeFilter: ['data-theme', 'data-theme-pref'] });
 labelTheme();
+
+// Optional second card line (rounds[].sub, e.g. a name in its own
+// script): reserved in every round once any round has one, so the card
+// keeps its height. Hidden from screen readers; a copy inside #prompt
+// (sr-only, language-tagged) is read with the prompt.
+let promptSub = null;
+let promptSubSr = null;
+if (ROUNDS.some((r) => r.sub)) {
+  promptSub = document.createElement('p');
+  promptSub.id = 'prompt-sub';
+  promptSub.setAttribute('aria-hidden', 'true');
+  promptEl.after(promptSub);
+  promptSubSr = document.createElement('span');
+  promptSubSr.className = 'sr-only';
+  promptEl.append(promptSubSr);
+  root.classList.add('has-sub');
+}
 
 // Optional data credit (e.g. CC BY): a line under the controls (portrait)
 // or in the bottom-left corner (landscape), see style.css.
@@ -814,27 +939,24 @@ async function loadMap() {
   regionsG = shapes[ids[0]].parentNode;
   if (regionsG === svg || ids.some((id) => shapes[id].parentNode !== regionsG)) throw new Error('map.svg: the region shapes must share one <g>');
   regionsG.classList.add('regions');
-  for (const id of config.blockingOverlays || []) {
+  const overlay = (id, field) => {
     const el = svg.querySelector('#' + CSS.escape(id));
-    if (!el || el.localName !== 'path' || !el.closest('#overlays')) throw new Error(`map.svg: no overlay <path id="${id}"> in #overlays (config.blockingOverlays)`);
-    blockers.push(el);
+    if (!el || el.localName !== 'path' || !el.closest('#overlays')) throw new Error(`map.svg: no overlay <path id="${id}"> in #overlays (${field})`);
+    return el;
+  };
+  for (const id of config.blockingOverlays || []) blockers.push(overlay(id, 'config.blockingOverlays'));
+  for (const id of new Set(ROUNDS.flatMap((r) => r.lines || []))) {
+    const el = overlay(id, 'rounds[].lines');
+    el.classList.add('line');
+    lineEls.set(id, el);
   }
   blockPoint = svg.createSVGPoint();
   // The fade only where context is drawn around the full view.
   if (MAP.extent[0] < 0 || MAP.extent[1] < 0) svg.append(fade());
-  const withMarkers = ITEMS.filter((c) => c.marker);
-  if (withMarkers.length) {
-    const markers = svgEl('g', { id: 'markers' });
-    for (const c of withMarkers) {
-      const [x, y] = c.marker;
-      const g = svgEl('g', {});
-      const halo = svgEl('circle', { class: 'marker-halo', cx: x, cy: y, r: 1 });
-      const ring = svgEl('circle', { class: 'marker', cx: x, cy: y, r: 1 });
-      g.append(halo, ring);
-      markers.append(g);
-      rings[c.id] = { g, halo, ring, x, y, size: c.size, on: true };
-    }
-    svg.append(markers);
+  // The ring layer only if some round has an answer with a marker.
+  if (SPECS.some((s) => s.answers.some((a) => s.byId.get(a.id).marker))) {
+    markersG = svgEl('g', { id: 'markers' });
+    svg.append(markersG);
   }
   host.append(svg);
 
@@ -853,8 +975,8 @@ async function loadMap() {
 
   measure();
   fitView(false);
+  enterRound();
   render();
-  paintAll();
   root.dataset.ready = '1';
 }
 

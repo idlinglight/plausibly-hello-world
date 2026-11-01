@@ -8,6 +8,13 @@
    image overrides tokens (colours) in a stylesheet of its own, linked after
    this one.
 
+   Pieces and answers (main.js): a round's answers are pieces or groups
+   of them; a piece in no answer of the round is inert (.inert: drawn as
+   context land). A round with line overlays (rounds[].lines) sets
+   .seamless on the regions: each piece outlines itself in its own fill,
+   so no hairline shows inside a group; the lines (#overlays .line) draw
+   the outlines that count, and .off hides the ones another round shows.
+
    Two layouts (LANDSCAPE in main.js is the same media query):
    - default (portrait, square-ish): card across the top, controls across
      the bottom; main.js fits the map into the band between them.
@@ -51,6 +58,8 @@
   --focus: #2f7fae;
   --water: var(--sea); /* overlays (rivers, lakes) … */
   --overlay-stroke: 0; /* … and their outline, map units */
+  --inert: var(--land); /* pieces in no answer of the round … */
+  --inert-line: var(--land-line); /* … and their outline */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -227,6 +236,22 @@ p {
   vector-effect: none;
 }
 
+/* Line overlays (rounds[].lines: coasts, borders between groups; open
+   lines along the region edges): a stroke only, the region outline's
+   hairline, shown in the rounds that list them. */
+#overlays path.line {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 0.75px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+#overlays path.off {
+  display: none;
+}
+
 #land {
   fill: var(--land);
   stroke: var(--land-line);
@@ -290,6 +315,51 @@ p {
   100% {
     fill: var(--fill);
   }
+}
+
+/* A round with line overlays: each piece outlines itself in its own fill
+   (closing hairline seams between the pieces of a group); the line
+   overlays above draw the outlines. Pulse and blink animate the outline
+   with the fill. */
+.regions.seamless path {
+  stroke: var(--fill);
+  stroke-width: 0.6px;
+}
+
+.regions.seamless path.pulse {
+  animation-name: pulse-seamless;
+}
+
+.regions.seamless path.flash {
+  animation-name: flash-seamless;
+}
+
+@keyframes pulse-seamless {
+  from {
+    fill: var(--pulse);
+    stroke: var(--pulse);
+  }
+}
+
+@keyframes flash-seamless {
+  0%,
+  55% {
+    fill: var(--miss);
+    stroke: var(--miss);
+  }
+  65%,
+  100% {
+    fill: var(--fill);
+    stroke: var(--fill);
+  }
+}
+
+/* A piece in no answer of the round: context land for that round (never
+   hit, never hovered; its colour from earlier rounds comes back with it). */
+.regions path.inert {
+  --fill: var(--inert);
+  stroke: var(--inert-line);
+  stroke-width: 0.6px;
 }
 
 /* Rings for regions too small to tap at the full view (main.js hides a
@@ -436,8 +506,22 @@ p {
   text-overflow: ellipsis;
 }
 
+/* Optional second line (rounds[].sub; main.js adds it and :root.has-sub
+   when a round has one): the same height in every round, so the card
+   never changes size. */
+#prompt-sub {
+  height: 18px;
+  font-size: 13.5px;
+  line-height: 18px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ── Toast and misclick label ────────────────────────────────────────── */
 
+/* Just below the card: 82 px from its top, 100 px with the sub-line. */
 #toast {
   top: calc(env(safe-area-inset-top, 0px) + 10px + 82px);
   width: auto;
@@ -453,6 +537,10 @@ p {
   visibility: hidden;
   pointer-events: none;
   transition: opacity 0.25s, visibility 0s 0.25s;
+}
+
+:root.has-sub #toast {
+  top: calc(env(safe-area-inset-top, 0px) + 10px + 100px);
 }
 
 #toast.show {
@@ -635,6 +723,10 @@ p {
     max-width: none;
   }
 
+  :root.has-sub #toast {
+    top: calc(env(safe-area-inset-top, 0px) + 12px + 100px);
+  }
+
   #controls {
     left: auto;
     right: calc(env(safe-area-inset-right, 0px) + 12px);
@@ -685,6 +777,16 @@ p {
   .regions path.flash {
     animation: none;
     fill: var(--miss);
+  }
+
+  .regions.seamless path.pulse {
+    animation: none;
+  }
+
+  .regions.seamless path.flash {
+    animation: none;
+    fill: var(--miss);
+    stroke: var(--miss);
   }
 
   .marker.flash {
