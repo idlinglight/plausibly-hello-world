@@ -15,7 +15,8 @@ images/<name>/        one folder = one image, build context = this folder
                       shipped, outputs committed (europe-quiz's map)
 shared/               files several images use: one source, synced copies
   sync.py             writes the copies into images/; --check (CI) fails on drift
-  sync.json           which source goes to which images
+  sync.json           which source goes to which images (+ files they must have)
+  sync-manifest.json  written by sync.py: every copy, its source, sha256
   nginx.conf          → every images/*/nginx.conf
   map-quiz/           the map-quiz engine (README.md: config contract)
     site/               → site/ of each map image (engine JS/CSS)
@@ -94,10 +95,17 @@ A file several images need lives once under `shared/`; `shared/sync.py`
 folder, and the copies are committed (Dockerfiles stay COPY-only, the
 build contexts per folder). `shared/sync.json` says what goes where:
 `nginx.conf` to every image, `map-quiz/site/` to an explicit list of map
-images. `python3 shared/sync.py --check` (CI: `shared-sync.yml`) fails on
-any missing or differing copy and names the source to edit. Removing a
-file from a source folder leaves its old copies: delete them by hand.
-Dockerfiles are never synced (Dependabot bumps them per folder).
+images, which must also have `data-quiz="<folder>"` in their
+`site/index.html` (a rule's `require`). `shared/sync-manifest.json`
+(written by the sync, committed) lists every copy with source and sha256:
+a copy no rule produces any more (source renamed or removed, image taken
+off a rule) is removed by the next sync, unless it was edited since —
+then the sync stops until it is deleted, or kept as the image's own file
+by deleting its manifest entry. `python3 shared/sync.py --check` (CI:
+`shared-sync.yml`) fails on any missing, differing or stale copy, an
+outdated manifest or a missing required file, and names what to edit.
+Commit sources, copies and manifest together. Dockerfiles are never
+synced (Dependabot bumps them per folder).
 
 ### Map-quiz engine
 

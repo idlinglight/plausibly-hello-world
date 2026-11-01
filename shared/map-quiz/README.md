@@ -46,7 +46,9 @@ data.
 
 - `<html lang="…" data-quiz="<image folder name>">`. `data-quiz`
   namespaces localStorage: `phw-<name>` (quiz state), `phw-<name>-theme`
-  (theme override), so two map images on one origin keep apart.
+  (theme override), so two map images on one origin keep apart. Without
+  it the engine doesn't start, and `sync.py` (`require` in
+  `shared/sync.json`) fails for an image listed for the engine.
 - In `<head>`: `style.css` (then the image's own stylesheet, if any),
   then `<script src="theme.js"></script>` (classic, after the
   stylesheets: no flash of the other theme), `<script type="module"
@@ -101,9 +103,12 @@ export default {
 };
 ```
 
+- **map**: `width`, `height` and the four `extent` numbers finite, sizes
+  above 0 (the generated `MAP` is).
 - **items**: one per region. `id`: unique, letters, digits, `_ . -`, not
-  starting with a digit, not `land`, `overlays`, `markers`, `fade*`, and
-  not an element id of `index.html` (ADM0_A3 codes, `d01` … all fine).
+  starting with a digit, not `land`, `overlays`, `regions`, `markers`,
+  `fade*`, and not an element id of `index.html` or another id in
+  `map.svg` (ADM0_A3 codes, `d01` … all fine).
   `marker: [x, y]` (map units) + `size` (larger side of the region's
   bounding box, map units) draws a ring for a region too small to tap at
   the full view: a tap inside the drawn ring picks it, one in a wider zone
@@ -112,7 +117,9 @@ export default {
 - **rounds**: any number of kinds; rounds cycle through them, each round
   asks every region once in its own shuffled order. Colours: A in even
   rounds, B in odd ones, so the map recolours round by round. Prompts must
-  be unique within a round (`checkTexts` tests it).
+  be unique within a round (`checkTexts` tests it). A saved game records
+  the round keys: after a change to them (added, removed, renamed,
+  reordered) stored games start over.
 - **attribution**: a credit line where it never meets the HUD: under the
   controls in portrait (they move up for it), the bottom-left corner in
   landscape. The full view stays clear of it in both. Fits about 50
@@ -125,9 +132,13 @@ export default {
   top-right corner, fine where that is context land (europe: Russia), not
   for a map whose regions reach that corner.
 
-`contract.js`: `checkConfig(config)` (main.js runs it at start: a broken
-config throws, naming the field) and `checkTexts(config)` (every ask/miss
-text for every item; for an image's node test).
+`contract.js`: `checkConfig(config)` and `checkTexts(config)` (every
+ask/miss text for every item; for an image's node test). At start main.js
+runs `checkConfig` and checks `data-quiz`; on a failure the page shows
+`text.mapError` (or a built-in English line if that text is unusable) in
+the toast, sets `data-ready="error"`, and the error names the field in the
+console. (A `config.js` that doesn't load at all, a syntax error say,
+stops main.js before it runs: the browser console shows it.)
 
 ### map.svg
 
@@ -146,10 +157,11 @@ What the engine reads (`mapgen.map_svg` writes exactly this):
 </svg>
 ```
 
-No styling in the file. The engine finds the regions' group from their
-shapes (class `regions` is added), draws a fade at the edge of the extent
-when there is context around the window (`MAP.extent` starts below 0),
-and the rings.
+No styling in the file. Every id once, none of the page's (`index.html`)
+nor `markers` / `fade*`: the engine checks when it loads the map. It
+finds the regions' group from their shapes (each a `<path>`; class
+`regions` is added), draws a fade at the edge of the extent when there is
+context around the window (`MAP.extent` starts below 0), and the rings.
 
 ### Styling
 
@@ -262,7 +274,8 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
    checks (CI runs every `images/*/tools/*.test.mjs`).
 3. Add `<name>` to the map-quiz rule in `shared/sync.json`, run
    `python3 shared/sync.py` (engine files; `nginx.conf` comes to every
-   image anyway).
+   image anyway; it checks `data-quiz` and updates
+   `shared/sync-manifest.json`), commit all of it.
 4. The CI caller and the rest of "Adding an image" in `/CLAUDE.md`.
 
 Engine changes happen here and reach every map image through the sync;
