@@ -2,21 +2,28 @@
 // Shared map-quiz engine file: the source is shared/map-quiz/site/, images
 // get byte-identical copies (python3 shared/sync.py). Edit the source.
 //
-// A game is an endless run of rounds over one set of regions (ids). Round
-// r asks for every region once, in its own shuffled order, using round
-// kind r % kinds (the image's config.rounds: names, capitals, numbers …);
-// the answer is always a region id. A correct answer colours that region
-// with the round's colour (1 in even rounds, 2 in odd ones) and moves on;
-// the last one starts the next round at once. Colours carry over: each
-// round recolours the map as it goes, so the map is blank only at the
-// start of a game. A wrong answer (any other region, coloured or not)
-// counts as a miss and the question stays. Unknown ids (sea, context land)
-// are ignored.
+// A game is an endless run of rounds over one set of map pieces (ids: one
+// <path> each). Round r uses round kind r % kinds (the image's
+// config.rounds: names, capitals, numbers …). A kind's answers are its
+// pieces one by one (the default), or groups of them ({ id, pieces }: an
+// island of several prefectures, a region); a piece in no answer of the
+// kind is inert in its rounds (context land, never an answer). Round r
+// asks every asked answer of its kind once (all of them, or the subset
+// the kind names), in its own shuffled order. A correct answer colours
+// all its pieces with the round's colour (1 in even rounds, 2 in odd
+// ones) and moves on; the last one starts the next round at once. Colours
+// are per piece and carry over: each round recolours the map as it goes,
+// so the map is blank only at the start of a game. A wrong answer (any
+// other answer of the kind: asked or not, found or not) counts as a miss
+// and the question stays. Ids that are no answer of the kind (sea,
+// context land, inert pieces) are ignored.
 //
 // Shuffles are reproducible: round r of game g with seed s always gets the
-// same order, from makeRng(mix(s, g, r)); a round never opens with the
-// region that closed the round before. reset() starts game g + 1: colours
-// and counters cleared, a fresh first round.
+// same order, from makeRng(mix(s, g, r)) over the asked answers in their
+// configured order; a round never opens with an answer that shares a
+// piece with the one that closed the round before (unless every one does).
+// reset() starts game g + 1: colours and counters cleared, a fresh first
+// round.
 //
 // A saved game records its round kinds (the rounds' keys), so restore()
 // turns it down once the image's rounds change: a saved round index would
@@ -70,37 +77,83 @@ function sameKinds(saved, now) {
   return count(saved) === count(now);
 }
 
+// One round kind: answers (id -> pieces), the owner of each piece, the
+// asked answers in configured order. k: a round key (every piece its own
+// answer, all asked) or { key, answers?: [{ id, pieces }], asked?: [ids] }
+// (contract.js roundSpecs makes these from config.rounds).
+function kindOf(k, i, idSet, identity) {
+  if (typeof k === 'string') return { ...identity, key: k };
+  if (!k || typeof k !== 'object' || typeof k.key !== 'string') throw new RangeError(`kinds[${i}]: a round key or { key, answers?, asked? }`);
+  const where = `kinds[${i}] (${k.key})`;
+  let { piecesOf, owner } = identity;
+  if (k.answers !== undefined) {
+    if (!Array.isArray(k.answers) || !k.answers.length) throw new RangeError(`${where}: answers, a non-empty array`);
+    piecesOf = new Map();
+    owner = new Map();
+    for (const a of k.answers) {
+      if (!a || typeof a.id !== 'string' || piecesOf.has(a.id) || !Array.isArray(a.pieces) || !a.pieces.length)
+        throw new RangeError(`${where}: answer ${JSON.stringify(a && a.id)}: a unique id and a non-empty list of pieces`);
+      for (const p of a.pieces) {
+        if (!idSet.has(p)) throw new RangeError(`${where}: answer ${a.id}: ${JSON.stringify(p)} is no piece`);
+        if (owner.has(p)) throw new RangeError(`${where}: piece ${p} in ${owner.get(p)} and ${a.id}`);
+        owner.set(p, a.id);
+      }
+      piecesOf.set(a.id, a.pieces.slice());
+    }
+  }
+  let asked = [...piecesOf.keys()];
+  if (k.asked !== undefined) {
+    if (!Array.isArray(k.asked) || !k.asked.every((id) => piecesOf.has(id))) throw new RangeError(`${where}: asked, a list of its answers' ids`);
+    const set = new Set(k.asked);
+    asked = asked.filter((id) => set.has(id)); // configured order, whatever order asked came in
+  }
+  if (!asked.length) throw new RangeError(`${where}: asks nothing`);
+  return { key: k.key, piecesOf, owner, asked, askedSet: new Set(asked) };
+}
+
 export class Quiz {
-  // ids: the regions (any stable order); seed: 32-bit integer; kinds: the
-  // round kinds that alternate, as their keys (config.rounds' keys) or just
-  // a count.
+  // ids: the map's pieces (config.items' ids; any stable order); seed:
+  // 32-bit integer; kinds: the round kinds that cycle, as a count, their
+  // keys (config.rounds' keys), or specs { key, answers?, asked? } (see
+  // kindOf; a key alone is a kind where every piece is its own answer).
   constructor(ids, seed, kinds = 2) {
-    const keys = Array.isArray(kinds) ? kinds.slice() : null;
-    const n = keys ? keys.length : kinds;
-    if (!Number.isSafeInteger(n) || n < 1 || (keys && !keys.every((k) => typeof k === 'string')))
-      throw new RangeError('kinds: a positive integer, or a non-empty array of round keys');
+    const n = Array.isArray(kinds) ? kinds.length : kinds;
+    if (!Number.isSafeInteger(n) || n < 1) throw new RangeError('kinds: a positive integer, or a non-empty array of round keys or specs');
     this.ids = ids.slice();
     this.idSet = new Set(this.ids);
+    const identity = { key: null, piecesOf: new Map(this.ids.map((id) => [id, [id]])), owner: new Map(this.ids.map((id) => [id, id])) };
+    identity.asked = [...identity.piecesOf.keys()];
+    identity.askedSet = new Set(identity.asked);
+    this.specs = Array.isArray(kinds) ? kinds.map((k, i) => kindOf(k, i, this.idSet, identity)) : Array.from({ length: n }, () => identity);
     this.kinds = n;
-    this.kindKeys = keys;
+    this.kindKeys = Array.isArray(kinds) ? this.specs.map((k) => k.key) : null;
     this.seed = seed >>> 0;
     this.game = 0;
-    this.colours = {}; // id -> 1 | 2
+    this.colours = {}; // piece id -> 1 | 2
     this.correct = 0;
     this.misses = 0;
     this.roundMisses = 0;
     this.start(0, null);
   }
 
-  start(round, prevLast) {
+  // prev: the pieces of the answer that closed the round before (or null).
+  start(round, prev) {
     this.round = round;
     this.pos = 0;
     this.roundMisses = 0;
+    const k = this.specs[round % this.kinds];
     const rng = makeRng(mix(this.seed, this.game, round));
-    const order = shuffled(this.ids, rng);
-    if (order.length > 1 && order[0] === prevLast) {
-      const j = 1 + Math.floor(rng() * (order.length - 1));
-      [order[0], order[j]] = [order[j], order[0]];
+    const order = shuffled(k.asked, rng);
+    const last = new Set(prev || []);
+    const meets = (id) => k.piecesOf.get(id).some((p) => last.has(p));
+    if (order.length > 1 && meets(order[0])) {
+      // Swap in one that doesn't (for single pieces: any but the first).
+      const cands = [];
+      for (let i = 1; i < order.length; i++) if (!meets(order[i])) cands.push(i);
+      if (cands.length) {
+        const j = cands[Math.floor(rng() * cands.length)];
+        [order[0], order[j]] = [order[j], order[0]];
+      }
     }
     this.order = order;
   }
@@ -115,10 +168,12 @@ export class Quiz {
     return (this.round % 2) + 1;
   }
 
+  // The asked answer (an answer id of the current kind).
   get target() {
     return this.order[this.pos];
   }
 
+  // Answers asked in this round.
   get total() {
     return this.order.length;
   }
@@ -128,27 +183,44 @@ export class Quiz {
     return this.pos;
   }
 
+  // A piece's colour: 0, 1 or 2.
   colourOf(id) {
     return this.colours[id] || 0;
   }
 
-  // -> { result: 'correct' | 'miss' | 'ignored', id, completed? }
-  // completed (on the last correct answer of a round): { kind, misses } of
-  // the round just finished; the quiz is already in the next one.
+  // The current kind's answer a piece belongs to; null if it is inert
+  // (or no piece).
+  answerOf(piece) {
+    const a = this.specs[this.kind].owner.get(piece);
+    return a === undefined ? null : a;
+  }
+
+  // The pieces of an answer of the current kind ([] for any other id).
+  piecesOf(id) {
+    const p = this.specs[this.kind].piecesOf.get(id);
+    return p ? p.slice() : [];
+  }
+
+  // -> { result: 'correct' | 'miss' | 'ignored', id, pieces?, completed? }
+  // pieces (correct): the answer's pieces, now coloured. completed (on the
+  // last correct answer of a round): { kind, misses, total } of the round
+  // just finished; the quiz is already in the next one.
   answer(id) {
-    if (!this.idSet.has(id)) return { result: 'ignored', id };
+    const k = this.specs[this.kind];
+    if (!k.piecesOf.has(id)) return { result: 'ignored', id };
     if (id !== this.target) {
       this.misses++;
       this.roundMisses++;
       return { result: 'miss', id };
     }
     this.correct++;
-    this.colours[id] = this.colour;
+    const pieces = k.piecesOf.get(id).slice();
+    for (const p of pieces) this.colours[p] = this.colour;
     this.pos++;
-    if (this.pos < this.order.length) return { result: 'correct', id };
-    const completed = { kind: this.kind, misses: this.roundMisses };
-    this.start(this.round + 1, id);
-    return { result: 'correct', id, completed };
+    if (this.pos < this.order.length) return { result: 'correct', id, pieces };
+    const completed = { kind: this.kind, misses: this.roundMisses, total: this.order.length };
+    this.start(this.round + 1, pieces);
+    return { result: 'correct', id, pieces, completed };
   }
 
   reset() {
@@ -176,19 +248,21 @@ export class Quiz {
   }
 
   // A Quiz from serialize()'s output, or null if it doesn't fit `ids` and
-  // `kinds` (another version, a changed region list or rounds, tampering).
+  // `kinds` (another version, changed pieces, rounds or asked answers,
+  // tampering). kinds: as for the constructor.
   static restore(data, ids, kinds = 2) {
     if (!data || typeof data !== 'object' || data.v !== VERSION) return null;
-    if (!sameKinds(data.kinds === undefined ? 2 : data.kinds, kinds)) return null;
+    const now = Array.isArray(kinds) ? kinds.map((k) => (typeof k === 'string' ? k : k && k.key)) : kinds;
+    if (!sameKinds(data.kinds === undefined ? 2 : data.kinds, now)) return null;
     const { seed, game, round, pos, order, colours, correct, misses, roundMisses } = data;
     if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) return null;
     if (![game, round, pos, correct, misses, roundMisses].every(isCount)) return null;
-    if (!Array.isArray(order) || order.length !== ids.length || pos >= order.length) return null;
-    const idSet = new Set(ids);
-    if (new Set(order).size !== order.length || !order.every((id) => idSet.has(id))) return null;
-    if (!colours || typeof colours !== 'object' || Array.isArray(colours)) return null;
-    for (const [id, c] of Object.entries(colours)) if (!idSet.has(id) || (c !== 1 && c !== 2)) return null;
     const q = new Quiz(ids, seed, kinds);
+    const k = q.specs[round % q.kinds];
+    if (!Array.isArray(order) || order.length !== k.asked.length || pos >= order.length) return null;
+    if (new Set(order).size !== order.length || !order.every((id) => k.askedSet.has(id))) return null;
+    if (!colours || typeof colours !== 'object' || Array.isArray(colours)) return null;
+    for (const [id, c] of Object.entries(colours)) if (!q.idSet.has(id) || (c !== 1 && c !== 2)) return null;
     Object.assign(q, { game, round, pos, order: order.slice(), colours: { ...colours }, correct, misses, roundMisses });
     return q;
   }
