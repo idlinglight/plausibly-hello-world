@@ -17,6 +17,11 @@
 // same order, from makeRng(mix(s, g, r)); a round never opens with the
 // region that closed the round before. reset() starts game g + 1: colours
 // and counters cleared, a fresh first round.
+//
+// A saved game records its round kinds (the rounds' keys), so restore()
+// turns it down once the image's rounds change: a saved round index would
+// otherwise continue as a different kind. Saves from before that field
+// (europe-quiz only) had two kinds and restore wherever there are two.
 
 export const VERSION = 1; // of serialize()'s format
 
@@ -55,14 +60,29 @@ export function shuffled(items, rng) {
 
 const isCount = (v) => Number.isSafeInteger(v) && v >= 0;
 
+// Saved kinds (keys or a count) against the current ones: keys must match
+// exactly when both sides have them, otherwise the counts.
+function sameKinds(saved, now) {
+  const count = (k) => (Array.isArray(k) ? k.length : k);
+  if (Array.isArray(saved) && !saved.every((k) => typeof k === 'string')) return false;
+  if (!Array.isArray(saved) && !Number.isSafeInteger(saved)) return false;
+  if (Array.isArray(saved) && Array.isArray(now)) return saved.length === now.length && saved.every((k, i) => k === now[i]);
+  return count(saved) === count(now);
+}
+
 export class Quiz {
-  // ids: the regions (any stable order); seed: 32-bit integer; kinds: how
-  // many round kinds alternate (config.rounds.length).
+  // ids: the regions (any stable order); seed: 32-bit integer; kinds: the
+  // round kinds that alternate, as their keys (config.rounds' keys) or just
+  // a count.
   constructor(ids, seed, kinds = 2) {
-    if (!Number.isSafeInteger(kinds) || kinds < 1) throw new RangeError('kinds: a positive integer');
+    const keys = Array.isArray(kinds) ? kinds.slice() : null;
+    const n = keys ? keys.length : kinds;
+    if (!Number.isSafeInteger(n) || n < 1 || (keys && !keys.every((k) => typeof k === 'string')))
+      throw new RangeError('kinds: a positive integer, or a non-empty array of round keys');
     this.ids = ids.slice();
     this.idSet = new Set(this.ids);
-    this.kinds = kinds;
+    this.kinds = n;
+    this.kindKeys = keys;
     this.seed = seed >>> 0;
     this.game = 0;
     this.colours = {}; // id -> 1 | 2
@@ -151,13 +171,15 @@ export class Quiz {
       correct: this.correct,
       misses: this.misses,
       roundMisses: this.roundMisses,
+      kinds: this.kindKeys ? this.kindKeys.slice() : this.kinds,
     };
   }
 
-  // A Quiz from serialize()'s output, or null if it doesn't fit `ids`
-  // (another version, a changed region list, tampering).
+  // A Quiz from serialize()'s output, or null if it doesn't fit `ids` and
+  // `kinds` (another version, a changed region list or rounds, tampering).
   static restore(data, ids, kinds = 2) {
     if (!data || typeof data !== 'object' || data.v !== VERSION) return null;
+    if (!sameKinds(data.kinds === undefined ? 2 : data.kinds, kinds)) return null;
     const { seed, game, round, pos, order, colours, correct, misses, roundMisses } = data;
     if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) return null;
     if (![game, round, pos, correct, misses, roundMisses].every(isCount)) return null;

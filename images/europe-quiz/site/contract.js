@@ -11,24 +11,28 @@ function bad(msg) {
   throw new Error(`config.js: ${msg} (contract: shared/map-quiz/README.md)`);
 }
 
-// Ids end up as element ids next to the page's own (main.js also checks
-// those) and the engine's SVG layers.
+// Ids end up as element ids next to the page's own and those of map.svg's
+// and the engine's layers (main.js checks map.svg's ids against all of
+// them when it loads).
 const ID = /^[A-Za-z_][\w.-]*$/;
-const RESERVED = /^(land|overlays|markers|fade(-.*)?)$/;
+const RESERVED = /^(land|overlays|regions|markers|fade(-.*)?)$/;
+const num = (v) => typeof v === 'number' && Number.isFinite(v);
 
 // Shapes and types.
 export function checkConfig(config) {
   if (!config || typeof config !== 'object') bad('no default export object');
   const { map, items, rounds, text, view, attribution } = config;
-  if (!map || !(map.width > 0 && map.height > 0) || !Array.isArray(map.extent) || map.extent.length !== 4) bad('map: { width, height, extent }');
+  if (!map || !num(map.width) || !num(map.height) || !(map.width > 0 && map.height > 0)) bad('map: width and height, finite numbers > 0');
+  const ex = map.extent;
+  if (!Array.isArray(ex) || ex.length !== 4 || !ex.every(num) || !(ex[2] > 0 && ex[3] > 0)) bad('map: extent [x, y, w, h], finite numbers, w and h > 0');
   if (!Array.isArray(items) || !items.length) bad('items: a non-empty array');
   const seen = new Set();
   for (const it of items) {
     const id = it && it.id;
     if (typeof id !== 'string' || !ID.test(id) || RESERVED.test(id) || seen.has(id))
-      bad(`items: id ${JSON.stringify(id)} (unique; letters, digits, _ . -, not first a digit; not land, overlays, markers, fade*)`);
+      bad(`items: id ${JSON.stringify(id)} (unique; letters, digits, _ . -, not first a digit; not land, overlays, regions, markers, fade*)`);
     seen.add(id);
-    if (it.marker !== undefined && !(Array.isArray(it.marker) && it.marker.length === 2 && it.marker.every(Number.isFinite) && it.size >= 0))
+    if (it.marker !== undefined && !(Array.isArray(it.marker) && it.marker.length === 2 && it.marker.every(num) && num(it.size) && it.size >= 0))
       bad(`items: ${id}: marker [x, y] (map units) needs a size`);
   }
   if (!Array.isArray(rounds) || !rounds.length) bad('rounds: a non-empty array');
@@ -42,7 +46,7 @@ export function checkConfig(config) {
   if (!text.intro || !str(text.intro.mouse) || !str(text.intro.touch)) bad('text.intro: { mouse, touch }');
   if (typeof text.theme !== 'function') bad('text.theme: a function');
   if (attribution !== undefined && !str(attribution)) bad('attribution: a string');
-  if (view !== undefined && !(view && typeof view === 'object' && (view.maxScale === undefined || view.maxScale > 0) &&
+  if (view !== undefined && !(view && typeof view === 'object' && (view.maxScale === undefined || (num(view.maxScale) && view.maxScale > 0)) &&
       (view.besideHud === undefined || typeof view.besideHud === 'boolean')))
     bad('view: { maxScale: CSS px per map unit, > 0; besideHud: boolean }');
 }

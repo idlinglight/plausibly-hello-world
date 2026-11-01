@@ -34,7 +34,8 @@
 // capitals), data-progress ("12/46"), data-zoom (s / fitScale), data-ready
 // (1 once the map is in; "error" if it failed), data-wheel (how the last
 // wheel event was taken: trackpad | mouse | pinch). Read: data-quiz, the
-// image's name, which namespaces localStorage ("phw-<name>"). Quiz state
+// image's folder name, which namespaces localStorage ("phw-<name>"); the
+// engine doesn't start without it. Quiz state
 // and counters persist there (optional). Debug: ?seed=<int> (0 …
 // 4294967295, digits only) makes the shuffles reproducible (stored state
 // with another seed is replaced).
@@ -44,8 +45,27 @@ import { checkConfig } from './contract.js';
 import { Quiz } from './quiz.js';
 import { wheelKind } from './wheel.js';
 
-checkConfig(config); // throws, naming the field, if it doesn't fit
+const root = document.documentElement;
+const NAME = /^[a-z0-9]+([._-][a-z0-9]+)*$/; // an image folder name
+
+// Starting needs a config that fits the contract and <html data-quiz>; else
+// the page says so (data-ready="error", a toast; the details in the
+// console) and the engine stops here.
+try {
+  checkConfig(config);
+  if (!NAME.test(root.dataset.quiz || '')) throw new Error('index.html: <html data-quiz="<image folder name>"> is missing or not a folder name (it namespaces localStorage)');
+} catch (err) {
+  root.dataset.ready = 'error';
+  const t = document.getElementById('toast');
+  const own = config && config.text && config.text.mapError;
+  if (t) {
+    t.textContent = typeof own === 'string' && own ? own : 'This page could not start. Details are in the browser console.';
+    t.classList.add('show');
+  }
+  throw err;
+}
 const { map: MAP, items: ITEMS, rounds: ROUNDS, text: TEXT } = config;
+const ROUND_KEYS = ROUNDS.map((r) => r.key);
 const LANDSCAPE = '(min-aspect-ratio: 4/3)'; // same query as in style.css
 const PAD = 12; // CSS px between the map (full view) and the edges / HUD bands
 const MAX_SCALE = (config.view && config.view.maxScale) || 12; // CSS px per map unit at the closest zoom (maps are 1000 units wide)
@@ -66,8 +86,7 @@ const MARKER_HIT = { mouse: 14, pen: 18, touch: 22 }; // wider hit zone around a
 const MARKER_HIDE = 28; // a ring hides once its region is this many CSS px across
 const WHEEL_GAP_MS = 200; // wheel events closer than this belong to one gesture
 
-const root = document.documentElement;
-const STATE_KEY = 'phw-' + (root.dataset.quiz || 'map-quiz');
+const STATE_KEY = 'phw-' + root.dataset.quiz;
 const host = document.getElementById('map');
 const card = document.getElementById('card');
 const controls = document.getElementById('controls');
@@ -87,8 +106,6 @@ const zoomOut = document.getElementById('zoom-out');
 const zoomFit = document.getElementById('zoom-fit');
 const themeButton = document.getElementById('theme');
 const swatch = document.querySelector('#card .swatch');
-
-if (!root.dataset.quiz) console.error('index.html: <html data-quiz="<image name>"> is missing (namespaces localStorage)');
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const ids = ITEMS.map((c) => c.id);
@@ -119,11 +136,11 @@ function save() {
   }
 }
 
-const restored = Quiz.restore(loadState(), ids, ROUNDS.length);
+const restored = Quiz.restore(loadState(), ids, ROUND_KEYS);
 const resumed = !!restored && (seedParam === null || restored.seed === seedParam);
 const quiz = resumed
   ? restored
-  : new Quiz(ids, seedParam ?? crypto.getRandomValues(new Uint32Array(1))[0], ROUNDS.length);
+  : new Quiz(ids, seedParam ?? crypto.getRandomValues(new Uint32Array(1))[0], ROUND_KEYS);
 
 // ── Map elements ────────────────────────────────────────────────────────
 
@@ -765,10 +782,18 @@ async function loadMap() {
   const doc = new DOMParser().parseFromString(await res.text(), 'image/svg+xml');
   if (doc.documentElement.nodeName !== 'svg' || doc.querySelector('parsererror')) throw new Error('map.svg: not SVG');
   svg = document.importNode(doc.documentElement, true);
+  // Every id in map.svg once, and none the page's or the engine's own (a
+  // region sharing its id with an overlay would take #water's styles).
+  const svgIds = new Set();
+  for (const el of svg.querySelectorAll('[id]')) {
+    if (svgIds.has(el.id)) throw new Error(`map.svg: id ${el.id} twice`);
+    if (document.getElementById(el.id)) throw new Error(`map.svg: id ${el.id} is also an element id of the page`);
+    if (/^(markers|fade(-.*)?)$/.test(el.id)) throw new Error(`map.svg: id ${el.id} is the engine's`);
+    svgIds.add(el.id);
+  }
   for (const id of ids) {
-    if (document.getElementById(id)) throw new Error(`region id ${id} is also an element id of the page`);
     shapes[id] = svg.querySelector('#' + CSS.escape(id));
-    if (!shapes[id]) throw new Error(`map.svg: no shape for ${id}`);
+    if (!shapes[id] || shapes[id].localName !== 'path') throw new Error(`map.svg: no <path> for ${id}`);
   }
   regionsG = shapes[ids[0]].parentNode;
   if (regionsG === svg || ids.some((id) => shapes[id].parentNode !== regionsG)) throw new Error('map.svg: the region shapes must share one <g>');

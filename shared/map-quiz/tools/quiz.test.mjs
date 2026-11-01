@@ -114,8 +114,12 @@ check('1 kind: always kind 0, the colours still alternate', () => {
   assert.equal(q.colour, 2);
 });
 
-check('kinds must be a positive integer', () => {
-  for (const k of [0, -1, 1.5, '2']) assert.throws(() => new Quiz(ids, 1, k), RangeError);
+check('kinds: a positive integer or a non-empty array of keys', () => {
+  for (const k of [0, -1, 1.5, '2', [], [1, 2], ['a', null]]) assert.throws(() => new Quiz(ids, 1, k), RangeError);
+  const q = new Quiz(ids, 1, ['names', 'numbers', 'x']);
+  assert.equal(q.kinds, 3);
+  finishRound(q);
+  assert.equal(q.kind, 1);
 });
 
 check('a single region: every answer completes a round', () => {
@@ -186,13 +190,37 @@ check('serialize/restore: round trip through JSON, play continues identically', 
   assert.deepEqual(b.serialize(), a.serialize(), 'next shuffle matches');
 });
 
-check('restore: the number of kinds comes from the caller', () => {
-  const a = new Quiz(ids, 77, 3);
+check('restore: only with the same round kinds (keys, or a count)', () => {
+  const keys = ['names', 'numbers', 'districts'];
+  const a = new Quiz(ids, 77, keys);
   finishRound(a);
   finishRound(a);
-  const b = Quiz.restore(a.serialize(), ids, 3);
-  assert.equal(b.kind, 2);
-  assert.equal(Quiz.restore(a.serialize(), ids, 2).kind, 0);
+  const saved = JSON.parse(JSON.stringify(a.serialize()));
+  assert.deepEqual(saved.kinds, keys);
+  assert.equal(Quiz.restore(saved, ids, keys).kind, 2);
+  assert.equal(Quiz.restore(saved, ids, ['names', 'numbers']), null, 'a kind removed');
+  assert.equal(Quiz.restore(saved, ids, ['numbers', 'names', 'districts']), null, 'reordered');
+  assert.equal(Quiz.restore(saved, ids, ['names', 'numbers', 'other']), null, 'renamed');
+  assert.equal(Quiz.restore(saved, ids, 3).kind, 2, 'a count compares counts');
+  assert.equal(Quiz.restore(saved, ids, 2), null);
+  assert.equal(new Quiz(ids, 1, 3).serialize().kinds, 3);
+  for (const bad of [null, 'names', 2.5, [1, 2, 3]]) assert.equal(Quiz.restore({ ...saved, kinds: bad }, ids, keys), null, JSON.stringify(bad));
+});
+
+check('restore: a save without kinds (europe-quiz before they were stored) means two', () => {
+  const a = new Quiz(ids, 5, ['countries', 'capitals']);
+  finishRound(a);
+  a.answer(a.target);
+  const legacy = a.serialize();
+  delete legacy.kinds;
+  const b = Quiz.restore(legacy, ids, ['countries', 'capitals']);
+  assert.ok(b);
+  assert.equal(b.kind, 1);
+  assert.equal(b.done, 1);
+  assert.deepEqual(b.serialize().kinds, ['countries', 'capitals'], 'saved again with kinds');
+  assert.ok(Quiz.restore(legacy, ids, 2));
+  assert.equal(Quiz.restore(legacy, ids, ['names', 'numbers', 'x']), null);
+  assert.equal(Quiz.restore(legacy, ids, 1), null);
 });
 
 check('restore rejects what does not fit', () => {
