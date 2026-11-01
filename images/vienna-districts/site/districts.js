@@ -35,4 +35,4 @@ export const DISTRICTS = [
   { id: "d23", number: 23, name: "Liesing" },
 ];
 
-export const WATER_STROKE = 1.6;
+export const WATER_STROKE = 0.9;

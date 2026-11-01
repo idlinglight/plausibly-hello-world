@@ -187,17 +187,20 @@ image" below (caller workflow, README row). Engine changes go to
   by number ("2. Bezirk"; `<html data-round>` `names`, `numbers`); a
   misclick shows "Name · N.". Plain background, no context land, no rings
   or labels; water (Donau, Neue Donau, Donaukanal, Alte Donau, Wienfluss)
-  is a non-interactive overlay, its same-coloured outline in map units
-  (`site/vienna.css`, `WATER_STROKE`) closes the gaps under bridges; a
-  click on it does nothing (`config.blockingOverlays`, owner's call).
+  is a muted, non-interactive overlay: bridge gaps patched in map.svg, a
+  thin same-coloured outline in map units (`site/vienna.css`,
+  `WATER_STROKE`) for the rest; a click on it does nothing
+  (`config.blockingOverlays`, owner's call). Ponds and side features near
+  the rivers are cut or left out explicitly (`tools/districts.json`
+  `water_cut` / `water_out`), never joined by proximity.
   `config.view`: `maxScale` 6, `besideHud`. Data:
   Stadt Wien open data (CC BY 4.0; the attribution line is on the page),
   district boundaries and Realnutzungskartierung 2024 water, both
   sha256-pinned and not committed (the water file without its
   per-request feature-number column); `tools/build_map.py` (adapter over
   mapgen, native EPSG:31256, simplified shared borders, 0 arc crossings
-  asserted, final water gaps below the outline) and `tools/districts.json`
-  (names, water seed points, near water left out) give
+  asserted, water tidied and its final gaps checked) and
+  `tools/districts.json` (names, water seeds, cuts, near water left out) give
   `site/map.svg` and `site/districts.js`. Pins, snapshot date and the
   re-pin procedure in `tools/README.md`. Checks: `node
   tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`

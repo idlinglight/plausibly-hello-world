@@ -80,11 +80,13 @@ and size it found. Then:
    `districts.json` and stops (fix `districts.json`) on a seed point
    outside all water, two seeds in one body, or water within 60 m of
    drawn water that is neither drawn nor listed in `water_out` (a river
-   split by a new gap: give the new piece a seed). It also stops if a gap
-   in the final map.svg between water that was closer than 60 m is wider
-   than the outline (`WATER_STROKE`, 1.6 units; `site/vienna.css` must say
-   the same). Read the report: the water drawn, the near water left out,
-   the largest water left out, the widest gap the outline closes.
+   split by a new gap: give the new piece a seed), and on a `water_cut`
+   point outside all water. It also stops if a gap in the final map.svg
+   between connected water is wider than the outline (`WATER_STROKE`, 0.9
+   units; `site/vienna.css` must say the same). Read the report: the water
+   drawn, cut and left out, what the tidying dropped and patched, the
+   widest gap the outline closes. A pond or basin fused into a river by a
+   new gap: add it to `water_cut`.
 4. Review the map diff: `git diff --stat site/`, and look at the page
    (full view and zoomed into the Donaukanal), before committing the new
    pins together with the regenerated files.
@@ -105,38 +107,60 @@ owner's call): the water is not part of a district's clickable area.
 ## Water
 
 What the page draws: Donau, Neue Donau, Donaukanal, Alte Donau and the
-open stretches of the Wienfluss, with the harbour basins and small pieces
-that touch them. Left out: the Lobau's backwaters, the Liesingbach and
-the other creeks, ponds and gravel-pit lakes, the Donau-Oder-Kanal basins,
-the Prater's Heustadelwasser.
+open stretches of the Wienfluss, with the harbours that open into the
+Danube (Freudenau, Albern, the Lobau oil port). Left out: the Lobau's
+backwaters, the Liesingbach and the other creeks, ponds and gravel-pit
+lakes, the Donau-Oder-Kanal basins, the Prater's Heustadelwasser, and the
+side features listed below.
 
 How: the layer has 450 polygons, cut wherever a bridge crosses. Polygons
 closer than 20 m form a body (`BODY_GAP`: footbridges, weirs; measured
 edge to edge over all rings, holes included, and overlapping pieces count
 as touching); a body is drawn if it holds one of the seed points in
 `districts.json` (EPSG:31256 metres, a point well inside the body's
-largest piece; 37 seeds, grouped by river). Bridges wider than 20 m split
+largest piece; 36 seeds, grouped by river). Bridges wider than 20 m split
 a river into several bodies, each with its own seed. A seed list rather
 than a size or width rule: such rules kept fragments of creeks and ponds
 and lost short river pieces. To draw more water, add a seed inside it.
 
+Cut (`water_cut`, taken out before anything else, so they can never join a
+river by proximity): the side arm at the Alte Donau's northern end, the
+narrow channel off its southern end, the eastern channel at the
+Donaukanal's head in Nussdorf (lock beside the weir; two pieces), two
+narrow channels along the harbour mole at Freudenau, and two basins and a
+small piece beside the Donaukanal's mouth at the Praterspitz.
+
 Near water: every body within 60 m (`BRIDGE_GAP`) of drawn water is either
 drawn or listed in `water_out` with a point inside it (now six: Mauerbach,
-Halterbach, the Lobau, an old arm by the Alte Donau, a basin at Albern, a
-pond on the Donauinsel); anything else that close stops the build, so a
-piece of a river can't vanish unnoticed.
+Halterbach, the Lobau, a basin at Albern, a pond on the Donauinsel, and
+the Stadtpark pond, which lies ~10 m above the Wienfluss and is not
+connected to it); anything else that close stops the build, so a piece of
+a river can't vanish unnoticed and a pond can't join one unnoticed. Until
+2026-11-01 the Stadtpark pond had a seed of its own and the outline,
+then 1.6 units wide, fused it into the Wienfluss as a bump.
 
-Gaps: the widest gap between drawn bodies is 40 m in the source (bridges
-over the Danube and the Donaukanal). The build checks the final map.svg:
-for every pair of drawn pieces closer than 60 m in the source, the widest
-gap on the best chain of water outlines between them (1.34 units now)
-must stay below the outline width `WATER_STROKE` (1.6 units ≈ 49 m),
-which `site/vienna.css` uses as `--overlay-stroke` (the build and
-`data.test.mjs` both check it, via `WATER_STROKE` in `districts.js`). So
-the outline closes them on the page at every zoom. Where the Wienfluss is
-covered, the map shows it as it is: the long vault from the Naschmarkt to
-the Stadtpark, the square at Hietzing (Kennedybrücke, 89 m) and a few wide
-road crossings stay breaks.
+Calm (`tidy_water`, `calm_polygon`): drawn pieces under 1 000 m² or under
+12 m mean width are dropped (bank strips, slivers, the Mauerbach's mouth;
+13 now) unless that would split the water; islands under 10 000 m² are
+filled; wide water (mean width 30 m or more) is simplified by 30 m before
+everything else, so groynes and jetties don't fringe the banks; all water
+outlines get 0.35 units (≈ 11 m) in mapgen.
+
+Gaps: a gap between two drawn pieces is a bridge if their facing banks
+span at most three times the narrower piece's mean width
+(`BRIDGE_SPAN`); it gets a patch, the convex hull of both banks reaching
+8 m onto each piece (114 now). Wider facing banks are a dam, a mole or a
+lock beside a weir: no patch, the pieces stay apart. The overlay's
+same-coloured outline, 0.9 units (`WATER_STROKE`, ≈ 27 m), keeps narrow
+channels visible and closes the small gaps. The build checks the final
+map.svg: for every pair of connected pieces (touching, bridged, or closer
+than 0.8 of the outline in the source) the widest gap on the best chain
+of water outlines between them (0.62 units now) must stay below
+`WATER_STROKE`, which `site/vienna.css` uses as `--overlay-stroke` (the
+build and `data.test.mjs` both check it, via `WATER_STROKE` in
+`districts.js`). Where the Wienfluss is covered, the map shows it as it
+is: the long vault from the Naschmarkt to the Stadtpark, the square at
+Hietzing (Kennedybrücke, 89 m) and a few wide road crossings stay breaks.
 
 ## Map geometry
 
@@ -150,8 +174,8 @@ road crossings stay breaks.
 - Simplification: the source is densified to ~0.1 m steps (16 288 points
   after snapping); Douglas-Peucker 0.25 units (≈ 7.7 m) on the shared arcs
   (`REGION_TOL`, mapgen's `region_tol`) leaves 1 792. The script asserts 0
-  arc crossings and one outline per district. Water: 0.2 units, outside
-  the shared topology.
-- Size: `map.svg` 31 KB, 13 KB as served (gzip -1). The smallest districts
+  arc crossings and one outline per district. Water: outside the shared
+  topology, see "Water".
+- Size: `map.svg` 25 KB, 11 KB as served (gzip -1). The smallest districts
   at a 390 px phone's full view: Josefstadt 16 px, Neubau 22 px across;
   zoom (up to 6 px per unit, `config.view.maxScale`) is enough, no rings.
