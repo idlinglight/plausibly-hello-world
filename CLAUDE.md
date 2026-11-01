@@ -11,6 +11,8 @@ images/<name>/        one folder = one image, build context = this folder
   Dockerfile
   nginx.conf          → /etc/nginx/conf.d/default.conf
   site/               → /usr/share/nginx/html/ (static files, no build step)
+  tools/              optional: offline generators for data in site/ — not
+                      shipped, outputs committed (europe-quiz's map)
 .github/
   dependabot.yml
   workflows/
@@ -110,6 +112,51 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   `game.js` and `autopilot.js` have no DOM, so they also run under plain
   node. Favicon raster files are exports of `favicon.svg` (`.ico` = one
   32 px PNG inside an ICO; the touch icon without the rounded corners).
+- **europe-quiz**: inline SVG map, no canvas. 46 quiz countries (the UN
+  geoscheme's Europe minus Russia, plus Kosovo, Cyprus, Türkiye); all other
+  land is muted, non-interactive context. Border view EU/Austrian (Crimea →
+  Ukraine, Northern Cyprus → Cyprus, Kosovo separate, Transnistria →
+  Moldova); names and capitals in English per the EU Interinstitutional
+  Style Guide. Data: `tools/build_map.py` (Python stdlib, deterministic,
+  `--check`) turns Natural Earth 50m v5.1.2 (public domain, sha256-pinned,
+  not committed) and `tools/countries.json` (the single source of truth:
+  codes, names, capitals, marker points) into `site/map.svg` and
+  `site/countries.js`, committed with a "generated" header; fix-ups,
+  window and remote parts in `tools/README.md`. `map.svg` is fetched and
+  inserted (gzip and MIME already covered by `nginx.conf`). Rounds
+  alternate: every country by name, then by capital, each shuffled; a
+  correct pick colours the country (A in name rounds, B in capital rounds:
+  the map recolours round by round, blank only after a reset); a misclick
+  counts, blinks and shows the name (+ capital) for 1.5 s. Reset takes
+  two presses (the first arms it for 3 s). Vatican, Monaco, San Marino,
+  Liechtenstein, Andorra, Malta and Luxembourg get rings: a tap inside the
+  drawn ring picks it, a tap in the wider zone around it only over sea,
+  context land or that country itself (never over a neighbour); nearest
+  ring wins. Rings shrink at low zoom (phones) and hide once their country
+  is 28 px across. Answering needs a pointer (click or tap); keys only
+  zoom and pan. Zoom: pinch (touch, trackpad), mouse wheel and ctrl +
+  wheel (at the cursor), buttons, `+ - 0` keys. Pan: drag, a trackpad's
+  two-finger scroll, arrow keys. Wheel events are classified per gesture
+  as trackpad or mouse by `site/wheel.js` (DOM-free; rules from real
+  macOS recordings in Safari, Chrome, Firefox at 100 % and 125 % zoom:
+  trackpads send whole CSS or device pixels, mice fractional steps or
+  lines). `node tools/wheel.test.mjs` replays those recordings
+  (`tools/wheel-fixture.json`); re-record and extend it when a device
+  misbehaves. A press
+  that moves more than 5–10 px is a pan, never a click. The
+  full view fits the window around all quiz countries; the SVG draws more
+  context around it, faded out, so tall or wide screens show map. Two
+  layouts (`min-aspect-ratio: 4/3` in `style.css` and `main.js`). Theme
+  follows the OS; the toggle stores the other theme, pressing again clears
+  it, and an override that matches the OS is dropped (`theme.js`, a
+  classic script in `<head>`: no flash). `?seed=<int>` makes the shuffles
+  reproducible (stored state with another seed is replaced);
+  `<html data-round>` (`countries`, `capitals`), `data-progress`,
+  `data-zoom`, `data-wheel`, `data-theme`, `data-theme-pref`,
+  `data-ready`. Quiz state
+  lives in `localStorage` (optional). `quiz.js` has no DOM (checks: `node
+  tools/quiz.test.mjs`). Favicon rasters exported once from `favicon.svg`
+  with headless Chrome (`.ico` = one 32 px PNG; touch icon square).
 
 ## CI
 
@@ -117,7 +164,11 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   named `image-<name>.yml`, every `gradient-ripple` replaced. The scan, the
   `build-image/**` fan-out and Dependabot find new folders on their own. The
   first publish creates `phw-<name>` already public and linked to this repo
-  (observed 2026-10-31): nothing to set in the package settings.
+  (observed 2026-10-31): nothing to set in the package settings. The
+  README's "Live" column lists the owner's public instances
+  (`<short>.phw.salient.at`); the owner fills it in after deploying, so a
+  new image's row leaves it empty until then. Hostnames only there: no
+  hosting provider or deploy details in the repo.
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
   and BuildKit bumps are proven before merge. Push to main also publishes.
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in
