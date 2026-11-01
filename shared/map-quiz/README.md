@@ -93,7 +93,7 @@ export default {
     },
   ],
   text: {
-    intro: { mouse: 'Klicke …', touch: 'Tippe …' }, // first visit's toast, until the first interaction
+    intro: { mouse: 'Klicke …', touch: 'Tippe …' }, // toast on every load, until the first interaction
     newGame: 'Neues Spiel …',                       // toast after a reset
     reset: 'Quiz zurücksetzen',                     // reset button label …
     resetArmed: 'Wirklich zurücksetzen? …',         // … while armed (3 s)
@@ -286,11 +286,12 @@ theme-color meta.
   the nearest ring wins. A ring shows the colour all its pieces share.
   Rings shrink at low zoom (phones) and hide once their piece is 28 px
   across; they are rebuilt when a round's ring set differs.
-- Toasts under the card: the first visit's intro (`text.intro`; none
-  when a saved game resumes) stays until the first interaction, a press
-  anywhere on the page (map or controls), a wheel or pinch, or a key, and
-  then fades; the round-end toast fades after 4 s, reset's after 2.5 s; a
-  newer toast replaces the one shown.
+- Toasts under the card: the intro (`text.intro`) shows on every page
+  load, also when a saved game resumes (a reload is how to read it
+  again), and stays until the first interaction, a press anywhere on the
+  page (map or controls), a wheel or pinch, or a key, and then fades; the
+  round-end toast fades after 4 s, reset's after 2.5 s; a newer toast
+  replaces the one shown.
 - Answering needs a pointer (click or tap); keys only zoom and pan. Zoom:
   pinch (touch, trackpad), mouse wheel and ctrl + wheel (at the cursor),
   buttons, `+ - 0` keys. Pan: drag, a trackpad's two-finger scroll, arrow
