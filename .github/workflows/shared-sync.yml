@@ -1,0 +1,67 @@
+name: shared-sync
+
+# Files shared by several images live once under shared/ and are copied
+# into the image folders (each is its own build context), committed:
+# shared/sync.py, rules in shared/sync.json. This workflow fails if a copy
+# differs from its source, and runs the map-quiz engine's tests:
+#   - python3 shared/sync.py --check
+#   - the generator core on synthetic data (mapgen_test.py, stdlib unittest)
+#   - node tests: shared/map-quiz/tools/*.test.mjs (quiz rules, config
+#     contract, wheel replay) and images/*/tools/*.test.mjs (each image's
+#     own data checks)
+# Only the runner's own python3 and node, no setup actions (ubuntu-latest
+# checked 2026-11-01: image 20261026, Node 22.23.4, Python 3.12.3). The node
+# tests need Node 22.12+ (ES module syntax in .js files, no package.json);
+# the step says so if a runner image ever has less.
+#
+# The per-image callers (image-<name>.yml) need no shared/** path: a shared
+# change reaches an image only through its synced copies, inside its folder.
+on:
+  pull_request:
+    paths:
+      - 'shared/**'
+      - 'images/**'
+      - '.github/workflows/shared-sync.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'shared/**'
+      - 'images/**'
+      - '.github/workflows/shared-sync.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Synced copies match shared/
+        run: python3 shared/sync.py --check
+
+      - name: Map generator core (synthetic data)
+        run: python3 -I shared/map-quiz/tools/mapgen_test.py
+
+      - name: Node tests (engine, per-image data)
+        run: |
+          set -euo pipefail
+          v=$(node -p 'process.versions.node')
+          echo "node $v"
+          if ! node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 12) ? 0 : 1)'; then
+            echo "::error::the node tests need Node 22.12+ (ES modules in .js files without a package.json); this runner has $v"
+            exit 1
+          fi
+          shopt -s nullglob
+          for t in shared/map-quiz/tools/*.test.mjs images/*/tools/*.test.mjs; do
+            echo "::group::$t"
+            node "$t"
+            echo "::endgroup::"
+          done
