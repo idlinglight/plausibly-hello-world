@@ -155,7 +155,11 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   named `image-<name>.yml`, every `gradient-ripple` replaced. The scan, the
   `build-image/**` fan-out and Dependabot find new folders on their own. The
   first publish creates `phw-<name>` already public and linked to this repo
-  (observed 2026-10-31): nothing to set in the package settings.
+  (observed 2026-10-31): nothing to set in the package settings. The
+  README's "Live" column lists the owner's public instances
+  (`<short>.phw.salient.at`); the owner fills it in after deploying, so a
+  new image's row leaves it empty until then. Hostnames only there: no
+  hosting provider or deploy details in the repo.
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
   and BuildKit bumps are proven before merge. Push to main also publishes.
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in
