@@ -110,7 +110,7 @@ synced (Dependabot bumps them per folder).
 ### Map-quiz engine
 
 `shared/map-quiz/`: a map quiz on an inline SVG map, shared by the map
-images (now `europe-quiz`, `vienna-districts`). Its `README.md` has the contracts and the
+images (now `europe-quiz`, `vienna-districts`, `japan-quiz`). Its `README.md` has the contracts and the
 behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
 layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
 (`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`)
@@ -210,6 +210,31 @@ image" below (caller workflow, README row). Engine changes go to
   re-pin procedure in `tools/README.md`. Checks: `node
   tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
   as for europe-quiz.
+- **japan-quiz**: a map-quiz image (engine above) with grouped answers.
+  The map is cut into 64 pieces (`PIECES`): each prefecture's part on its
+  main island (id = the prefecture's, e.g. `niigata`) plus, for 17, an
+  `<id>-isles` piece; Okinawa is one piece. Rounds (`<html data-round>`):
+  `islands` (Honshū, Hokkaidō, Kyūshū, Shikoku; the -isles pieces and
+  Okinawa are inert), `regions` (the standard 8, Mie in Kansai, Okinawa
+  in Kyūshū), `prefectures` (47), `capitals` (only the 18 whose capital's
+  name differs, a data flag: Tōkyō → Shinjuku counts); each round shows
+  its line overlays (coasts, region and prefecture borders). Names in
+  Hepburn with macrons; the card's second line has kanji · hiragana
+  (`sub`, `lang="ja"`), a misclick the kanji. Lake Biwa is a see-through
+  water overlay (a tap picks Shiga). No rings; `config.view`: `maxScale`
+  6, `besideHud`. Okinawa at its real position, no inset (owner's call);
+  the Kuril islands aren't drawn at all (owner: neither clickable nor
+  Japanese-administered), the Senkaku islets stay in Okinawa as Natural
+  Earth has them. Data: Natural Earth v5.1.2 (public domain) admin-1 10m,
+  admin-0 50m (context land) and lakes 10m, sha256-pinned, not
+  committed; `tools/build_map.py` (adapter over mapgen: fix-ups with
+  expected counts and point checks, the piece split, LAEA 35°N 135°E,
+  line overlays from `mapgen.boundary_lines`) and `tools/prefectures.json`
+  (the single source of truth: names, kanji, kana, capitals, regions,
+  islands; every kana checked against its Hepburn name) give
+  `site/map.svg` and `site/japan.js`; fix-ups and pins in
+  `tools/README.md`. Checks: `node tools/data.test.mjs`. Favicon rasters
+  exported once from `favicon.svg` as for europe-quiz.
 
 ## CI
 

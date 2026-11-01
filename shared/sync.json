@@ -8,7 +8,7 @@
   "rules": [
     { "from": "nginx.conf", "to": "nginx.conf", "images": "*" },
     {
-      "from": "map-quiz/site/", "to": "site/", "images": ["europe-quiz", "vienna-districts"],
+      "from": "map-quiz/site/", "to": "site/", "images": ["europe-quiz", "vienna-districts", "japan-quiz"],
       "require": [{ "file": "site/index.html", "pattern": "<html\\b[^>]*\\sdata-quiz=\"{image}\"" }]
     }
   ]

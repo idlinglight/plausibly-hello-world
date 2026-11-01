@@ -9,6 +9,7 @@ But still nice enough to look at to keep deployed on "medium" timescales.
 | `ghcr.io/idlinglight/phw-snake` | A small snake game that plays itself until someone takes over (keys, swipes, taps). | [snake.phw.salient.at](https://snake.phw.salient.at) |
 | `ghcr.io/idlinglight/phw-europe-quiz` | A map quiz: find Europe's countries by name, then by their capitals (click or tap; zoom and pan). | [europe-quiz.phw.salient.at](https://europe-quiz.phw.salient.at) |
 | `ghcr.io/idlinglight/phw-vienna-districts` | A map quiz in German: find Vienna's 23 districts by name, then by number (click or tap; zoom and pan). | [vienna-districts.phw.salient.at](https://vienna-districts.phw.salient.at) |
+| `ghcr.io/idlinglight/phw-japan-quiz` | A map quiz: find Japan's main islands, its 8 regions and 47 prefectures, then the prefectures by their capitals, each name also in kanji and hiragana (click or tap; zoom and pan). | |
 
 The live instances are run by the repo owner and may lag `main`:
 `/version.txt` shows the commit each one runs.

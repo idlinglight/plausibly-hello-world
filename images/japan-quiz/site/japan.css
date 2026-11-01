@@ -1,0 +1,45 @@
+/* Japan Quiz: additions to the shared engine's style.css (linked before
+   this file; token list in shared/map-quiz/README.md, "Styling"). Each
+   token block three times, as in style.css: light, dark by the OS, dark
+   by the toggle. */
+
+/* Region borders: in the prefectures and capitals rounds the prefecture
+   borders are drawn too, so the region borders above them are heavier and
+   a step darker (lighter in dark mode), and the eight regions stay
+   readable as groups. */
+:root {
+  --region-border: #4c585e;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --region-border: #c6d6dd;
+  }
+}
+
+:root[data-theme="dark"] {
+  --region-border: #c6d6dd;
+}
+
+:root[data-round="prefectures"] #overlays #borders-regions,
+:root[data-round="capitals"] #overlays #borders-regions {
+  stroke: var(--region-border);
+  stroke-width: 1.5px;
+}
+
+/* Lake Biwa (overlay "lakes"): water in the sea's colour (the engine's
+   --water) with the coast's hairline. Not a blocking overlay: a click on
+   the lake picks Shiga beneath. */
+#overlays #lakes {
+  stroke: var(--border);
+  stroke-width: 0.75px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The card's second line and the misclick label's kanji: Japanese system
+   fonts first (the engine sets lang="ja" on them). */
+#card [lang|="ja"],
+#label [lang|="ja"] {
+  font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", Meiryo, "Noto Sans CJK JP",
+    "Noto Sans JP", sans-serif;
+}
