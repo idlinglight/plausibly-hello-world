@@ -185,8 +185,11 @@ places along the south-east city limit.
 Colour (`site/vienna.css`): a muted grey-blue, `#b6cfdd` light and
 `#35546a` dark, close in value to the districts; chosen 2026-11-01 from
 three candidates over the earlier, more saturated `#9cc7e4` / `#3b7fae`.
-The border line: `#6f7c83` light, `#8aa4b0` dark (the engine's are
-`#7f8b91` / `#6b8794`), legible over the water and the round colours.
+The border line: `#6f7c83` in light mode (the engine's is `#7f8b91`),
+legible over the water and the round colours; dark mode uses the
+engine's light line over its dark round colours (2026-11-01: at least
+2:1 against every fill, also between two neighbours of the same
+colour).
 
 ## Map geometry
 

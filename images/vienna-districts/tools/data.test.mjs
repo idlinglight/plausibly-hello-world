@@ -79,11 +79,11 @@ check('map.svg: a shape per district in #districts, the water overlay above, the
   assert.ok(!config.blockingOverlays.includes('borders'), 'borders never swallow a tap');
 });
 
-check('vienna.css: background, water and border colours in all three token blocks; the outline is WATER_STROKE; borders above the water', () => {
+check('vienna.css: background and water colours in all three token blocks, a light-mode border line; the outline is WATER_STROKE; borders above the water', () => {
   const css = site('vienna.css');
   assert.equal((css.match(/--sea:/g) || []).length, 3);
   assert.equal((css.match(/--water:/g) || []).length, 3);
-  assert.equal((css.match(/--border:/g) || []).length, 3);
+  assert.equal((css.match(/--border:/g) || []).length, 1, 'light only; dark uses the engine\'s line');
   const strokes = [...css.matchAll(/--overlay-stroke:\s*([\d.]+)px/g)].map((m) => Number(m[1]));
   assert.ok(strokes.length >= 1 && strokes.every((v) => v === WATER_STROKE), `--overlay-stroke ${strokes} vs WATER_STROKE ${WATER_STROKE} (build_map.py checks the gaps)`);
   assert.match(css, /#overlays #borders \{[^}]*fill: none;[^}]*stroke: var\(--border\);[^}]*vector-effect: non-scaling-stroke;/);

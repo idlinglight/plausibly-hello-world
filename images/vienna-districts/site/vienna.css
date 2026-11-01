@@ -17,8 +17,9 @@
    the region outlines are (0.75 px at any zoom). The regions then draw no
    outline of their own, so there is one line, not two; their states
    (hover, found, misclick) are fills and don't need one. --border is a
-   little darker (light) and lighter (dark) than the engine's, so the line
-   stays legible over the water and the round colours. */
+   little darker than the engine's in light mode, so the line stays
+   legible over the water and the round colours; dark mode uses the
+   engine's (a light line over dark round colours). */
 #overlays #borders {
   fill: none;
   stroke: var(--border);
@@ -42,12 +43,10 @@
   :root:not([data-theme="light"]) {
     --sea: #11181c;
     --water: #35546a;
-    --border: #8aa4b0;
   }
 }
 
 :root[data-theme="dark"] {
   --sea: #11181c;
   --water: #35546a;
-  --border: #8aa4b0;
 }
