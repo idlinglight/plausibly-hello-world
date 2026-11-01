@@ -5,7 +5,8 @@ copies `site/` only); its outputs are committed:
 
 - `site/map.svg`: one `<path id="d01">` … `<path id="d23">` per district
   inside `<g id="districts">`, the water as `<path id="water">` in
-  `<g id="overlays">` above them. Nothing around the city. No styling in
+  `<g id="overlays">` above them, and the district borders once more as
+  `<path id="borders">` (open lines) above the water. Nothing around the city. No styling in
   the file: the engine's `style.css` and `site/vienna.css` do that.
 - `site/districts.js`: numbers, official names and the map's window
   (`MAP`). `site/config.js` (hand-written) hands it and the German texts
@@ -142,9 +143,11 @@ then 1.6 units wide, fused it into the Wienfluss as a bump.
 Calm (`tidy_water`, `calm_polygon`): drawn pieces under 1 000 m² or under
 12 m mean width are dropped (bank strips, slivers, the Mauerbach's mouth;
 13 now) unless that would split the water; islands under 10 000 m² are
-filled; wide water (mean width 30 m or more) is simplified by 30 m before
-everything else, so groynes and jetties don't fringe the banks; all water
-outlines get 0.35 units (≈ 11 m) in mapgen.
+filled; wide water (mean width 70 m or more: the Danube, the Neue and
+Alte Donau, the harbours; not the Donaukanal, whose banks the borders
+follow) is simplified by 30 m before everything else, so groynes and
+jetties don't fringe the banks; all water outlines get 0.35 units
+(≈ 11 m) in mapgen.
 
 Gaps: a gap between two drawn pieces is a bridge if their facing banks
 span at most three times the narrower piece's mean width
@@ -162,9 +165,28 @@ build and `data.test.mjs` both check it, via `WATER_STROKE` in
 is: the long vault from the Naschmarkt to the Stadtpark, the square at
 Hietzing (Kennedybrücke, 89 m) and a few wide road crossings stay breaks.
 
+Borders above the water: the districts' outlines run under the water
+overlay, so where the river covers a border (mid-Danube, along the
+Donaukanal, where the city limit crosses the river) the line would vanish
+or peek out between the two separately simplified datasets. The build
+writes every district edge once more, chained into open lines (65, one per
+shared arc and outer arc), as the last overlay `<path id="borders">`;
+`site/vienna.css` draws it as the hairline the region outlines were (0.75
+px, `--border`) and turns the region outlines off, so there is one line.
+It's an overlay, so it is never hit: a tap on a border over land goes to
+the district beneath, a tap on the water still does nothing. Where a
+water edge stops short of a border that runs beside it, its vertices
+within `SNAP` (1 unit ≈ 31 m) move onto the border and the edge follows
+the line between them (only outward; a border inside the water is left
+alone; 126 vertices now), so no strip of district colour shows between
+water and line; at the closest zoom a 1-px sliver remains in a few
+places along the south-east city limit.
+
 Colour (`site/vienna.css`): a muted grey-blue, `#b6cfdd` light and
 `#35546a` dark, close in value to the districts; chosen 2026-11-01 from
 three candidates over the earlier, more saturated `#9cc7e4` / `#3b7fae`.
+The border line: `#6f7c83` light, `#8aa4b0` dark (the engine's are
+`#7f8b91` / `#6b8794`), legible over the water and the round colours.
 
 ## Map geometry
 
@@ -180,6 +202,7 @@ three candidates over the earlier, more saturated `#9cc7e4` / `#3b7fae`.
   (`REGION_TOL`, mapgen's `region_tol`) leaves 1 792. The script asserts 0
   arc crossings and one outline per district. Water: outside the shared
   topology, see "Water".
-- Size: `map.svg` 25 KB, 11 KB as served (gzip -1). The smallest districts
+- Size: `map.svg` 38 KB, 16 KB as served (gzip -1; the borders layer adds
+  about a third). The smallest districts
   at a 390 px phone's full view: Josefstadt 16 px, Neubau 22 px across;
   zoom (up to 6 px per unit, `config.view.maxScale`) is enough, no rings.

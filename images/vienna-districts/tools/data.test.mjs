@@ -68,20 +68,26 @@ check('index.html: German, data-quiz names this image, own stylesheet after the 
   assert.match(html, /<span id="progress" class="num">0 \/ 23<\/span>/);
 });
 
-check('map.svg: a shape per district in #districts, the water overlay above', () => {
+check('map.svg: a shape per district in #districts, the water overlay above, the borders above that', () => {
   const svg = site('map.svg');
   assert.ok(svg.includes(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 ${MAP.height}">`));
   for (const d of DISTRICTS) assert.ok(svg.includes(`<path id="${d.id}" `), d.id);
   assert.ok(svg.indexOf('<g id="districts">') < svg.indexOf('<g id="overlays">\n<path id="water" d="m'));
-  assert.equal((svg.match(/ id="/g) || []).length, 23 + 3);
+  const borders = svg.match(/<path id="borders" d="(m[^"z]+)"\/>\n<\/g>\n<\/svg>/);
+  assert.ok(borders && svg.indexOf('<path id="water"') < svg.indexOf('<path id="borders"'), 'borders: the last overlay, open lines');
+  assert.equal((svg.match(/ id="/g) || []).length, 23 + 4);
+  assert.ok(!config.blockingOverlays.includes('borders'), 'borders never swallow a tap');
 });
 
-check('vienna.css: background and water colours in all three token blocks; the outline is WATER_STROKE', () => {
+check('vienna.css: background, water and border colours in all three token blocks; the outline is WATER_STROKE; borders above the water', () => {
   const css = site('vienna.css');
   assert.equal((css.match(/--sea:/g) || []).length, 3);
   assert.equal((css.match(/--water:/g) || []).length, 3);
+  assert.equal((css.match(/--border:/g) || []).length, 3);
   const strokes = [...css.matchAll(/--overlay-stroke:\s*([\d.]+)px/g)].map((m) => Number(m[1]));
   assert.ok(strokes.length >= 1 && strokes.every((v) => v === WATER_STROKE), `--overlay-stroke ${strokes} vs WATER_STROKE ${WATER_STROKE} (build_map.py checks the gaps)`);
+  assert.match(css, /#overlays #borders \{[^}]*fill: none;[^}]*stroke: var\(--border\);[^}]*vector-effect: non-scaling-stroke;/);
+  assert.match(css, /\.regions path \{\s*stroke: none;\s*\}/);
 });
 
 console.log(`${checks} checks passed`);

@@ -12,9 +12,29 @@
    block three times, as in style.css: light, dark by the OS, dark by the
    toggle. */
 
+/* District borders above the water: map.svg's #borders (an overlay, so
+   never hit) draws every border once, after #water, as the same hairline
+   the region outlines are (0.75 px at any zoom). The regions then draw no
+   outline of their own, so there is one line, not two; their states
+   (hover, found, misclick) are fills and don't need one. --border is a
+   little darker (light) and lighter (dark) than the engine's, so the line
+   stays legible over the water and the round colours. */
+#overlays #borders {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 0.75px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.regions path {
+  stroke: none;
+}
+
 :root {
   --sea: #dfdbd2;
   --water: #b6cfdd;
+  --border: #6f7c83;
   --overlay-stroke: 0.9px;
 }
 
@@ -22,10 +42,12 @@
   :root:not([data-theme="light"]) {
     --sea: #11181c;
     --water: #35546a;
+    --border: #8aa4b0;
   }
 }
 
 :root[data-theme="dark"] {
   --sea: #11181c;
   --water: #35546a;
+  --border: #8aa4b0;
 }

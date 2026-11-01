@@ -192,7 +192,9 @@ image" below (caller workflow, README row). Engine changes go to
   `WATER_STROKE`) for the rest; a click on it does nothing
   (`config.blockingOverlays`, owner's call). Ponds and side features near
   the rivers are cut or left out explicitly (`tools/districts.json`
-  `water_cut` / `water_out`), never joined by proximity.
+  `water_cut` / `water_out`), never joined by proximity. The district
+  borders are drawn once more above the water (`#borders`, an overlay:
+  never hit), the regions without their own outline.
   `config.view`: `maxScale` 6, `besideHud`. Data:
   Stadt Wien open data (CC BY 4.0; the attribution line is on the page),
   district boundaries and Realnutzungskartierung 2024 water, both

@@ -44,9 +44,14 @@ Pipeline:
      outline) must be closer than WATER_STROKE in the final map.svg, so
      the overlay's outline (site/vienna.css --overlay-stroke, checked to be
      WATER_STROKE) closes what the patches leave.
-  6. Write map.svg (one <path> per district in <g id="districts">, the
-     water in <g id="overlays">) and districts.js (numbers, names, MAP,
-     WATER_STROKE).
+  6. Borders above the water: every district edge once, chained into
+     open lines, as the last overlay (<path id="borders">, stroke only in
+     site/vienna.css, never hit), so the borders run on unbroken across
+     the rivers. Water edges within SNAP inside a border move onto it (no
+     strips of district colour between water and line).
+  7. Write map.svg (one <path> per district in <g id="districts">, the
+     water and the borders in <g id="overlays">) and districts.js
+     (numbers, names, MAP, WATER_STROKE).
 """
 import argparse
 import csv
@@ -94,8 +99,10 @@ MIN_PIECE = 1000.0  # m²: smaller drawn pieces are dropped …
 MIN_WIDTH = 12.0    # … and narrower ones (metres, mean width 2·area/perimeter: bank strips, slivers),
                     # unless that would split drawn water
 HOLE_MIN = 10000.0  # m²: smaller islands inside drawn water are filled
-WIDE = 30.0         # metres (mean width): wide water (Danube, Alte Donau, harbours) …
+WIDE = 70.0         # metres (mean width): wide water (Danube, Neue/Alte Donau, harbours; not the Donaukanal) …
 WIDE_TOL = 30.0     # … is simplified this much first (metres): calm banks without groynes and jetties
+SNAP = 1.0          # map units: a water edge this close inside a district border moves onto it (no strips
+                    # of district colour between the water and the border line drawn above it)
 WATER_STROKE = 0.9  # map units: the water outline (vienna.css --overlay-stroke); every bridge must end up
                     # closer than this in map.svg
 
@@ -639,6 +646,140 @@ def final_gaps(polys, keep, links, water_d, window):
     return worst, len(lost)
 
 
+def border_lines(paths, ids, grid):
+    """The districts' borders, each once: every edge of the district
+    outlines (shared borders come twice, as identical vertices) chained
+    into polylines between junctions; closed loops start at their smallest
+    point. Deterministic. Integer points (1/grid units)."""
+    edges = set()
+    for rid in ids:
+        for ring in path_rings(paths[rid], grid):
+            for k in range(len(ring)):
+                a, b = ring[k - 1], ring[k]
+                if a != b:
+                    edges.add((min(a, b), max(a, b)))
+    nbrs = {}
+    for a, b in edges:
+        nbrs.setdefault(a, []).append(b)
+        nbrs.setdefault(b, []).append(a)
+    for v in nbrs.values():
+        v.sort()
+    used = set()
+
+    def walk(a, b):
+        line = [a, b]
+        used.add((min(a, b), max(a, b)))
+        while len(nbrs[b]) == 2:
+            c = nbrs[b][0] if nbrs[b][1] == a else nbrs[b][1]
+            e = (min(b, c), max(b, c))
+            if e in used:
+                break
+            used.add(e)
+            line.append(c)
+            a, b = b, c
+        return line
+
+    lines = []
+    for v in sorted(p for p, n in nbrs.items() if len(n) != 2):
+        for w in nbrs[v]:
+            if (min(v, w), max(v, w)) not in used:
+                lines.append(walk(v, w))
+    for v in sorted(nbrs):  # closed loops without a junction
+        for w in nbrs[v]:
+            if (min(v, w), max(v, w)) not in used:
+                lines.append(walk(v, w))
+    return lines
+
+
+def lines_d(lines, dec):
+    """Polylines of integer points -> compact relative path data, open
+    subpaths (no 'z'): each 'm' is relative to the previous line's end."""
+    out = []
+    prev = None
+
+    def num(t):
+        nonlocal prev
+        if prev is not None and not (t[0] == "-" or (t[0] == "." and "." in prev)):
+            out.append(" ")
+        out.append(t)
+        prev = t
+
+    last = (0, 0)
+    for line in lines:
+        out.append("m")
+        prev = None
+        px, py = last
+        for x, y in line:
+            num(mapgen.fmt_fixed(x - px, dec))
+            num(mapgen.fmt_fixed(y - py, dec))
+            px, py = x, y
+        last = (px, py)
+    return "".join(out)
+
+
+def snap_to_borders(water_d, lines, dec):
+    """Water path data with every vertex that lies within SNAP inside of a
+    district border (the nearest border point outside its ring: water would
+    stop short of the line) moved onto that border, and between two such
+    neighbours on the same border line the water edge follows the line's
+    own vertices. Only outward, so water never shrinks and a border inside
+    the water (mid-river) is left alone. Returns (path data, vertices moved)."""
+    g = 10 ** dec
+    tol = SNAP * g
+    cell = 2 * g
+    index = {}
+    for li, line in enumerate(lines):
+        for si, (a, b) in enumerate(zip(line, line[1:])):
+            for cx in range(min(a[0], b[0]) // cell, max(a[0], b[0]) // cell + 1):
+                for cy in range(min(a[1], b[1]) // cell, max(a[1], b[1]) // cell + 1):
+                    index.setdefault((cx, cy), []).append((li, si, a, b))
+
+    def nearest(x, y):
+        best = None
+        for cx in range(int((x - tol) // cell), int((x + tol) // cell) + 1):
+            for cy in range(int((y - tol) // cell), int((y + tol) // cell) + 1):
+                for li, si, (ax, ay), (bx, by) in index.get((cx, cy), ()):
+                    dx, dy = bx - ax, by - ay
+                    t = 0.0 if not (dx or dy) else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
+                    qx, qy = ax + t * dx, ay + t * dy
+                    d2 = (qx - x) ** 2 + (qy - y) ** 2
+                    if d2 <= tol * tol and (best is None or (d2, li, si) < best[:3]):
+                        best = (d2, li, si, t, (round(qx), round(qy)))
+        return best
+
+    rings, moved = [], 0
+    for ring in path_rings(water_d, g):
+        outer = mapgen.area2(ring) > 0
+        pts, where = [], []
+        for x, y in ring:
+            hit = nearest(x, y)
+            if hit and hit[4] != (x, y) and mapgen.in_ring(hit[4][0], hit[4][1], ring) != outer:
+                pts.append(hit[4])
+                where.append((hit[1], hit[2] + hit[3]))  # line, position along it
+                moved += 1
+            else:
+                pts.append((x, y))
+                where.append(None)
+        new = []
+        n = len(pts)
+        for k in range(n):
+            new.append(pts[k])
+            a, b = where[k], where[(k + 1) % n]
+            if a and b and a[0] == b[0]:
+                line = lines[a[0]]
+                lo, hi = sorted((a[1], b[1]))
+                between = line[int(lo) + 1:int(hi) + 1] if hi > int(lo) + 1 else []
+                if a[1] > b[1]:
+                    between = between[::-1]
+                run = sum(math.dist(p, q) for p, q in zip([pts[k]] + between, between + [pts[(k + 1) % n]]))
+                if between and run <= 3 * math.dist(pts[k], pts[(k + 1) % n]) + 2 * g and len(between) <= 60:
+                    new.extend(between)
+        new = [p for k, p in enumerate(new) if p != new[k - 1]]
+        ok = len(set(new)) >= 3 and (mapgen.area2(new) > 0) == outer
+        rings.append(new if ok else ring)
+    return mapgen.path_d(rings, dec), moved
+
+
 def check_stylesheet():
     with open(STYLESHEET, encoding="utf-8") as fh:
         css = fh.read()
@@ -680,6 +821,14 @@ def build(districts_path, water_path):
             fail(f"{rid}: {n} rings, expected one outline")
     if "water" not in res.overlays:
         fail("no water left to draw")
+    # The borders once more, above the water (an overlay: never hit), so they
+    # run on unbroken where the river covers them; the water reaches them.
+    lines = border_lines(res.paths, ids, GRID)
+    dec = round(math.log10(GRID))
+    res.overlays["water"], moved = snap_to_borders(res.overlays["water"], lines, dec)
+    res.overlays["borders"] = lines_d(lines, dec)
+    notes.append(f"borders: {len(lines)} lines, {sum(len(ln) for ln in lines)} points, drawn above the water; "
+                 f"{moved} water vertices moved onto a border")
     (gap, at), lost = final_gaps(opened, pieces, links, res.overlays["water"], window)
     if lost:
         fail(f"{lost} drawn water pieces not found in map.svg's water (dropped as specks?)")
@@ -688,7 +837,6 @@ def build(districts_path, water_path):
         fail(f"water: a gap of {gap:.2f} units{where} in map.svg separates connected pieces (touching or bridged); "
              f"the {WATER_STROKE:g}-unit outline doesn't close it")
     notes.append(f"water: widest gap in map.svg the outline has to close: {gap:.2f} units (outline {WATER_STROKE:g})")
-
     svg_text = mapgen.map_svg(res, ids, HEAD, group_id="districts")
     js = [
         f"// {HEAD}",
