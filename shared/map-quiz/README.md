@@ -232,11 +232,12 @@ raw = mapgen.read_pinned(path, SHA256, SIZE, URL)      # BuildError on mismatch
 project = mapgen.Identity()       # input already projected (e.g. EPSG:31256), or
 # mapgen.epsg3035() / LambertAzimuthalEqualArea(...) / TransverseMercator(lon0, ...)
 window = mapgen.Window(points_metres, margin=0.03, width=1000.0, extent=(0, 0))
-mb = mapgen.MapBuilder(project, window, region_ids, grid=10)
+mb = mapgen.MapBuilder(project, window, region_ids, grid=10)  # + region_tol=0.25 for dense input
 for rid, poly in regions:   mb.add_region(rid, poly)   # mapgen.parse_wkt / polys_of
 for poly in context:        mb.add_context(poly)       # optional
 for poly in water:          mb.add_overlay("water", poly)
 res = mb.build(keep_islands=ringed_ids)
+assert res.stats["crossings"] == 0  # (raise BuildError) when region arcs are simplified
 svg = mapgen.map_svg(res, region_ids, HEAD, group_id="regions")
 js = "\n".join([f"// {HEAD}", "", window.map_js(), "", "export const DISTRICTS = [", …, "];", ""])
 sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.report(region_ids)))
@@ -254,10 +255,16 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   remote parts, which may be clipped at the extent); vertices snap to
   1/`grid`; parts of a region merge, neighbours share border vertices
   (shared arcs), unshared specks below `min_island` are dropped (never for
-  `keep_islands`), only context-only arcs are simplified
-  (`context_tol`, `far_tol` beyond `far_gap`), overlays get `overlay_tol`
-  and stay outside the shared topology. A region lost to the grid keeps
-  its outline at 10× finer resolution.
+  `keep_islands`), context-only arcs are simplified (`context_tol`,
+  `far_tol` beyond `far_gap`), overlays get `overlay_tol` and stay outside
+  the shared topology. Region arcs keep every vertex unless `region_tol`
+  is set (Douglas-Peucker on the shared arcs, so neighbours stay
+  gap-free): europe's Natural Earth data is coarse enough as it is, city
+  data densified to centimetre steps (vienna-districts) is not.
+  Simplification can make arcs cross; `res.stats["crossings"]` counts
+  them (the report prints it; europe's 5 are all in context land) and an
+  adapter that simplifies region arcs should require 0. A region lost to
+  the grid keeps its outline at 10× finer resolution.
 - Feed polygons in a fixed order: the output depends on it, and the same
   inputs in the same order give byte-identical files. `emit` writes, or
   with `check` compares and returns 1 on a difference, and prints sizes

@@ -9,8 +9,8 @@ lon/lat to a MapBuilder, in a fixed order: the output depends on it, and
 the same inputs in the same order give byte-identical output."""
 import math
 
-from .geometry import (area2, bbox, build_topology, clip_ring, dissolve, douglas_peucker, open_ring,
-                       ring_from_arcs, simplify_arc)
+from .geometry import (area2, bbox, build_topology, clip_ring, count_crossings, dissolve, douglas_peucker,
+                       open_ring, ring_from_arcs, simplify_arc)
 from .output import BuildError
 from .svg import path_d
 
@@ -68,7 +68,9 @@ class Result:
             "window": f"0 0 {self.window.width:g} {self.window.height:g}",
             "viewBox (extent)": self.window.viewbox(),
             "arcs": s["arcs"],
-            "points": f"{s['points_before']} -> {s['points_after']} (context-only arcs simplified)",
+            "points": f"{s['points_before']} -> {s['points_after']} ("
+                      f"{'all arcs' if s['region_tol'] else 'context-only arcs'} simplified)",
+            "arc crossings": s["crossings"],
             "dropped islands": s["dropped"],
             "clipped parts": sorted(set(s["clipped"])) or "none",
             "overlays": ", ".join(self.overlays) or "none",
@@ -85,10 +87,13 @@ class MapBuilder:
     context_tol / far_tol: Douglas-Peucker for arcs only context land uses,
     near / beyond far_gap around the window (far_min_island: context
     islands entirely out there are dropped below this area); overlay_tol:
-    Douglas-Peucker for overlays. Region arcs are never simplified."""
+    Douglas-Peucker for overlays; region_tol: Douglas-Peucker for every arc
+    a region uses (0, the default: region arcs keep every vertex). Arcs are
+    shared, so neighbours stay gap-free either way; Result.stats["crossings"]
+    counts the crossings simplification made (assert 0 in the adapter)."""
 
     def __init__(self, project, window, regions, *, grid=10, min_island=0.3, context_tol=0.2, far_tol=1.5,
-                 far_min_island=4, far_gap=20, overlay_tol=0.2):
+                 far_min_island=4, far_gap=20, overlay_tol=0.2, region_tol=0):
         self.dec = round(math.log10(grid))
         if 10 ** self.dec != grid:
             raise ValueError("grid must be a power of 10")
@@ -96,6 +101,7 @@ class MapBuilder:
         self.regions = list(regions)
         self.min_island, self.context_tol, self.far_tol = min_island, context_tol, far_tol
         self.far_min_island, self.far_gap, self.overlay_tol = far_min_island, far_gap, overlay_tol
+        self.region_tol = region_tol
         self.features = {}  # fid -> snapped rings; insertion order = first add
         self.overlay_rings = {}
         self.source = {}    # region id -> lon/lat polygons (for the below-the-grid fallback)
@@ -216,8 +222,11 @@ class MapBuilder:
                 for ref in ring:
                     arc_users[ref if ref >= 0 else ~ref].add(fid)
         n_before = sum(len(a) for a in arcs)
-        arcs = [simplify_context(a) if users == {CONTEXT} else a for a, users in zip(arcs, arc_users)]
+        rt = self.region_tol * g
+        arcs = [simplify_context(a) if users == {CONTEXT} else simplify_arc(a, rt) if rt else a
+                for a, users in zip(arcs, arc_users)]
         n_after = sum(len(a) for a in arcs)
+        crossings = count_crossings(arcs)
 
         paths, sizes = {}, {}
         for fid, refs in topo.items():
@@ -262,5 +271,5 @@ class MapBuilder:
                 overlays[oid] = path_d(rings, self.dec)
 
         stats = {"arcs": len(arcs), "points_before": n_before, "points_after": n_after, "dropped": dropped,
-                 "clipped": self.clipped, "notes": notes}
+                 "clipped": self.clipped, "notes": notes, "crossings": crossings, "region_tol": self.region_tol}
         return Result(w, CONTEXT, paths, sizes, overlays, stats)

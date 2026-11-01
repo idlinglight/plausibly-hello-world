@@ -280,6 +280,45 @@ def simplify_arc(a, tol):
     return douglas_peucker(a, tol)
 
 
+def count_crossings(arcs):
+    """Proper crossings between the segments of all arcs (integer points;
+    segments that only touch, e.g. at a shared vertex, don't count). A
+    shared-arc topology has none; simplification can make some, which
+    would show as overlaps or slivers between neighbours."""
+    segs = [(p, q) for a in arcs for p, q in zip(a, a[1:]) if p != q]
+    if not segs:
+        return 0
+    # Grid buckets about four average segments wide; a pair is tested only in
+    # the cell holding the low corner of their bounding boxes' overlap.
+    cell = max(1, 4 * sum(abs(q[0] - p[0]) + abs(q[1] - p[1]) for p, q in segs) // len(segs))
+    grid = {}
+    for i, (p, q) in enumerate(segs):
+        for cx in range(min(p[0], q[0]) // cell, max(p[0], q[0]) // cell + 1):
+            for cy in range(min(p[1], q[1]) // cell, max(p[1], q[1]) // cell + 1):
+                grid.setdefault((cx, cy), []).append(i)
+
+    def orient(a, b, c):
+        v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        return (v > 0) - (v < 0)
+
+    n = 0
+    for (cx, cy), members in grid.items():
+        for k, i in enumerate(members):
+            p, q = segs[i]
+            for j in members[k + 1:]:
+                r, s = segs[j]
+                ox, oy = max(min(p[0], q[0]), min(r[0], s[0])), max(min(p[1], q[1]), min(r[1], s[1]))
+                if ox // cell != cx or oy // cell != cy:
+                    continue
+                if ox > min(max(p[0], q[0]), max(r[0], s[0])) or oy > min(max(p[1], q[1]), max(r[1], s[1])):
+                    continue
+                if p in (r, s) or q in (r, s):
+                    continue
+                if orient(p, q, r) * orient(p, q, s) < 0 and orient(r, s, p) * orient(r, s, q) < 0:
+                    n += 1
+    return n
+
+
 def ring_from_arcs(refs, arcs):
     pts = []
     for ref in refs:

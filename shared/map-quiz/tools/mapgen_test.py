@@ -168,6 +168,34 @@ class Pipeline(unittest.TestCase):
         self.assertEqual(re.findall(r'id="([^"]+)"', svg), ["districts", "d01"])
         self.assertEqual(window.map_js(), "export const MAP = { width: 1000, height: 1000, extent: [-100, -100, 1200, 1200] };")
 
+    def test_region_tol(self):
+        """A densified, wobbly shared border (as in city data): region_tol
+        thins it on the shared arc, so both neighbours keep identical
+        vertices; 0 (the default) keeps every vertex."""
+        def build(**kw):
+            window = mapgen.Window([(0, 0), (2000, 1000)], 0, 1000.0, (0, 0))
+            wobble = [(1000 + (3 if i % 2 else -3), 1000 - i * 10) for i in range(101)]  # x = 1000 ± 3 m
+            a = [(0, 0), (1000, 0)] + wobble[::-1][1:-1] + [(1000, 1000), (0, 1000)]
+            b = [(1000, 0), (2000, 0), (2000, 1000), (1000, 1000)] + wobble[1:-1]
+            mb = mapgen.MapBuilder(mapgen.Identity(), window, ["d01", "d02"], **kw)
+            mb.add_region("d01", [a + [a[0]]])
+            mb.add_region("d02", [b + [b[0]]])
+            return mb.build()
+        full, thin = build(), build(region_tol=2)  # 2 units = 4 m > the 1.5-unit wobble
+        self.assertEqual(full.stats["points_after"], full.stats["points_before"])
+        self.assertLess(thin.stats["points_after"], full.stats["points_after"] - 90)
+        a, b = (set(rings_of(thin.paths[r])[0]) for r in ("d01", "d02"))
+        self.assertEqual(a & b, {(500, 0), (500, 500)})  # the shared border is one straight arc now
+        self.assertEqual(thin.stats["crossings"], 0)
+        self.assertIn("all arcs simplified", thin.report(["d01", "d02"])["points"])
+
+    def test_count_crossings(self):
+        self.assertEqual(mapgen.count_crossings([[(0, 0), (10, 10)], [(0, 10), (10, 0)]]), 1)
+        self.assertEqual(mapgen.count_crossings([[(0, 0), (10, 10), (20, 0)], [(10, 10), (10, 30)]]), 0)  # shared vertex
+        self.assertEqual(mapgen.count_crossings([[(0, 0), (10, 0)], [(5, 0), (5, 9)]]), 0)  # touching, not crossing
+        self.assertEqual(mapgen.count_crossings([[(0, 0), (100, 0), (100, 10), (50, -5), (0, 10)]]), 2)  # itself, twice
+        self.assertEqual(mapgen.count_crossings([]), 0)
+
     def test_pinned_read(self):
         path = os.path.abspath(__file__)
         with open(path, "rb") as fh:
