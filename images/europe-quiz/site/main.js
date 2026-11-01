@@ -15,7 +15,7 @@
 //
 // Input: a press that moves more than SLOP px is a pan, never a click; two
 // fingers pinch-zoom (and pan); a mouse wheel zooms at the cursor, a
-// trackpad's two-finger scroll pans (onWheel: classified per gesture), and
+// trackpad's two-finger scroll pans (onWheel; wheel.js decides per gesture), and
 // a pinch or ctrl + wheel anywhere on the page zooms the map, not the page;
 // buttons and + / - / 0 / arrow keys zoom and pan with a short animation. A click
 // picks a small country's ring if it lands inside the drawn ring, or within
@@ -34,6 +34,7 @@
 
 import { MAP, COUNTRIES } from './countries.js';
 import { Quiz } from './quiz.js';
+import { wheelKind } from './wheel.js';
 
 const STATE_KEY = 'phw-europe-quiz';
 const LANDSCAPE = '(min-aspect-ratio: 4/3)'; // same query as in style.css
@@ -502,39 +503,6 @@ function onUp(e, cancelled) {
   if (e.pointerType === 'mouse') queueHover(e.clientX, e.clientY);
 }
 
-// Trackpad or mouse wheel, from the first wheel event of a gesture (no
-// browser says which). In order:
-// 1. deltaMode LINE / PAGE → mouse. Firefox reports mouse wheels in lines
-//    and precise devices in pixels, but only if deltaMode is read before
-//    deltaX / deltaY (otherwise it converts lines to pixels for old pages),
-//    so onWheel reads it first. Chrome and Safari always report pixels.
-// 2. deltaX ≠ 0 → trackpad: a mouse wheel scrolls one axis. (Shift + wheel
-//    on macOS gives deltaX too; it pans sideways then, which is fine.)
-// 3. Non-standard wheelDeltaY (Chrome, Safari): precise (trackpad) deltas
-//    come with wheelDeltaY ≈ −3 × deltaY → trackpad; mouse notches are
-//    counted in ticks, a multiple of ±120 → mouse. Anything else falls
-//    through. Seen in headless Chrome: CDP mouseWheel events always carry
-//    ±120 (they look like notches whatever their size); a script-made
-//    WheelEvent without wheelDeltaY gets trunc(deltaY), which falls through.
-// 4. Otherwise: fractional or small pixel steps → trackpad, whole steps of
-//    40 px or more → mouse.
-// Failure modes: a mouse with smooth scrolling (high-resolution wheels,
-// macOS acceleration, vendor "smooth scrolling") can report trackpad-like
-// deltas and then pans instead of zooming; ctrl + wheel, pinch, the buttons
-// and the keys still zoom. A trackpad flick that opens with a whole step of
-// 40 px or more and no telling wheelDeltaY (e.g. some Windows touchpads)
-// zooms for that gesture.
-function wheelKind(mode, e) {
-  if (mode !== 0) return 'mouse';
-  if (e.deltaX !== 0) return 'trackpad';
-  const w = e.wheelDeltaY;
-  if (typeof w === 'number' && w !== 0) {
-    if (Math.abs(w + 3 * e.deltaY) <= 1) return 'trackpad';
-    if (w % 120 === 0) return 'mouse';
-  }
-  return Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 40 ? 'mouse' : 'trackpad';
-}
-
 // On window, not the SVG: a ctrl-wheel (Chrome / Firefox trackpad pinch,
 // ctrl + mouse wheel) over the card or the controls would otherwise zoom
 // the whole page; it zooms the map at the cursor. A plain wheel over the
@@ -546,7 +514,7 @@ let wheelGesture = null; // 'trackpad' | 'mouse' while a gesture lasts
 let wheelAt = -Infinity;
 
 function onWheel(e) {
-  const mode = e.deltaMode; // before deltaX / deltaY, see wheelKind
+  const mode = e.deltaMode; // before deltaX / deltaY, see wheel.js
   const onMap = !!svg && svg.contains(e.target);
   if (!onMap && !e.ctrlKey) return; // plain wheel over the HUD: nothing to do
   e.preventDefault();
@@ -559,7 +527,10 @@ function onWheel(e) {
     // trackpad pinches send small deltas: zoom faster per unit
     zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * unit * 0.01));
   } else {
-    if (!wheelGesture || now - wheelAt > WHEEL_GAP_MS) wheelGesture = wheelKind(mode, e);
+    if (!wheelGesture || now - wheelAt > WHEEL_GAP_MS) wheelGesture = wheelKind(
+      { deltaMode: mode, deltaX: e.deltaX, deltaY: e.deltaY, wheelDeltaY: e.wheelDeltaY },
+      window.devicePixelRatio || 1,
+    );
     if (wheelGesture === 'trackpad') panBy(-e.deltaX * unit, -e.deltaY * unit);
     else zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * unit * 0.002));
   }

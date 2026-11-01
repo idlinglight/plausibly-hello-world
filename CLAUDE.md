@@ -137,8 +137,12 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   zoom and pan. Zoom: pinch (touch, trackpad), mouse wheel and ctrl +
   wheel (at the cursor), buttons, `+ - 0` keys. Pan: drag, a trackpad's
   two-finger scroll, arrow keys. Wheel events are classified per gesture
-  as trackpad or mouse (heuristic and its failure modes in `main.js`
-  `wheelKind`; a smooth-scrolling mouse may pan instead of zoom). A press
+  as trackpad or mouse by `site/wheel.js` (DOM-free; rules from real
+  macOS recordings in Safari, Chrome, Firefox at 100 % and 125 % zoom:
+  trackpads send whole CSS or device pixels, mice fractional steps or
+  lines). `node tools/wheel.test.mjs` replays those recordings
+  (`tools/wheel-fixture.json`); re-record and extend it when a device
+  misbehaves. A press
   that moves more than 5–10 px is a pan, never a click. The
   full view fits the window around all quiz countries; the SVG draws more
   context around it, faded out, so tall or wide screens show map. Two

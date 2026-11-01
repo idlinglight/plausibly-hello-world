@@ -21,6 +21,7 @@ mkdir -p /tmp/ne && curl -fsSL -o /tmp/ne/ne_50m_admin_0_countries.geojson \
 python3 -I images/europe-quiz/tools/build_map.py /tmp/ne/ne_50m_admin_0_countries.geojson
 python3 -I images/europe-quiz/tools/build_map.py /tmp/ne/ne_50m_admin_0_countries.geojson --check  # files up to date?
 node images/europe-quiz/tools/quiz.test.mjs   # checks of site/quiz.js (Node 22.12+)
+node images/europe-quiz/tools/wheel.test.mjs  # site/wheel.js against recorded wheel events
 ```
 
 Python 3.9+, standard library only. The script verifies the input's sha256
