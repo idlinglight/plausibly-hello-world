@@ -4,7 +4,8 @@ name: shared-sync
 # into the image folders (each is its own build context), committed:
 # shared/sync.py, rules in shared/sync.json. This workflow fails if a copy
 # differs from its source, and runs the map-quiz engine's tests:
-#   - python3 shared/sync.py --check
+#   - python3 shared/sync.py --check (copies, stale copies, the manifest,
+#     each rule's required files), and sync.py itself on scratch repos
 #   - the generator core on synthetic data (mapgen_test.py, stdlib unittest)
 #   - node tests: shared/map-quiz/tools/*.test.mjs (quiz rules, config
 #     contract, wheel replay) and images/*/tools/*.test.mjs (each image's
@@ -46,6 +47,9 @@ jobs:
 
       - name: Synced copies match shared/
         run: python3 shared/sync.py --check
+
+      - name: Sync script (scratch repositories)
+        run: python3 -I shared/sync_test.py
 
       - name: Map generator core (synthetic data)
         run: python3 -I shared/map-quiz/tools/mapgen_test.py
