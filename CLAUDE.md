@@ -11,6 +11,8 @@ images/<name>/        one folder = one image, build context = this folder
   Dockerfile
   nginx.conf          → /etc/nginx/conf.d/default.conf
   site/               → /usr/share/nginx/html/ (static files, no build step)
+  tools/              optional: offline generators for data in site/ — not
+                      shipped, outputs committed (europe-quiz's map)
 .github/
   dependabot.yml
   workflows/
@@ -110,6 +112,39 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   `game.js` and `autopilot.js` have no DOM, so they also run under plain
   node. Favicon raster files are exports of `favicon.svg` (`.ico` = one
   32 px PNG inside an ICO; the touch icon without the rounded corners).
+- **europe-quiz**: inline SVG map, no canvas. 46 quiz countries (the UN
+  geoscheme's Europe minus Russia, plus Kosovo, Cyprus, Türkiye); all other
+  land is muted, non-interactive context. Border view EU/Austrian (Crimea →
+  Ukraine, Northern Cyprus → Cyprus, Kosovo separate, Transnistria →
+  Moldova); names and capitals in English per the EU Interinstitutional
+  Style Guide. Data: `tools/build_map.py` (Python stdlib, deterministic,
+  `--check`) turns Natural Earth 50m v5.1.2 (public domain, sha256-pinned,
+  not committed) and `tools/countries.json` (the single source of truth:
+  codes, names, capitals, marker points) into `site/map.svg` and
+  `site/countries.js`, committed with a "generated" header; fix-ups,
+  window and remote parts in `tools/README.md`. `map.svg` is fetched and
+  inserted (gzip and MIME already covered by `nginx.conf`). Rounds
+  alternate: every country by name, then by capital, each shuffled; a
+  correct pick colours the country (A in name rounds, B in capital rounds:
+  the map recolours round by round, blank only after a reset); a misclick
+  counts, blinks and shows the name (+ capital) for 1.5 s. Reset asks
+  twice. Vatican, Monaco, San Marino, Liechtenstein, Andorra, Malta and
+  Luxembourg get rings with a generous hit area that win over the shapes
+  beneath (nearest ring wins); a ring hides once its country is 28 px
+  across. Zoom: pinch, wheel (at the cursor), buttons, `+ - 0` keys; drag
+  pans; a press that moves more than 5–10 px is a pan, never a click. The
+  full view fits the window around all quiz countries; the SVG draws more
+  context around it, faded out, so tall or wide screens show map. Two
+  layouts (`min-aspect-ratio: 4/3` in `style.css` and `main.js`). Theme
+  follows the OS; the toggle stores the other theme, pressing again clears
+  it, and an override that matches the OS is dropped (`theme.js`, a
+  classic script in `<head>`: no flash). `?seed=<int>` makes the shuffles
+  reproducible (stored state with another seed is replaced);
+  `<html data-round>` (`countries`, `capitals`), `data-progress`,
+  `data-zoom`, `data-theme`, `data-theme-pref`, `data-ready`. Quiz state
+  lives in `localStorage` (optional). `quiz.js` has no DOM (checks: `node
+  tools/quiz.test.mjs`). Favicon rasters exported once from `favicon.svg`
+  with headless Chrome (`.ico` = one 32 px PNG; touch icon square).
 
 ## CI
 
