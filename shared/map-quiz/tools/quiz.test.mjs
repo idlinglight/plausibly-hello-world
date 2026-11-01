@@ -446,6 +446,54 @@ check('save fingerprint: grouped kinds record their answers and asked sets, one-
   assert.equal(Quiz.restore({ ...saved, groups: 7 }, P, KINDS), null);
 });
 
+check('carryColours false: each round starts blank; true (the default) carries the colours', () => {
+  for (const kinds of [2, KINDS]) {
+    const set = kinds === 2 ? ids : P;
+    const q = new Quiz(set, 6, kinds, { carryColours: false });
+    const keep = new Quiz(set, 6, kinds);
+    const def = new Quiz(set, 6, kinds, {});
+    assert.equal(q.carryColours, false);
+    assert.equal(keep.carryColours, true);
+    assert.equal(def.carryColours, true);
+    for (let r = 0; r < 3; r++) {
+      // up to the round's last answer: found pieces have the round's colour, nothing else
+      const n = q.total;
+      const found = [];
+      for (let i = 0; i < n - 1; i++) found.push(...q.answer(q.target).pieces);
+      const colour = q.colour;
+      assert.ok(set.every((p) => q.colourOf(p) === (found.includes(p) ? colour : 0)), `round ${r}: coloured = found this round`);
+      const last = q.answer(q.target);
+      assert.ok(last.completed, 'the last answer ends the round');
+      assert.ok(last.pieces.length >= 1);
+      assert.ok(set.every((p) => q.colourOf(p) === 0), `round ${r + 1} starts blank (also the last answer's pieces)`);
+      assert.deepEqual(q.serialize().colours, {});
+      // the same play with carry: colours stay
+      for (let i = 0; i < n; i++) keep.answer(keep.target);
+      assert.ok(last.pieces.every((p) => keep.colourOf(p) === colour), 'carry: the last answer keeps its colour');
+      assert.deepEqual(q.order, keep.order, 'orders do not depend on the setting');
+    }
+  }
+  // restore mid-round with false: colours of this round come back; the round end clears them
+  const a = new Quiz(ids, 8, ['x', 'y'], { carryColours: false });
+  finishRound(a);
+  for (let i = 0; i < 4; i++) a.answer(a.target);
+  const saved = JSON.parse(JSON.stringify(a.serialize()));
+  assert.equal(Object.keys(saved.colours).length, 4);
+  assert.ok(!('carryColours' in saved), 'not part of the save');
+  const b = Quiz.restore(saved, ids, ['x', 'y'], { carryColours: false });
+  assert.deepEqual(b.serialize(), a.serialize());
+  finishRound(b);
+  assert.deepEqual(b.colours, {});
+  const c = Quiz.restore(saved, ids, ['x', 'y']);
+  finishRound(c);
+  assert.equal(Object.keys(c.colours).length, N, 'restored with the default: colours carry');
+  // reset clears either way
+  const d = new Quiz(ids, 8, 2, { carryColours: false });
+  d.answer(d.target);
+  d.reset();
+  assert.deepEqual(d.colours, {});
+});
+
 check('constructor: RangeError for a piece in two answers, unknown pieces, a round asking nothing', () => {
   const bads = [
     [{ key: 'x', answers: [{ id: 'g', pieces: ['p1', 'p2'] }, { id: 'h', pieces: ['p2'] }] }],

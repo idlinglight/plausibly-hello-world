@@ -150,11 +150,12 @@ function save() {
   }
 }
 
-const restored = Quiz.restore(loadState(), ids, SPECS);
+const QUIZ_OPTIONS = { carryColours: config.carryColours !== false }; // false: every round starts blank
+const restored = Quiz.restore(loadState(), ids, SPECS, QUIZ_OPTIONS);
 const resumed = !!restored && (seedParam === null || restored.seed === seedParam);
 const quiz = resumed
   ? restored
-  : new Quiz(ids, seedParam ?? crypto.getRandomValues(new Uint32Array(1))[0], SPECS);
+  : new Quiz(ids, seedParam ?? crypto.getRandomValues(new Uint32Array(1))[0], SPECS, QUIZ_OPTIONS);
 
 // ── Map elements ────────────────────────────────────────────────────────
 

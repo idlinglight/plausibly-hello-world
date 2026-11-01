@@ -48,6 +48,8 @@ check('a valid config passes both checks; optional fields may be left out', () =
   checkTexts(c);
   checkConfig({ ...good(), blockingOverlays: ['water', 'lakes'] });
   checkConfig({ ...good(), blockingOverlays: [] });
+  checkTexts({ ...good(), carryColours: false });
+  checkConfig({ ...good(), carryColours: true });
 });
 
 check('structure: each broken field is named', () => {
@@ -76,6 +78,8 @@ check('structure: each broken field is named', () => {
     [(c) => (c.text.intro = 'x'), /text\.intro/],
     [(c) => (c.text.theme = {}), /text\.theme/],
     [(c) => (c.attribution = ''), /attribution/],
+    [(c) => (c.carryColours = 'no'), /carryColours: true or false/],
+    [(c) => (c.carryColours = 0), /carryColours: true or false/],
     [(c) => (c.view = { maxScale: 0 }), /view:/],
     [(c) => (c.view = { besideHud: 'yes' }), /view:/],
     [(c) => (c.blockingOverlays = 'water'), /blockingOverlays: an array/],
