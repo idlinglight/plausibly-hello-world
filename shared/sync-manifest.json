@@ -3,7 +3,7 @@
   "copies": {
     "images/europe-quiz/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/europe-quiz/site/contract.js": {"from": "shared/map-quiz/site/contract.js", "sha256": "88c6e670a058e416d91ba8d1a84d0b330923ed66253105eaa485bb8c8764ee9c"},
-    "images/europe-quiz/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "b64793baddd4c0df8f6588feeb6941c2f86ccf7be56d5558047a638d27f02851"},
+    "images/europe-quiz/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "4d98c8219a5948e807858b5ed5a660d3f4e527a2197af6515d1328774a3363fe"},
     "images/europe-quiz/site/quiz.js": {"from": "shared/map-quiz/site/quiz.js", "sha256": "7db46de8ccf7eacaeac5034d12d3d1d58f18d08d4fb6ad697ad8bfcf07f42876"},
     "images/europe-quiz/site/style.css": {"from": "shared/map-quiz/site/style.css", "sha256": "e2665b73ce38418a19cfe5c5f7d47949bb4a4a4c14abd3a63de030c584eef702"},
     "images/europe-quiz/site/theme.js": {"from": "shared/map-quiz/site/theme.js", "sha256": "2d6290916523f7f968bb7c7ba97de58cc571307053f6895c8176f14865b15957"},
@@ -12,7 +12,7 @@
     "images/snake/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/vienna-districts/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/vienna-districts/site/contract.js": {"from": "shared/map-quiz/site/contract.js", "sha256": "88c6e670a058e416d91ba8d1a84d0b330923ed66253105eaa485bb8c8764ee9c"},
-    "images/vienna-districts/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "b64793baddd4c0df8f6588feeb6941c2f86ccf7be56d5558047a638d27f02851"},
+    "images/vienna-districts/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "4d98c8219a5948e807858b5ed5a660d3f4e527a2197af6515d1328774a3363fe"},
     "images/vienna-districts/site/quiz.js": {"from": "shared/map-quiz/site/quiz.js", "sha256": "7db46de8ccf7eacaeac5034d12d3d1d58f18d08d4fb6ad697ad8bfcf07f42876"},
     "images/vienna-districts/site/style.css": {"from": "shared/map-quiz/site/style.css", "sha256": "e2665b73ce38418a19cfe5c5f7d47949bb4a4a4c14abd3a63de030c584eef702"},
     "images/vienna-districts/site/theme.js": {"from": "shared/map-quiz/site/theme.js", "sha256": "2d6290916523f7f968bb7c7ba97de58cc571307053f6895c8176f14865b15957"},
