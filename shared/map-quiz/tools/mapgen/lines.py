@@ -25,7 +25,7 @@ def boundary_lines(res, group_of, inner=True, outer=True):
         if rid not in res.topo:
             if rid in res.paths:
                 raise BuildError(f"boundary_lines: {rid} fell below the grid (drawn from its own outline, outside "
-                                 "the shared arcs); keep it with keep_islands or leave it ungrouped")
+                                 "the shared arcs): leave it ungrouped, or use a finer grid")
             raise BuildError(f"boundary_lines: {rid} is not a region of this map")
     users = [[] for _ in res.arcs]
     for fid, refs in res.topo.items():

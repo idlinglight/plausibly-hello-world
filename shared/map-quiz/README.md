@@ -57,7 +57,8 @@ data.
   `round`, `progress`, `correct`, `misses`, `prompt`, `prompt-kind`,
   `prompt-text`, `toast`, `controls`, `reset` (with `.btn-text`), `theme`
   (with `.icon-moon`, `.icon-sun`), `zoom-out`, `zoom-fit`, `zoom-in`,
-  `label`, `safe`. Start from europe-quiz's `index.html` and translate its
+  `label`, `safe` (main.js adds `attribution` and `prompt-sub` when the
+  config asks for them). Start from europe-quiz's `index.html` and translate its
   text: title, description, `aria-label`s, the `sr-only` help paragraph,
   `noscript`, "Reset?". The engine overwrites the round label, prompt and
   the reset/theme button labels from the config once it runs. Keep the
@@ -107,9 +108,37 @@ export default {
 };
 ```
 
+A round may also ask for groups of pieces instead of single ones
+(optional fields, all per round; a Japan-like example):
+
+```js
+import { MAP, PIECES, ISLANDS, PREFECTURES } from './japan.js'; // generated
+
+export default {
+  map: MAP,
+  items: PIECES,        // the map pieces: one <path id> each
+  rounds: [
+    { key: 'islands', label: 'Islands', prompt: 'Find',
+      answers: ISLANDS,                 // [{ id, pieces: [item ids], marker?, size?, ...own }]
+      lines: ['coast-main'],            // line overlays shown in this round
+      ask: (a) => a.name, miss: (a) => a.name, done: ({ total }) => `All ${total} islands.` },
+    { key: 'prefectures', label: 'Prefectures', prompt: 'Find', answers: PREFECTURES,
+      lines: ['coast-main', 'coast-isles', 'borders-prefectures'],
+      sub: (p) => `${p.kanji} · ${p.kana}`, subLang: 'ja', // second card line
+      ask: (p) => p.name, miss: (p) => p.name, done: ({ total }) => `All ${total}.` },
+    { key: 'capitals', label: 'Capitals', prompt: 'Find the prefecture whose capital is',
+      answers: PREFECTURES, asked: (p) => p.capital !== p.name, // the others: misclicks only
+      ask: (p) => p.capital, miss: (p) => `${p.name} · ${p.capital}`,
+      missSub: (p) => p.kanji, subLang: 'ja', done: ({ total }) => `All ${total}.` },
+  ],
+  // text …
+};
+```
+
 - **map**: `width`, `height` and the four `extent` numbers finite, sizes
   above 0 (the generated `MAP` is).
-- **items**: one per region. `id`: unique, letters, digits, `_ . -`, not
+- **items**: one per map piece (a region: one `<path>` in map.svg).
+  `id`: unique, letters, digits, `_ . -`, not
   starting with a digit, not `land`, `overlays`, `regions`, `markers`,
   `fade*`, and not an element id of `index.html` or another id in
   `map.svg` (ADM0_A3 codes, `d01` … all fine).
@@ -119,11 +148,41 @@ export default {
   only over sea, context land or that region itself; the ring hides once
   the region is 28 px across. Leave markers out for none (no ring layer).
 - **rounds**: any number of kinds; rounds cycle through them, each round
-  asks every region once in its own shuffled order. Colours: A in even
-  rounds, B in odd ones, so the map recolours round by round. Prompts must
-  be unique within a round (`checkTexts` tests it). A saved game records
-  the round keys: after a change to them (added, removed, renamed,
-  reordered) stored games start over.
+  asks every asked answer once in its own shuffled order. Colours: A in
+  even rounds, B in odd ones, so the map recolours round by round. Prompts
+  must be unique within a round (`checkTexts` tests it). A saved game
+  records the round keys: after a change to them (added, removed, renamed,
+  reordered) stored games start over, as they do when a round's asked
+  answers change. `done({ total, misses })`: total is the number of
+  answers that round asked.
+- **rounds[].answers** (optional): the round's answers as groups of items,
+  `{ id, pieces: [item ids], marker?, size?, ...own fields }`; `ask`,
+  `miss`, `sub` … get the answer object. Without it every item is its own
+  answer (and gets the item). Ids unique within the round (same id rules,
+  minus the reserved list: answer ids never become element ids, so one
+  may equal one of its pieces' ids, e.g. `niigata` = `niigata` +
+  `niigata-isles`, and ids may repeat across rounds); each piece in at
+  most one answer of a round. A piece in no answer of the round is inert
+  there: drawn as context land, never hit. An item in no round's answers
+  fails the check (make it context land). Rings belong to answers: a
+  grouped round takes `marker` / `size` from its answers (size = the
+  larger side of the piece the ring sits on, not the whole group).
+- **rounds[].asked** (optional): `(answer) => true | false`, which answers
+  the round asks (default: all); the others stay clickable as misclicks
+  with their label. A round must ask at least one.
+- **rounds[].lines** (optional): ids of line overlays (`<path>`s in
+  map.svg's `#overlays`, e.g. from `mapgen.boundary_lines`) shown in this
+  round; the others are hidden. With `lines` (even `[]`) the round's
+  pieces outline themselves in their own fill, so no hairline shows
+  between the pieces of a group; the lines draw the outlines that count.
+  Unique, not an item's id, not a blocking overlay.
+- **rounds[].sub**, **subLang**, **missSub** (optional): `sub(answer)` is a
+  second, smaller card line under the prompt (e.g. the name in its own
+  script), `missSub(answer)` a second part of the misclick label;
+  `subLang` (a language tag such as `ja`) tags both. Once any round has
+  `sub`, the line is reserved in every round (empty where a round has
+  none), so the card keeps its height. System fonts only; an image
+  stylesheet can add a `:lang(ja)` font list.
 - **attribution**: a credit line where it never meets the HUD: under the
   controls in portrait (they move up for it), the bottom-left corner in
   landscape. The full view stays clear of it in both. Fits about 50
@@ -144,9 +203,12 @@ export default {
   the overlay counts as sea. Unique, not an item's id; main.js stops with
   `text.mapError` if one isn't an overlay `<path>`.
 
-`contract.js`: `checkConfig(config)` and `checkTexts(config)` (every
-ask/miss text for every item; for an image's node test). At start main.js
-runs `checkConfig` and checks `data-quiz`; on a failure the page shows
+`contract.js`: `checkConfig(config)`, `roundSpecs(config)` (the rounds
+as the rules need them: answers, asked ids, the config object per
+answer) and `checkTexts(config)` (per round: ask and sub for every asked
+answer, miss and missSub for every answer, done; for an image's node
+test). At start main.js runs `checkConfig`, `roundSpecs` and checks
+`data-quiz`; on a failure the page shows
 `text.mapError` (or a built-in English line if that text is unusable) in
 the toast, sets `data-ready="error"`, and the error names the field in the
 console. (A `config.js` that doesn't load at all, a syntax error say,
@@ -166,12 +228,16 @@ What the engine reads (`mapgen.map_svg` writes exactly this):
 <g id="overlays">                 optional: drawn above the regions, never hit
   <path id="water" d="…"/>        (clicks go to the region beneath, or nowhere
                                   if config.blockingOverlays names it)
+  <path id="coast-main" d="m…"/>  line overlays (open subpaths, rounds[].lines)
 </g>
 </svg>
 ```
 
 No styling in the file. Every id once, none of the page's (`index.html`)
-nor `markers` / `fade*`: the engine checks when it loads the map. It
+nor `markers` / `fade*`: the engine checks when it loads the map. An
+overlay a round lists in `lines` gets class `line` (a stroke only, the
+region outline's hairline) and is hidden (class `off`) in the rounds that
+don't list it. It
 finds the regions' group from their shapes (each a `<path>`; class
 `regions` is added), draws a fade at the edge of the extent when there is
 context around the window (`MAP.extent` starts below 0), and the rings.
@@ -186,7 +252,12 @@ vienna-districts does), `--land`, `--land-line`, `--region`, `--region-hover`,
 `--border`, `--a` / `--b` (+ `-hover`), `--miss`, `--ring`, panel and text
 colours; `--water` (overlay fill and outline, default `--sea`) and
 `--overlay-stroke` (overlay outline width in map units, e.g. `1.2px`,
-scales with the map; default 0). An image overrides them in its own
+scales with the map; default 0); `--inert` / `--inert-line` (pieces in no
+answer of the round, default `--land` / `--land-line`). Classes on the
+regions: `.inert` (that piece this round), `.seamless` on the group in a
+round with `lines`; line overlays: `#overlays .line`, hidden ones `.off`
+(e.g. heavier region lines in one round: `[data-round="…"] #borders-…`
+in the image's stylesheet). An image overrides them in its own
 stylesheet, linked after `style.css`, in the same three places; one
 overlay can be styled by its id. `theme.js` copies `--sea` into the
 theme-color meta.
@@ -196,17 +267,23 @@ theme-color meta.
 - `map.svg` is fetched and inserted inline (gzip and MIME already covered
   by `nginx.conf`); the viewBox follows a camera, so strokes stay crisp and
   a tap is tested against the real shapes.
-- Rounds cycle through `config.rounds`, each asking every region once,
-  shuffled (a round never opens with the region that closed the last). A
-  correct pick colours the region (A in even rounds, B in odd ones: the
-  map recolours round by round, blank only after a reset); a misclick
-  counts, blinks and shows the round's `miss` label for 1.5 s. A click on
-  the sea, context land or a blocking overlay does nothing. Reset takes
-  two presses (the first arms it for 3 s).
-- Rings (optional): a tap inside the drawn ring picks it, a tap in the
-  wider zone around it only over sea, context land or that region itself
-  (never over a neighbour); the nearest ring wins. Rings shrink at low zoom
-  (phones) and hide once their region is 28 px across.
+- Rounds cycle through `config.rounds`, each asking every asked answer
+  once, shuffled (a round never opens with an answer sharing a piece with
+  the one that closed the last, unless every answer does). A correct pick
+  colours all pieces of the answer (A in even rounds, B in odd ones: the
+  map recolours round by round, blank only after a reset); colours are
+  per piece, so pieces a round doesn't ask (inert, or not asked) keep
+  theirs. A misclick (any other answer of the round: found, not yet, or
+  not asked) counts, blinks all its pieces and shows the round's `miss`
+  label for 1.5 s. A click on the sea, context land, an inert piece or a
+  blocking overlay does nothing. Hover lights every piece of an answer.
+  Reset takes two presses (the first arms it for 3 s).
+- Rings (optional, per round's answers): a tap inside the drawn ring
+  picks it, a tap in the wider zone around it only over sea, context
+  land, an inert piece or that answer itself (never over a neighbour);
+  the nearest ring wins. A ring shows the colour all its pieces share.
+  Rings shrink at low zoom (phones) and hide once their piece is 28 px
+  across; they are rebuilt when a round's ring set differs.
 - Answering needs a pointer (click or tap); keys only zoom and pan. Zoom:
   pinch (touch, trackpad), mouse wheel and ctrl + wheel (at the cursor),
   buttons, `+ - 0` keys. Pan: drag, a trackpad's two-finger scroll, arrow
@@ -232,7 +309,9 @@ theme-color meta.
 
 ## Generator core: mapgen
 
-Python 3.9+, stdlib only, deterministic. An image's
+Python 3.9+, stdlib only, deterministic (modules: `build` pipeline,
+`geometry`, `projection`, `lines` boundary lines, `svg` path text,
+`output` pins and emit). An image's
 `tools/build_map.py` is an adapter: it loads and pins its inputs, applies
 its own fix-ups, decides what is a region, context land or an overlay,
 and writes its data module; mapgen does the geometry. `python3 -I` keeps
@@ -281,6 +360,25 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   them (the report prints it; europe's 5 are all in context land) and an
   adapter that simplifies region arcs should require 0. A region lost to
   the grid keeps its outline at 10× finer resolution.
+- Line overlays along the region edges (for `rounds[].lines`): the result
+  keeps the shared topology it drew the paths from, `res.arcs`
+  (simplified arcs, integer points in 1/`res.grid` units) and `res.topo`
+  (`{fid: [[arc refs] per ring]}`, `~i` = arc i reversed; a region lost to
+  the grid is not in it). `mapgen.boundary_lines(res, group_of,
+  inner=True, outer=True)` chains the edges whose two sides fall in
+  different groups into polylines, each edge once, deterministic:
+  `group_of` maps region ids to any group key; context land, ungrouped
+  regions and nothing count as outside. `inner`: edges between two
+  groups (borders), `outer`: between a group and the outside (coasts,
+  edges against context land or ungrouped regions). Identity grouping
+  (`{rid: rid}`) gives every region edge once (vienna-districts'
+  `#borders`). `mapgen.lines_d(lines, res.dec)` writes them as open
+  subpaths; put that into `res.overlays[oid]` before `map_svg`. A
+  grouped region lost to the grid raises BuildError (it has no shared
+  edges: leave it ungrouped, or use a finer grid). The lines sit on the
+  region edges and are never simplified on their own; a coast shared by
+  two line overlays is drawn twice, so emit each edge in one overlay
+  where size matters.
 - Feed polygons in a fixed order: the output depends on it, and the same
   inputs in the same order give byte-identical files. `emit` writes, or
   with `check` compares and returns 1 on a difference, and prints sizes
