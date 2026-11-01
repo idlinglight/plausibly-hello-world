@@ -183,6 +183,7 @@ check('grouped structure: each broken field is named', () => {
     [(c) => (c.rounds[1].lines = ['overlays']), /rounds\[1\]\.lines: id "overlays"/],
     [(c) => (c.blockingOverlays = ['coast-isles']), /rounds\[1\]\.lines: id "coast-isles"/],
     [(c) => c.items.push({ id: 'tsushima' }), /items: tsushima is in no round's answers/],
+    [(c) => (c.rounds[0].answers[1].id = 'nagano'), /rounds\[0\]\.answers: nagano is an item's id but not one of its pieces/],
   ];
   for (const [breakIt, re] of cases) {
     const c = grouped();

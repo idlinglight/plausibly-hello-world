@@ -153,15 +153,17 @@ export default {
   must be unique within a round (`checkTexts` tests it). A saved game
   records the round keys: after a change to them (added, removed, renamed,
   reordered) stored games start over, as they do when a round's asked
-  answers change. `done({ total, misses })`: total is the number of
+  answers change, and (with grouped or subset rounds, whose saves carry a
+  fingerprint of them) when any round's answers or asked answers change. `done({ total, misses })`: total is the number of
   answers that round asked.
 - **rounds[].answers** (optional): the round's answers as groups of items,
   `{ id, pieces: [item ids], marker?, size?, ...own fields }`; `ask`,
   `miss`, `sub` … get the answer object. Without it every item is its own
   answer (and gets the item). Ids unique within the round (same id rules,
   minus the reserved list: answer ids never become element ids, so one
-  may equal one of its pieces' ids, e.g. `niigata` = `niigata` +
-  `niigata-isles`, and ids may repeat across rounds); each piece in at
+  may equal the id of one of its own pieces, e.g. `niigata` = `niigata` +
+  `niigata-isles`, never another answer's piece, and ids may repeat
+  across rounds); each piece in at
   most one answer of a round. A piece in no answer of the round is inert
   there: drawn as context land, never hit. An item in no round's answers
   fails the check (make it context land). Rings belong to answers: a

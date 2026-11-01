@@ -63,6 +63,8 @@ export function checkConfig(config) {
         bad(`rounds[${i}].answers: id ${JSON.stringify(id)} (unique in the round; letters, digits, _ . -, not first a digit)`);
       ans.add(id);
       if (!Array.isArray(a.pieces) || !a.pieces.length) bad(`rounds[${i}].answers: ${id}: pieces, a non-empty array of item ids`);
+      // an answer may share its id with one of its own pieces (niigata = niigata + niigata-isles), never another's
+      if (seen.has(id) && !a.pieces.includes(id)) bad(`rounds[${i}].answers: ${id} is an item's id but not one of its pieces`);
       for (const p of a.pieces) {
         if (!seen.has(p)) bad(`rounds[${i}].answers: ${id}: piece ${JSON.stringify(p)} is not an item's id`);
         if (owner.has(p)) bad(`rounds[${i}].answers: piece ${p} in ${owner.get(p)} and ${id} (at most one answer per round)`);

@@ -29,6 +29,10 @@
 // turns it down once the image's rounds change: a saved round index would
 // otherwise continue as a different kind. Saves from before that field
 // (europe-quiz only) had two kinds and restore wherever there are two.
+// Where a kind groups pieces or asks a subset, the save also records a
+// fingerprint of every kind's answers (their pieces) and asked answers,
+// and restore() turns it down when they changed; a save of kinds with one
+// piece per answer has no such field (its format predates grouping).
 
 export const VERSION = 1; // of serialize()'s format
 
@@ -108,7 +112,23 @@ function kindOf(k, i, idSet, identity) {
     asked = asked.filter((id) => set.has(id)); // configured order, whatever order asked came in
   }
   if (!asked.length) throw new RangeError(`${where}: asks nothing`);
-  return { key: k.key, piecesOf, owner, asked, askedSet: new Set(asked) };
+  // grouped: anything but one piece per answer (in piece order), all asked
+  const grouped = !(asked.length === identity.asked.length &&
+    [...piecesOf].every(([id, pieces], j) => pieces.length === 1 && pieces[0] === id && identity.asked[j] === id));
+  return { key: k.key, piecesOf, owner, asked, askedSet: new Set(asked), grouped };
+}
+
+// The save's fingerprint of the kinds' answers and asked answers (8 hex
+// digits, FNV-1a), or null when every kind has one piece per answer, all
+// asked.
+function fingerprint(specs) {
+  if (!specs.some((k) => k.grouped)) return null;
+  const text = specs.map((k) => (k.grouped
+    ? `${k.key}=${[...k.piecesOf].map(([id, pieces]) => `${id}:${pieces.join('+')}`).join(',')}|${k.asked.join(',')}`
+    : `${k.key}=*`)).join('\n');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(16).padStart(8, '0');
 }
 
 export class Quiz {
@@ -121,12 +141,13 @@ export class Quiz {
     if (!Number.isSafeInteger(n) || n < 1) throw new RangeError('kinds: a positive integer, or a non-empty array of round keys or specs');
     this.ids = ids.slice();
     this.idSet = new Set(this.ids);
-    const identity = { key: null, piecesOf: new Map(this.ids.map((id) => [id, [id]])), owner: new Map(this.ids.map((id) => [id, id])) };
+    const identity = { key: null, piecesOf: new Map(this.ids.map((id) => [id, [id]])), owner: new Map(this.ids.map((id) => [id, id])), grouped: false };
     identity.asked = [...identity.piecesOf.keys()];
     identity.askedSet = new Set(identity.asked);
     this.specs = Array.isArray(kinds) ? kinds.map((k, i) => kindOf(k, i, this.idSet, identity)) : Array.from({ length: n }, () => identity);
     this.kinds = n;
     this.kindKeys = Array.isArray(kinds) ? this.specs.map((k) => k.key) : null;
+    this.groups = fingerprint(this.specs); // null for one piece per answer
     this.seed = seed >>> 0;
     this.game = 0;
     this.colours = {}; // piece id -> 1 | 2
@@ -202,16 +223,18 @@ export class Quiz {
   }
 
   // -> { result: 'correct' | 'miss' | 'ignored', id, pieces?, completed? }
-  // pieces (correct): the answer's pieces, now coloured. completed (on the
-  // last correct answer of a round): { kind, misses, total } of the round
-  // just finished; the quiz is already in the next one.
+  // pieces (correct, miss): the answer's pieces in the round it was given
+  // in (a correct answer has coloured them). completed (on the last correct
+  // answer of a round): { kind, misses, total } of the round just
+  // finished; the quiz is already in the next one, so piecesOf() and
+  // answerOf() describe that one.
   answer(id) {
     const k = this.specs[this.kind];
     if (!k.piecesOf.has(id)) return { result: 'ignored', id };
     if (id !== this.target) {
       this.misses++;
       this.roundMisses++;
-      return { result: 'miss', id };
+      return { result: 'miss', id, pieces: k.piecesOf.get(id).slice() };
     }
     this.correct++;
     const pieces = k.piecesOf.get(id).slice();
@@ -244,12 +267,13 @@ export class Quiz {
       misses: this.misses,
       roundMisses: this.roundMisses,
       kinds: this.kindKeys ? this.kindKeys.slice() : this.kinds,
+      ...(this.groups ? { groups: this.groups } : {}),
     };
   }
 
   // A Quiz from serialize()'s output, or null if it doesn't fit `ids` and
-  // `kinds` (another version, changed pieces, rounds or asked answers,
-  // tampering). kinds: as for the constructor.
+  // `kinds` (another version, changed pieces, rounds, answers or asked
+  // answers, tampering). kinds: as for the constructor.
   static restore(data, ids, kinds = 2) {
     if (!data || typeof data !== 'object' || data.v !== VERSION) return null;
     const now = Array.isArray(kinds) ? kinds.map((k) => (typeof k === 'string' ? k : k && k.key)) : kinds;
@@ -258,6 +282,7 @@ export class Quiz {
     if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) return null;
     if (![game, round, pos, correct, misses, roundMisses].every(isCount)) return null;
     const q = new Quiz(ids, seed, kinds);
+    if ((data.groups === undefined ? null : data.groups) !== q.groups) return null; // answers or asked changed
     const k = q.specs[round % q.kinds];
     if (!Array.isArray(order) || order.length !== k.asked.length || pos >= order.length) return null;
     if (new Set(order).size !== order.length || !order.every((id) => k.askedSet.has(id))) return null;

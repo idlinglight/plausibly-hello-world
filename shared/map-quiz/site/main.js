@@ -202,14 +202,17 @@ function svgEl(name, attrs) {
   return el;
 }
 
-// The elements that show an answer's state in the current round: its
-// pieces' shapes, and its ring. (Taken before quiz.answer(): the answer
-// that completes a round moves the quiz on to the next round's answers.)
-function targets(id) {
-  const t = quiz.piecesOf(id).map((p) => shapes[p]).filter(Boolean);
+// The elements that show an answer's state: the shapes of its pieces and
+// its ring (rings change only in enterRound()). targets(id): as the
+// current round has the answer; after quiz.answer(), its result's pieces
+// say which pieces the answer had in the round it was given in.
+function elsOf(id, pieces) {
+  const t = pieces.map((p) => shapes[p]).filter(Boolean);
   if (rings.has(id)) t.push(rings.get(id).ring);
   return t;
 }
+
+const targets = (id) => elsOf(id, quiz.piecesOf(id));
 
 function setColour(el, c) {
   el.classList.toggle('c1', c === 1);
@@ -260,14 +263,21 @@ function unmarkEls(els, cls) {
   }
 }
 
-function clearMarks() {
-  for (const [el, t] of markTimers) {
+// Ends every mark on these elements now (timers dropped).
+function clearMarksOf(els) {
+  for (const el of els) {
+    const t = markTimers.get(el);
+    if (!t) continue;
     for (const [cls, timer] of Object.entries(t)) {
       clearTimeout(timer);
       el.classList.remove(cls);
     }
+    markTimers.delete(el);
   }
-  markTimers.clear();
+}
+
+function clearMarks() {
+  clearMarksOf([...markTimers.keys()]);
 }
 
 // ── Camera ──────────────────────────────────────────────────────────────
@@ -361,12 +371,16 @@ function render() {
   zoomFit.setAttribute('aria-disabled', String(z <= 1 + 1e-6 && Math.abs(tx - f.tx) < 1 && Math.abs(ty - f.ty) < 1));
 }
 
-function setCam(c) {
-  cam = clamp(c);
+function queueRender() {
   if (!renderQueued) {
     renderQueued = true;
     requestAnimationFrame(render);
   }
+}
+
+function setCam(c) {
+  cam = clamp(c);
+  queueRender();
 }
 
 function stopAnim() {
@@ -658,8 +672,9 @@ function onGesture(e) {
 function pick(x, y, type) {
   const id = hitTest(x, y, type);
   if (!id) return; // sea, context land or an inert piece
-  const els = targets(id); // before answer(): the round's last answer moves on to the next round
   const res = quiz.answer(id);
+  if (res.result === 'ignored') return;
+  const els = elsOf(id, res.pieces);
   if (res.result === 'correct') {
     paintPieces(res.pieces);
     if (rings.has(id)) setColour(rings.get(id).ring, ringColour(res.pieces));
@@ -670,11 +685,9 @@ function pick(x, y, type) {
       roundDone(res.completed);
       enterRound();
     }
-  } else if (res.result === 'miss') {
+  } else {
     markEls(els, 'flash', LABEL_MS);
     showLabel(id, x, y, type);
-  } else {
-    return;
   }
   updateHud();
   save();
@@ -730,15 +743,21 @@ function roundDone({ kind, misses, total }) {
 }
 
 // A round starts (at load, after a completed round, after a reset): rings,
-// colours, inert pieces and line overlays as this round has them.
+// colours, inert pieces and line overlays as this round has them; a
+// misclick label of the round before goes.
 function enterRound() {
   if (!svg) return;
+  hideLabel();
   const was = hovered;
   setHover(null);
-  if (buildRings()) render();
+  if (buildRings()) queueRender(); // the new rings' radii, before the next paint
   paintAll();
   const round = ROUNDS[quiz.kind];
-  for (const p of ids) shapes[p].classList.toggle('inert', quiz.answerOf(p) === null);
+  for (const p of ids) {
+    const inert = quiz.answerOf(p) === null;
+    shapes[p].classList.toggle('inert', inert);
+    if (inert) clearMarksOf([shapes[p]]); // context land doesn't pulse or blink
+  }
   regionsG.classList.toggle('seamless', Array.isArray(round.lines));
   for (const [oid, el] of lineEls) el.classList.toggle('off', !(round.lines || []).includes(oid));
   // the pointer is still over the map: hover what lies there now
@@ -754,6 +773,7 @@ function buildRings() {
   const key = JSON.stringify(list.map((c) => [c.id, c.marker, c.size]));
   if (key === ringSet) return false;
   ringSet = key;
+  clearMarksOf([...rings.values()].map((m) => m.ring));
   markersG.replaceChildren();
   rings.clear();
   for (const c of list) {

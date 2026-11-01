@@ -47,7 +47,7 @@ check('the shuffle does not depend on the number of kinds', () => {
 check('miss: counts, question stays; unknown ids ignored', () => {
   const q = new Quiz(ids, 5);
   const t = q.target;
-  assert.deepEqual(q.answer(wrongFor(q)), { result: 'miss', id: wrongFor(q) });
+  assert.deepEqual(q.answer(wrongFor(q)), { result: 'miss', id: wrongFor(q), pieces: [wrongFor(q)] });
   assert.equal(q.misses, 1);
   assert.equal(q.roundMisses, 1);
   assert.equal(q.target, t);
@@ -314,7 +314,7 @@ check('groups: total = asked answers, a correct answer colours its whole group, 
   assert.equal(q.answer('p6').result, 'ignored');
   const t = q.target;
   const other = t === 'g1' ? 'g2' : 'g1';
-  assert.deepEqual(q.answer(other), { result: 'miss', id: other });
+  assert.deepEqual(q.answer(other), { result: 'miss', id: other, pieces: GROUPS.answers.find((a) => a.id === other).pieces });
   assert.equal(q.target, t);
   const r = q.answer(t);
   assert.equal(r.result, 'correct');
@@ -338,7 +338,7 @@ check('singles after groups, then a subset round: colours carry per piece, not-a
   assert.equal(q.total, 3);
   assert.deepEqual([...q.order].sort(), ['p1', 'p3', 'p5']);
   const t = q.target;
-  assert.deepEqual(q.answer('p2'), { result: 'miss', id: 'p2' }, 'not asked: a misclick');
+  assert.deepEqual(q.answer('p2'), { result: 'miss', id: 'p2', pieces: ['p2'] }, 'not asked: a misclick');
   assert.equal(q.target, t);
   q.answer(t);
   assert.equal(q.answer(t).result, 'miss', 'found already');
@@ -420,6 +420,30 @@ check('restore: grouped and subset rounds; a changed asked set or grouping is tu
   const regrouped = { key: 'groups', answers: [{ id: 'g1', pieces: ['p1', 'p2'] }, { id: 'g3', pieces: ['p4', 'p5'] }] };
   assert.equal(Quiz.restore(inGroups, P, [regrouped, SINGLES, SUBSET]), null, 'answer ids changed');
   assert.equal(Quiz.restore({ ...inGroups, colours: { g1: 1 } }, P, KINDS), null, 'colours are per piece');
+});
+
+check('save fingerprint: grouped kinds record their answers and asked sets, one-piece kinds write no field', () => {
+  // one piece per answer: the save format as before grouping (no new field)
+  for (const kinds of [2, ['a', 'b'], [{ key: 'a' }, { key: 'b' }]]) {
+    const saved = new Quiz(ids, 3, kinds).serialize();
+    assert.deepEqual(Object.keys(saved), ['v', 'seed', 'game', 'round', 'pos', 'order', 'colours', 'correct', 'misses', 'roundMisses', 'kinds']);
+    assert.ok(Quiz.restore({ ...saved, groups: 'deadbeef' }, ids, kinds) === null, 'a fingerprint where none belongs');
+  }
+  const a = new Quiz(P, 5, KINDS);
+  finishRound(a);
+  a.answer(a.target);
+  const saved = JSON.parse(JSON.stringify(a.serialize()));
+  assert.match(saved.groups, /^[0-9a-f]{8}$/);
+  assert.equal(saved.v, 1);
+  assert.equal(new Quiz(P, 9, KINDS).serialize().groups, saved.groups, 'independent of seed and progress');
+  assert.ok(Quiz.restore(saved, P, KINDS));
+  // a piece moved between answers, ids kept (the saved round is a singles round: its order still fits)
+  const moved = { ...GROUPS, answers: [{ id: 'g1', pieces: ['p1', 'p2'] }, { id: 'g2', pieces: ['p3', 'p4', 'p5'] }] };
+  assert.equal(Quiz.restore(saved, P, [moved, SINGLES, SUBSET]), null, 'pieces moved between answers');
+  assert.equal(Quiz.restore(saved, P, [GROUPS, SINGLES, { ...SUBSET, asked: ['p1', 'p3', 'p6'] }]), null, 'another kind asks otherwise');
+  const { groups, ...noField } = saved;
+  assert.equal(Quiz.restore(noField, P, KINDS), null, 'a grouped config needs the fingerprint');
+  assert.equal(Quiz.restore({ ...saved, groups: 7 }, P, KINDS), null);
 });
 
 check('constructor: RangeError for a piece in two answers, unknown pieces, a round asking nothing', () => {
