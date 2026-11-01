@@ -38,6 +38,7 @@ check('config: fits the engine contract, every round text renders, prompts uniqu
   assert.equal(config.map, MAP);
   assert.equal(config.attribution, 'Datenquelle: Stadt Wien – data.wien.gv.at');
   assert.deepEqual(config.view, { maxScale: 6, besideHud: true });
+  assert.deepEqual(config.blockingOverlays, ['water'], 'taps on the water do nothing');
 });
 
 check('config: rounds names, numbers (<html data-round>); German texts', () => {

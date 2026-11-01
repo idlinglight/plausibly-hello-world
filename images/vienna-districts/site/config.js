@@ -48,4 +48,5 @@ export default {
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at',
   view: { maxScale: 6, besideHud: true },
+  blockingOverlays: ['water'], // a tap on the water does nothing (owner's call), like one outside the city
 };

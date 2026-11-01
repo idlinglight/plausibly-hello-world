@@ -98,8 +98,9 @@ the script reads them as `POLYGON` and stops on a real arc
 (`CIRCULARSTRING`, `COMPOUNDCURVE`). The boundaries share their vertices
 exactly (clean topology) and include the water: the Danube's main channel
 lies in districts 2 / 20 and 21 / 22, the Donauinsel and the Neue Donau in
-21 / 22, the Donaukanal in 2 / 20. On the page a click on the water picks
-the district beneath (the overlay is never hit).
+21 / 22, the Donaukanal in 2 / 20. On the page a click on the water does
+nothing, like one outside the city (`config.blockingOverlays`, the
+owner's call): the water is not part of a district's clickable area.
 
 ## Water
 
