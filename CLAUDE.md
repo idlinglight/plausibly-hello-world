@@ -110,7 +110,7 @@ synced (Dependabot bumps them per folder).
 ### Map-quiz engine
 
 `shared/map-quiz/`: a map quiz on an inline SVG map, shared by the map
-images (now `europe-quiz`). Its `README.md` has the contracts and the
+images (now `europe-quiz`, `vienna-districts`). Its `README.md` has the contracts and the
 behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
 layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
 (`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`)
@@ -122,7 +122,7 @@ and `map.svg`, favicons, optionally an own stylesheet for colours. The
 offline generator is `tools/build_map.py` per image, an adapter (inputs,
 fix-ups, selection) over the shared core `shared/map-quiz/tools/mapgen`
 (projections incl. already-projected input, clipping, shared borders,
-simplification, SVG, `--check`). Adding a map image: folder + `config.js`
+simplification, optionally of the region borders too, SVG, `--check`). Adding a map image: folder + `config.js`
 + data adapter (+ `tools/data.test.mjs`), its name in the map-quiz rule
 of `shared/sync.json` and `python3 shared/sync.py`, then "Adding an
 image" below (caller workflow, README row). Engine changes go to
@@ -181,6 +181,24 @@ image" below (caller workflow, README row). Engine changes go to
   `node tools/data.test.mjs`. Favicon rasters exported once from
   `favicon.svg` with headless Chrome (`.ico` = one 32 px PNG; touch icon
   square).
+- **vienna-districts**: a map-quiz image (engine above), German UI. Vienna's
+  23 districts (ids `d01` … `d23`); rounds: every district by name, then
+  by number ("2. Bezirk"; `<html data-round>` `names`, `numbers`); a
+  misclick shows "Name · N.". Plain background, no context land, no rings
+  or labels; water (Donau, Neue Donau, Donaukanal, Alte Donau, Wienfluss)
+  is a non-interactive overlay, its same-coloured outline in map units
+  (`site/vienna.css`) closes the gaps under bridges; a click on it picks
+  the district beneath. `config.view`: `maxScale` 6, `besideHud`. Data:
+  Stadt Wien open data (CC BY 4.0; the attribution line is on the page),
+  district boundaries and Realnutzungskartierung 2024 water, both
+  sha256-pinned and not committed (the water file without its
+  per-request feature-number column); `tools/build_map.py` (adapter over
+  mapgen, native EPSG:31256, simplified shared borders, 0 arc crossings
+  asserted) and `tools/districts.json` (names, water seed points) give
+  `site/map.svg` and `site/districts.js`. Pins, snapshot date and the
+  re-pin procedure in `tools/README.md`. Checks: `node
+  tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
+  as for europe-quiz.
 
 ## CI
 
