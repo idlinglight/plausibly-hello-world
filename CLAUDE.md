@@ -228,14 +228,19 @@ image" below (caller workflow, README row). Engine changes go to
   6, `besideHud`. Okinawa at its real position, no inset (owner's call);
   the Kuril islands aren't drawn at all (owner: neither clickable nor
   Japanese-administered), the Senkaku islets stay in Okinawa as Natural
-  Earth has them. Data: Natural Earth v5.1.2 (public domain) admin-1 10m,
-  admin-0 50m (context land) and lakes 10m, sha256-pinned, not
-  committed; `tools/build_map.py` (adapter over mapgen: fix-ups with
-  expected counts and point checks, the piece split, LAEA 35°N 135°E,
-  line overlays from `mapgen.boundary_lines`) and `tools/prefectures.json`
-  (the single source of truth: names, kanji, kana, capitals, regions,
-  islands; every kana checked against its Hepburn name) give
-  `site/map.svg` and `site/japan.js`; fix-ups and pins in
+  Earth has them. A shaded relief (`site/relief.png`, owner's pick over
+  elevation bands) lies over the pieces as `<image id="relief">`, first
+  in `#overlays` (never hit), plain alpha, no blend mode (`japan.css`).
+  Data: Natural Earth v5.1.2 (public domain) admin-1 10m, admin-0 50m
+  (context land) and lakes 10m, and NOAA ETOPO 2022 (30" ERDDAP subset,
+  free to use, no warranty), all sha256-pinned, not committed;
+  `tools/build_map.py` (adapter over mapgen: fix-ups with expected
+  counts and point checks, the piece split, LAEA 35°N 135°E, line
+  overlays from `mapgen.boundary_lines`, the hillshade with the inverse
+  projection) and `tools/prefectures.json` (the single source of truth:
+  names, kanji, kana, capitals, regions, islands; every kana checked
+  against its Hepburn name) give `site/map.svg`, `site/japan.js` and
+  `site/relief.png`; fix-ups, pins and relief parameters in
   `tools/README.md`. Checks: `node tools/data.test.mjs`. Favicon rasters
   exported once from `favicon.svg` as for europe-quiz.
 

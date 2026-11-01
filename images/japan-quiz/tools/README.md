@@ -5,8 +5,9 @@ copies `site/` only); its outputs are committed:
 
 - `site/map.svg`: one `<path>` per map piece inside `<g id="pieces">`,
   `<path id="land">` (all context land, merged), and in
-  `<g id="overlays">` Lake Biwa (`lakes`, water) and four line overlays
-  (open paths, stroke only): `coast-main`, `coast-isles`,
+  `<g id="overlays">` the shaded relief (`<image id="relief"
+  href="relief.png">`, first), Lake Biwa (`lakes`, water) and four line
+  overlays (open paths, stroke only): `coast-main`, `coast-isles`,
   `borders-prefectures`, `borders-regions`. No styling in the file: the
   engine's `style.css` (and the image's `japan.css`) does that.
 - `site/japan.js`: the map's window/extent (`MAP`), the pieces (`PIECES`)
@@ -15,13 +16,14 @@ copies `site/` only); its outputs are committed:
   `site/config.js` (hand-written) hands them and the English texts to
   the shared map-quiz engine: the rounds' answers, which line overlays
   each round shows, the card's kanji · kana line.
+- `site/relief.png`: the shaded relief over the window (below, "Relief").
 
-Both carry a "generated, don't edit" header. Edit `prefectures.json`
+The first two carry a "generated, don't edit" header. Edit `prefectures.json`
 (names, kanji, kana, capitals, regions, islands: the single source of
 truth) or `build_map.py`, then regenerate.
 
 `build_map.py` is this image's adapter: Natural Earth, the fix-ups, the
-split into pieces, the window and the quiz data. The geometry (projection,
+split into pieces, the window, the quiz data and the relief. The geometry (projection,
 clipping, shared borders, simplification, boundary lines, SVG writing,
 `--check`) is the shared core in `shared/map-quiz/tools/mapgen`
 (`shared/map-quiz/README.md`), which the script imports from there.
@@ -33,10 +35,14 @@ mkdir -p /tmp/ne && for f in ne_10m_admin_1_states_provinces ne_50m_admin_0_coun
   curl -fsSL -o /tmp/ne/$f.geojson \
     https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/$f.geojson
 done
+# ETOPO 2022 subset (59 MB; ERDDAP answers 503 now and then, hence the retries)
+curl -fsS --retry 8 --retry-delay 30 --retry-all-errors -o /tmp/ne/etopo_2022_30s_japan.asc \
+  'https://coastwatch.pfeg.noaa.gov/erddap/griddap/ETOPO_2022_v1_15s.esriAscii?z%5B(24.0):2:(45.75)%5D%5B(122.75):2:(146.0)%5D'
 python3 -I images/japan-quiz/tools/build_map.py /tmp/ne/ne_10m_admin_1_states_provinces.geojson \
-  /tmp/ne/ne_50m_admin_0_countries.geojson /tmp/ne/ne_10m_lakes.geojson
+  /tmp/ne/ne_50m_admin_0_countries.geojson /tmp/ne/ne_10m_lakes.geojson /tmp/ne/etopo_2022_30s_japan.asc
 python3 -I images/japan-quiz/tools/build_map.py /tmp/ne/ne_10m_admin_1_states_provinces.geojson \
-  /tmp/ne/ne_50m_admin_0_countries.geojson /tmp/ne/ne_10m_lakes.geojson --check   # files up to date?
+  /tmp/ne/ne_50m_admin_0_countries.geojson /tmp/ne/ne_10m_lakes.geojson /tmp/ne/etopo_2022_30s_japan.asc \
+  --check   # files up to date?
 node images/japan-quiz/tools/data.test.mjs   # this image's data and config (Node 22.12+)
 ```
 
@@ -45,19 +51,22 @@ the generator core's live in `shared/map-quiz/tools/`; CI runs them all
 (`.github/workflows/shared-sync.yml`), not `build_map.py --check` (its
 inputs aren't committed).
 
-Python 3.9+, standard library only. The script verifies its three inputs
-and stops on any other file:
+Python 3.9+, standard library only (about 10 s). The script verifies its
+four inputs and stops on any other file:
 
 | File | Bytes | sha256 |
 | --- | --- | --- |
 | `ne_10m_admin_1_states_provinces.geojson` | 40 726 851 | `22d0e3ad85eb3e27f17cabf8ba2d50e554fbc27a87796ff891d958185da62fb5` |
 | `ne_50m_admin_0_countries.geojson` | 3 083 490 | `3e458fc036ad0a66411f2c1e6cac49c5d7bfb81cb1123bc513b22511a2b7fdeb` |
 | `ne_10m_lakes.geojson` | 5 043 554 | `2d036f53dedec578001c5c30c2959ee7d4eebc1306900fa4367c49929ec8f2d9` |
+| `etopo_2022_30s_japan.asc` | 59 353 552 | `f94b68ad855dce74e481030a2f73264534bfbfd89f82743964bf7b6c7735ff3c` |
 
 (The second is the file europe-quiz pins.) Output is deterministic:
 re-running gives byte-identical files (`--check` compares without
-writing). It prints sizes (raw, gzip -1 as nginx serves it, gzip -9) and
-what it moved, dropped and checked.
+writing; for `relief.png` it compares the decoded pixel data when the
+bytes differ, as another zlib build may compress the same pixels
+differently). It prints sizes (raw, gzip -1 as nginx serves it, gzip -9)
+and what it moved, dropped and checked.
 
 ## Data
 
@@ -86,6 +95,23 @@ small islands are missing from the source (e.g. Kōzushima, Teuri,
 Yagishiri, Awashima, Hateruma). Lakes are not cut out of the prefectures
 (Lake Biwa is part of Shiga's shape; the overlay draws the water above
 it).
+
+Elevation: [ETOPO 2022](https://www.ncei.noaa.gov/products/etopo-global-relief-model)
+v1, NOAA National Centers for Environmental Information (NCEI): a 15"
+global relief model of land and sea floor. Cite as: NOAA
+National Centers for Environmental Information, 2022: ETOPO 2022 15
+Arc-Second Global Relief Model, doi:10.25921/fd45-gt74. A work of the
+U.S. government; the dataset's licence note says it "may be used and
+redistributed for free but is not intended for legal use, since it may
+contain inaccuracies" (no warranty). No attribution required on the page
+(credited here). The pinned file is a subset from CoastWatch's ERDDAP
+(dataset `ETOPO_2022_v1_15s`): every second cell, i.e. 30" (about
+0.9 km north–south, 0.65–0.85 km east–west here), of 24.0–45.75°N,
+122.75–146.0°E, as ESRI ASCII
+grid (2791 × 2611 cells, cell centres, rows from north to south, values
+in metres). ERDDAP writes no timestamp into this format: repeated
+downloads (2026-11-01) were byte-identical, so it pins by sha256 like the
+Natural Earth files. Not committed (59 MB).
 
 ## Fix-ups
 
@@ -172,6 +198,44 @@ none is lost to the grid, which the line overlays need.
   `borders-regions` too).
   The four main islands share no land border, so there is no
   `borders-islands` (the build checks it).
+
+## Relief
+
+`site/relief.png` shades the terrain so plains and mountains can be told
+apart (Kantō, Nōbi and the Kinki basins flat, the Japan Alps and the
+backbone ranges rugged). `build_map.py`, `RELIEF_*`:
+
+- Grid: 2.5 px per map unit (`RELIEF_PPU`; 2500 × 2743 px over the
+  window `0 0 1000 1097.2`), about the 30" cells, so it stays sharp at the
+  closest zoom (6 px/unit). Each pixel centre goes back to lon/lat by the
+  inverse of the map's projection (Snyder's ellipsoidal LAEA, in the
+  adapter; a round trip is checked on every run), its elevation is
+  bilinear between the ETOPO cell centres; sea values count as 0 m, so
+  the coast doesn't shade against the sea floor.
+- Shading: Horn's gradient, vertical exaggeration 5 (`RELIEF_Z`), light
+  from the top left (azimuth 315°, 45° high). Darkness = 0.8 × how far
+  the slope faces away from the light + 0.9 × its steepness, up to black
+  at alpha 0.55 (`RELIEF_DARK`); slopes facing the light get white up to
+  alpha 0.3 (`RELIEF_LIGHT`); flat land stays transparent. 32 alpha steps
+  (`RELIEF_LEVELS`).
+- Mask: only on the pieces (Japan's land), from their drawn rings (the
+  shared arcs), with exact coverage along 4 scanlines per pixel row, so
+  the shading fades out across the coast pixel instead of spilling into
+  the sea; context land and sea stay transparent.
+- File: an 8-bit palette PNG (transparent, black or white with alpha;
+  ~330 KB; decoded 2500 × 2743 × 4 ≈ 27 MB in the browser), no time or
+  text chunks. In `map.svg` it is `<image id="relief" href="relief.png">`
+  first in `<g id="overlays">`: above the pieces, below Lake Biwa and the
+  lines; `#overlays` is never hit, so a tap on a mountain picks the piece
+  beneath. `japan.css` draws it with plain alpha (`--relief-opacity`,
+  softer in dark mode). No blend mode: the sea is the page background
+  outside the inline SVG's own compositing group, so `multiply` would
+  have nothing to blend with there and leave a light fringe along the
+  coasts.
+- Choices (2026-11-01): shaded relief rather than elevation bands
+  (contours as tinted overlays; the owner's pick from previews of both);
+  2.5 px/unit as the finest that stays around 350 KB (1.5: 115 KB, soft
+  at the closest zoom; 3.0: 470 KB).
 
 ## Names and readings
 

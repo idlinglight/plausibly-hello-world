@@ -27,6 +27,33 @@
   stroke-width: 1.5px;
 }
 
+/* Shaded relief (map.svg's <image id="relief">, first in #overlays: above
+   the pieces, below the lake and the lines; #overlays is never hit, so a
+   tap on a mountain picks the piece beneath). relief.png is transparent
+   where flat and off Japan's land, black with alpha on shadowed and steep
+   slopes, white with alpha on slopes facing the light (top left): plain
+   alpha compositing, no blend mode (one would have nothing to blend with
+   over the sea, the page background outside the SVG, and leave a light
+   fringe along the coasts). A little softer in dark mode, where the
+   shadows on the dark fills come close to black. */
+:root {
+  --relief-opacity: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --relief-opacity: 0.85;
+  }
+}
+
+:root[data-theme="dark"] {
+  --relief-opacity: 0.85;
+}
+
+#overlays #relief {
+  opacity: var(--relief-opacity);
+}
+
 /* Lake Biwa (overlay "lakes"): water in the sea's colour (the engine's
    --water) with the coast's hairline. Not a blocking overlay: a click on
    the lake picks Shiga beneath. */

@@ -159,7 +159,7 @@ check('index.html: English, data-quiz names this image, own stylesheet after the
   for (const id of ['prompt-sub']) assert.ok(!mapIds.includes(id), id);
 });
 
-check('map.svg: a shape per piece in #pieces, context land, then lakes and the four line overlays', () => {
+check('map.svg: a shape per piece in #pieces, context land, then the relief, lakes and the four line overlays', () => {
   const svg = site('map.svg');
   const [x, y, w, h] = MAP.extent;
   assert.ok(svg.startsWith(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}">`));
@@ -170,13 +170,39 @@ check('map.svg: a shape per piece in #pieces, context land, then lakes and the f
   assert.ok(at.every((i, k) => i > svg.indexOf('<g id="overlays">') && (k === 0 || i > at[k - 1])), 'overlays in this order');
   assert.ok(svg.indexOf('<path id="land"') < svg.indexOf('<g id="pieces">') && svg.indexOf('<g id="pieces">') < svg.indexOf('<g id="overlays">'));
   for (const id of overlays.slice(1)) assert.ok(!/z/i.test(svg.match(new RegExp(`<path id="${id}" d="([^"]+)"`))[1]), `${id}: open lines`);
-  assert.equal((svg.match(/ id="/g) || []).length, 1 + 1 + PIECES.length + 1 + overlays.length);
+  assert.equal((svg.match(/ id="/g) || []).length, 1 + 1 + PIECES.length + 1 + 1 + overlays.length, 'relief included');
   for (const r of config.rounds) for (const id of r.lines) assert.ok(overlays.includes(id), id);
 });
 
-check('japan.css: region-border token in all three blocks, heavier region lines in the prefecture rounds, lake outline', () => {
+check('map.svg: the relief <image> first in #overlays, over the window, relief.png a palette PNG of its size', () => {
+  const svg = site('map.svg');
+  const m = svg.match(/<g id="overlays">\n(<image [^>]*\/>)\n<path id="lakes"/);
+  assert.ok(m, 'the relief is the first overlay, right before the lake');
+  const el = m[1];
+  const attr = (name) => el.match(new RegExp(` ${name}="([^"]*)"`))?.[1];
+  assert.equal(attr('id'), 'relief');
+  assert.equal(attr('href'), 'relief.png');
+  assert.equal(attr('preserveAspectRatio'), 'none');
+  assert.deepEqual([attr('x'), attr('y'), attr('width')].map(Number), [0, 0, MAP.width]);
+  const height = Number(attr('height'));
+  assert.ok(height >= MAP.height && height < MAP.height + 1, `height ${height}`);
+  assert.equal((svg.match(/<image /g) || []).length, 1);
+  const png = readFileSync(new URL('../site/relief.png', import.meta.url));
+  assert.deepEqual([...png.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 'PNG signature');
+  assert.equal(png.toString('latin1', 12, 16), 'IHDR');
+  const [w, h] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+  assert.deepEqual([png[24], png[25]], [8, 3], '8-bit palette');
+  const ppu = w / MAP.width; // the same pixel density across and down
+  assert.ok(Math.abs(h / ppu - height) < 1e-9, `${w} x ${h} px vs ${MAP.width} x ${height}`);
+  assert.ok(png.length < 400_000, `${png.length} B`);
+});
+
+check('japan.css: region-border and relief tokens in all three blocks, heavier region lines in the prefecture rounds, lake outline', () => {
   const css = site('japan.css');
   assert.equal((css.match(/--region-border:/g) || []).length, 3);
+  assert.equal((css.match(/--relief-opacity:/g) || []).length, 3);
+  assert.match(css, /#overlays #relief \{\s*opacity: var\(--relief-opacity\);\s*\}/);
+  assert.doesNotMatch(css, /mix-blend-mode/, 'plain alpha: a blend mode leaves a fringe over the sea');
   assert.match(css, /:root\[data-round="prefectures"\] #overlays #borders-regions,\s*:root\[data-round="capitals"\] #overlays #borders-regions \{/);
   assert.match(css, /#overlays #lakes \{[^}]*vector-effect: non-scaling-stroke;/);
 });
