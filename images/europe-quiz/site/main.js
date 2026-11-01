@@ -730,13 +730,29 @@ function showLabel(id, x, y, type) {
   labelTimer = setTimeout(hideLabel, LABEL_MS);
 }
 
+// A toast fades after `ms`; with ms = Infinity (the first visit's intro)
+// it stays until the first interaction: a press anywhere on the page (map
+// or controls: answers, pans, pinches, buttons), a wheel or gesture event,
+// or a key. Any later toast replaces it and ends that.
 let toastTimer = 0;
+let toastUntilInteraction = false;
 function toast(text, ms = TOAST_MS) {
   toastEl.textContent = text;
   toastEl.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.remove('show'), ms);
+  toastUntilInteraction = ms === Infinity;
+  if (!toastUntilInteraction) toastTimer = setTimeout(hideToast, ms);
 }
+
+function hideToast() {
+  toastUntilInteraction = false;
+  toastEl.classList.remove('show');
+}
+
+function interacted() {
+  if (toastUntilInteraction) hideToast();
+}
+for (const t of ['pointerdown', 'wheel', 'gesturestart', 'keydown']) window.addEventListener(t, interacted, { capture: true, passive: true });
 
 function roundDone({ kind, misses, total }) {
   toast(ROUNDS[kind].done({ total, misses }));
@@ -1005,7 +1021,7 @@ updateHud();
 loadMap().then(
   () => {
     if (!resumed) {
-      toast(coarse ? TEXT.intro.touch : TEXT.intro.mouse);
+      toast(coarse ? TEXT.intro.touch : TEXT.intro.mouse, Infinity); // until the first interaction
     }
   },
   (err) => {
