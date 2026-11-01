@@ -14,9 +14,10 @@
 // rather than an empty band.
 //
 // Input: a press that moves more than SLOP px is a pan, never a click; two
-// fingers pinch-zoom (and pan); the wheel zooms at the cursor (a ctrl-wheel
-// trackpad pinch anywhere on the page zooms the map, not the page); buttons
-// and + / - / 0 / arrow keys zoom and pan with a short animation. A click
+// fingers pinch-zoom (and pan); a mouse wheel zooms at the cursor, a
+// trackpad's two-finger scroll pans (onWheel: classified per gesture), and
+// a pinch or ctrl + wheel anywhere on the page zooms the map, not the page;
+// buttons and + / - / 0 / arrow keys zoom and pan with a short animation. A click
 // picks a small country's ring if it lands inside the drawn ring, or within
 // MARKER_HIT px of it over sea, context land or that country itself (never
 // over another quiz country); the nearest such ring wins. Otherwise it
@@ -26,7 +27,8 @@
 //
 // State on <html>: data-round (countries | capitals), data-progress
 // ("12/46"), data-zoom (s / fitScale), data-ready (1 once the map is in;
-// "error" if it failed). Quiz state and counters persist in localStorage
+// "error" if it failed), data-wheel (how the last wheel event was taken:
+// trackpad | mouse | pinch). Quiz state and counters persist in localStorage
 // (optional). Debug: ?seed=<int> (0 … 4294967295, digits only) makes the
 // shuffles reproducible (stored state with another seed is replaced).
 
@@ -51,6 +53,7 @@ const MARKER_R_MIN = 4; // … and at least this many px
 const RING_SLACK = 2; // px around the drawn ring that count as inside (its halo)
 const MARKER_HIT = { mouse: 14, pen: 18, touch: 22 }; // wider hit zone around a ring, CSS px
 const MARKER_HIDE = 28; // a ring hides once its country is this many CSS px across
+const WHEEL_GAP_MS = 200; // wheel events closer than this belong to one gesture
 
 const root = document.documentElement;
 const host = document.getElementById('map');
@@ -499,18 +502,69 @@ function onUp(e, cancelled) {
   if (e.pointerType === 'mouse') queueHover(e.clientX, e.clientY);
 }
 
-// On window, not the SVG: a ctrl-wheel (trackpad pinch, ctrl + wheel) over
-// the card or the controls would otherwise zoom the whole page.
+// Trackpad or mouse wheel, from the first wheel event of a gesture (no
+// browser says which). In order:
+// 1. deltaMode LINE / PAGE → mouse. Firefox reports mouse wheels in lines
+//    and precise devices in pixels, but only if deltaMode is read before
+//    deltaX / deltaY (otherwise it converts lines to pixels for old pages),
+//    so onWheel reads it first. Chrome and Safari always report pixels.
+// 2. deltaX ≠ 0 → trackpad: a mouse wheel scrolls one axis. (Shift + wheel
+//    on macOS gives deltaX too; it pans sideways then, which is fine.)
+// 3. Non-standard wheelDeltaY (Chrome, Safari): precise (trackpad) deltas
+//    come with wheelDeltaY ≈ −3 × deltaY → trackpad; mouse notches are
+//    counted in ticks, a multiple of ±120 → mouse. Anything else falls
+//    through. Seen in headless Chrome: CDP mouseWheel events always carry
+//    ±120 (they look like notches whatever their size); a script-made
+//    WheelEvent without wheelDeltaY gets trunc(deltaY), which falls through.
+// 4. Otherwise: fractional or small pixel steps → trackpad, whole steps of
+//    40 px or more → mouse.
+// Failure modes: a mouse with smooth scrolling (high-resolution wheels,
+// macOS acceleration, vendor "smooth scrolling") can report trackpad-like
+// deltas and then pans instead of zooming; ctrl + wheel, pinch, the buttons
+// and the keys still zoom. A trackpad flick that opens with a whole step of
+// 40 px or more and no telling wheelDeltaY (e.g. some Windows touchpads)
+// zooms for that gesture.
+function wheelKind(mode, e) {
+  if (mode !== 0) return 'mouse';
+  if (e.deltaX !== 0) return 'trackpad';
+  const w = e.wheelDeltaY;
+  if (typeof w === 'number' && w !== 0) {
+    if (Math.abs(w + 3 * e.deltaY) <= 1) return 'trackpad';
+    if (w % 120 === 0) return 'mouse';
+  }
+  return Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 40 ? 'mouse' : 'trackpad';
+}
+
+// On window, not the SVG: a ctrl-wheel (Chrome / Firefox trackpad pinch,
+// ctrl + mouse wheel) over the card or the controls would otherwise zoom
+// the whole page; it zooms the map at the cursor. A plain wheel over the
+// map pans (trackpad: the map follows the fingers, as the page would
+// scroll) or zooms at the cursor (mouse); the kind is decided at the first
+// event of a gesture and kept until a WHEEL_GAP_MS pause, so momentum
+// scrolling stays a pan. A plain wheel over the HUD does nothing.
+let wheelGesture = null; // 'trackpad' | 'mouse' while a gesture lasts
+let wheelAt = -Infinity;
+
 function onWheel(e) {
+  const mode = e.deltaMode; // before deltaX / deltaY, see wheelKind
   const onMap = !!svg && svg.contains(e.target);
   if (!onMap && !e.ctrlKey) return; // plain wheel over the HUD: nothing to do
   e.preventDefault();
   if (!svg) return;
   stopAnim();
-  const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? view.h : 1;
-  // ctrlKey: a trackpad pinch (small deltas) — zoom faster per unit
-  const k = e.ctrlKey ? 0.01 : 0.002;
-  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * unit * k));
+  const unit = mode === 1 ? 16 : mode === 2 ? view.h : 1;
+  const now = performance.now();
+  if (e.ctrlKey) {
+    wheelGesture = null; // a pinch ends a scroll gesture
+    // trackpad pinches send small deltas: zoom faster per unit
+    zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * unit * 0.01));
+  } else {
+    if (!wheelGesture || now - wheelAt > WHEEL_GAP_MS) wheelGesture = wheelKind(mode, e);
+    if (wheelGesture === 'trackpad') panBy(-e.deltaX * unit, -e.deltaY * unit);
+    else zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * unit * 0.002));
+  }
+  wheelAt = now;
+  root.dataset.wheel = wheelGesture || 'pinch';
   queueHover(e.clientX, e.clientY);
 }
 
@@ -741,7 +795,7 @@ updateHud();
 loadMap().then(
   () => {
     if (!resumed) {
-      toast(coarse ? 'Tap the country with this name. Pinch to zoom, drag to move.' : 'Click the country with this name. Scroll to zoom, drag to move.');
+      toast(coarse ? 'Tap the country with this name. Pinch to zoom, drag to move.' : 'Click the country with this name. Zoom: mouse wheel or pinch. Move: drag or two-finger scroll.');
     }
   },
   (err) => {

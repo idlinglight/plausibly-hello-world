@@ -134,8 +134,12 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   context land or that country itself (never over a neighbour); nearest
   ring wins. Rings shrink at low zoom (phones) and hide once their country
   is 28 px across. Answering needs a pointer (click or tap); keys only
-  zoom and pan. Zoom: pinch, wheel (at the cursor), buttons, `+ - 0` keys; drag
-  pans; a press that moves more than 5–10 px is a pan, never a click. The
+  zoom and pan. Zoom: pinch (touch, trackpad), mouse wheel and ctrl +
+  wheel (at the cursor), buttons, `+ - 0` keys. Pan: drag, a trackpad's
+  two-finger scroll, arrow keys. Wheel events are classified per gesture
+  as trackpad or mouse (heuristic and its failure modes in `main.js`
+  `wheelKind`; a smooth-scrolling mouse may pan instead of zoom). A press
+  that moves more than 5–10 px is a pan, never a click. The
   full view fits the window around all quiz countries; the SVG draws more
   context around it, faded out, so tall or wide screens show map. Two
   layouts (`min-aspect-ratio: 4/3` in `style.css` and `main.js`). Theme
@@ -144,7 +148,8 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   classic script in `<head>`: no flash). `?seed=<int>` makes the shuffles
   reproducible (stored state with another seed is replaced);
   `<html data-round>` (`countries`, `capitals`), `data-progress`,
-  `data-zoom`, `data-theme`, `data-theme-pref`, `data-ready`. Quiz state
+  `data-zoom`, `data-wheel`, `data-theme`, `data-theme-pref`,
+  `data-ready`. Quiz state
   lives in `localStorage` (optional). `quiz.js` has no DOM (checks: `node
   tools/quiz.test.mjs`). Favicon rasters exported once from `favicon.svg`
   with headless Chrome (`.ico` = one 32 px PNG; touch icon square).
