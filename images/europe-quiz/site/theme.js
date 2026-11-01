@@ -1,6 +1,8 @@
 // theme.js: light/dark theme. A classic script in <head>, after the
 // stylesheet, so <html data-theme> is set before the first paint (no flash
 // of the other theme).
+// Shared map-quiz engine file: the source is shared/map-quiz/site/, images
+// get byte-identical copies (python3 shared/sync.py). Edit the source.
 //
 // The page follows the OS (prefers-color-scheme) unless an override is
 // stored. The toggle button (#theme) stores the other theme while following
@@ -11,11 +13,14 @@
 //
 // <html data-theme> = the theme shown (light | dark);
 // <html data-theme-pref> = auto | light | dark (the stored override).
-// The theme-color meta follows the --sea colour (the page background).
+// The override is stored per image: localStorage "phw-<data-quiz>-theme",
+// <html data-quiz> being the image's name. The theme-color meta follows
+// the --sea colour (the page background). No text here: main.js labels the
+// button from the image's config (it watches the two attributes).
 (function () {
   'use strict';
-  var KEY = 'phw-europe-quiz-theme';
   var root = document.documentElement;
+  var KEY = 'phw-' + (root.getAttribute('data-quiz') || 'map-quiz') + '-theme';
   var query = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
   var override = load();
 
@@ -46,18 +51,11 @@
       override = null;
       store(null);
     }
-    var theme = override || os();
-    var other = theme === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', theme);
+    root.setAttribute('data-theme', override || os());
     root.setAttribute('data-theme-pref', override || 'auto');
     var meta = document.querySelector('meta[name="theme-color"]');
     var sea = getComputedStyle(root).getPropertyValue('--sea').trim();
     if (meta && sea) meta.setAttribute('content', sea);
-    var button = document.getElementById('theme');
-    if (button) {
-      button.setAttribute('aria-label', 'Switch to ' + other + ' theme');
-      button.title = override ? 'Back to the system setting (' + other + ')' : 'Switch to the ' + other + ' theme';
-    }
   }
 
   function toggle() {

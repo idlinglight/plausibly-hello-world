@@ -10,18 +10,18 @@ Overview and the map.svg layout: shared/map-quiz/README.md. Tests:
 python3 -I shared/map-quiz/tools/mapgen_test.py"""
 from .build import CONTEXT, MapBuilder, Result, Window
 from .geometry import (area2, bbox, build_topology, clip_ring, dissolve, douglas_peucker, in_polygon, in_ring,
-                       open_ring, owner_of, polys_of, ring_from_arcs, simplify_arc)
+                       open_ring, owner_of, parse_wkt, polys_of, ring_from_arcs, simplify_arc)
 from .output import BuildError, emit, read_pinned
-from .projection import (AIRY_1830, BESSEL_1841, GRS80, WGS84, LambertAzimuthalEqualArea, Projection,
+from .projection import (AIRY_1830, BESSEL_1841, GRS80, WGS84, Identity, LambertAzimuthalEqualArea, Projection,
                          TransverseMercator, epsg3035, osgb_example)
 from .svg import fmt_fixed, js_string, map_svg, path_d
 
 __all__ = [
     "CONTEXT", "MapBuilder", "Result", "Window",
     "area2", "bbox", "build_topology", "clip_ring", "dissolve", "douglas_peucker", "in_polygon", "in_ring",
-    "open_ring", "owner_of", "polys_of", "ring_from_arcs", "simplify_arc",
+    "open_ring", "owner_of", "parse_wkt", "polys_of", "ring_from_arcs", "simplify_arc",
     "BuildError", "emit", "read_pinned",
-    "AIRY_1830", "BESSEL_1841", "GRS80", "WGS84", "LambertAzimuthalEqualArea", "Projection",
+    "AIRY_1830", "BESSEL_1841", "GRS80", "WGS84", "Identity", "LambertAzimuthalEqualArea", "Projection",
     "TransverseMercator", "epsg3035", "osgb_example",
     "fmt_fixed", "js_string", "map_svg", "path_d",
 ]

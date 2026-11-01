@@ -1,6 +1,7 @@
 """Map projections: callables (lon, lat) in degrees -> (easting, northing) in
 metres, y north. Any such callable works with mapgen.Window and
-mapgen.MapBuilder; these two cover a continent (LAEA) and a city (TM).
+mapgen.MapBuilder; these cover a continent (LAEA), a city (TM) and data
+that comes already projected (Identity: e.g. EPSG:31256 coordinates).
 
 Each projection can carry a reference point from the defining source
 (EPSG); self_test() compares against it, so a typo in a constant fails the
@@ -25,6 +26,17 @@ class Projection:
         e, n = self(lon, lat)
         if abs(e - e0) > tol or abs(n - n0) > tol:
             raise ValueError(f"{self!r}: projection self-test failed: {e:.2f} {n:.2f}, expected {e0} {n0}")
+
+
+class Identity(Projection):
+    """For input that is already projected (easting, northing in metres, y
+    north): passes coordinates through; Window does the scaling and y-flip."""
+
+    def __repr__(self):
+        return "identity"
+
+    def __call__(self, x, y):
+        return x, y
 
 
 class LambertAzimuthalEqualArea(Projection):

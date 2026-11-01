@@ -74,6 +74,36 @@ class Projections(unittest.TestCase):
         self.assertGreater(tm(16.375, 48.3)[1], n)  # north is +y
 
 
+class Wkt(unittest.TestCase):
+    def test_polygon_and_multipolygon(self):
+        self.assertEqual(mapgen.parse_wkt("POLYGON ((0 0, 1 0, 1 1, 0 0))"), [[[(0, 0), (1, 0), (1, 1), (0, 0)]]])
+        mp = mapgen.parse_wkt("SRID=31256;MULTIPOLYGON Z (((0 0 5,2 0 5,2 2 5,0 0 5),(.5 .5 1,1 .5 1,1 1 1,.5 .5 1)),"
+                              "((10 10 0,11 10 0,11 11 0,10 10 0)))")
+        self.assertEqual(len(mp), 2)
+        self.assertEqual(len(mp[0]), 2)  # exterior + hole
+        self.assertEqual(mp[0][1][0], (0.5, 0.5))
+        self.assertEqual(mapgen.parse_wkt("multipolygon empty"), [])
+
+    def test_bad_input(self):
+        for bad in ["POINT (1 2)", "POLYGON ((0 0, 1 0, 1 1)", "POLYGON ((0 0, 1))", "MULTIPOLYGON ((0 0, 1 0, 1 1, 0 0))",
+                    "POLYGON ((0 0, 1 0, 1 1, 0 0)) x"]:
+            with self.assertRaises(ValueError, msg=bad):
+                mapgen.parse_wkt(bad)
+
+    def test_projected_input(self):
+        """Already projected data (e.g. EPSG:31256): Identity + Window, no extent."""
+        polys = [mapgen.parse_wkt(f"POLYGON (({x} 340000, {x + 1000} 340000, {x + 1000} 341000, {x} 341000, {x} 340000))")[0]
+                 for x in (0, 1000)]
+        window = mapgen.Window([p for poly in polys for p in poly[0]], 0.0, 1000.0, (0, 0))
+        self.assertEqual(window.viewbox(), "0 0 1000 500")
+        mb = mapgen.MapBuilder(mapgen.Identity(), window, ["d01", "d02"])
+        for rid, poly in zip(["d01", "d02"], polys):
+            mb.add_region(rid, poly)
+        res = mb.build()
+        self.assertEqual(set(rings_of(res.paths["d01"])[0]), {(0, 0), (500, 0), (500, 500), (0, 500)})
+        self.assertEqual(window.to_view(0, 341000), (0, 0))  # north edge at the top (y down)
+
+
 class PathText(unittest.TestCase):
     def test_fmt_fixed(self):
         cases = {(0, 1): "0", (3, 1): ".3", (-3, 1): "-.3", (120, 1): "12", (405, 2): "4.05", (-1000, 2): "-10"}

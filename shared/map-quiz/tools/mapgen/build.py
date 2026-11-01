@@ -22,7 +22,8 @@ class Window:
     view; their bounding box plus margin (a fraction of its width) becomes
     0 0 width height in map units (x right, y down). extent: how much
     context is drawn around it, as a fraction of the window's width and
-    height per side; that rectangle is map.svg's viewBox and clip box."""
+    height per side; that rectangle is map.svg's viewBox and clip box
+    ((0, 0): nothing around the window, e.g. a map without context land)."""
 
     def __init__(self, points, margin, width, extent):
         x0, y0, x1, y1 = bbox(points)
@@ -31,7 +32,8 @@ class Window:
         self.k = width / (self.x1 - self.x0)
         self.width = width
         self.height = round((self.y1 - self.y0) * self.k, 1)
-        ex0, ey0 = -round(width * extent[0], 1), -round(self.height * extent[1], 1)
+        # (0.0 - …: an extent of 0 gives 0, not -0)
+        ex0, ey0 = 0.0 - round(width * extent[0], 1), 0.0 - round(self.height * extent[1], 1)
         self.extent = (ex0, ey0, width - ex0, self.height - ey0)  # x0, y0, x1, y1
 
     def to_view(self, e, n):

@@ -6,6 +6,7 @@
     "Removing a file from a source folder doesn't delete its old copies: delete them by hand."
   ],
   "rules": [
-    { "from": "nginx.conf", "to": "nginx.conf", "images": "*" }
+    { "from": "nginx.conf", "to": "nginx.conf", "images": "*" },
+    { "from": "map-quiz/site/", "to": "site/", "images": ["europe-quiz"] }
   ]
 }

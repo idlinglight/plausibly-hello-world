@@ -1,8 +1,10 @@
-// Mouse wheel or trackpad? Plain wheel events don't say which device sent
-// them, so main.js asks this once per gesture (its first event) and keeps
-// the answer through the gesture, momentum included. No DOM: the replay
-// test (tools/wheel.test.mjs) runs it under plain node against recorded
-// events (tools/wheel-fixture.json).
+// wheel.js: mouse wheel or trackpad? Plain wheel events don't say which
+// device sent them, so main.js asks this once per gesture (its first event)
+// and keeps the answer through the gesture, momentum included. No DOM: the
+// replay test (shared/map-quiz/tools/wheel.test.mjs) runs it under plain
+// node against recorded events (wheel-fixture.json beside it).
+// Shared map-quiz engine file: the source is shared/map-quiz/site/, images
+// get byte-identical copies (python3 shared/sync.py). Edit the source.
 //
 // Rules, from real devices on macOS (Safari 27, Chrome 156, Firefox 159, a
 // built-in trackpad and a wheel mouse, at 100 % and 125 % page zoom):

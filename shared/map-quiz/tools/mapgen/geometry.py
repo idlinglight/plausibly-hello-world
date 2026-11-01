@@ -1,6 +1,11 @@
-"""Planar geometry for the map generators: point-in-polygon, clipping,
-dissolving, Douglas-Peucker, shared-arc topology. Rings are lists of (x, y);
-polygons are [exterior, hole, ...] as in GeoJSON."""
+"""Planar geometry for the map generators: reading polygons (GeoJSON, WKT),
+point-in-polygon, clipping, dissolving, Douglas-Peucker, shared-arc
+topology. Rings are lists of (x, y); polygons are [exterior, hole, ...] as
+in GeoJSON."""
+import re
+
+_WKT = re.compile(r"^\s*(?:SRID=\d+;)?\s*(MULTIPOLYGON|POLYGON)\s*(?:ZM|Z|M)?\s*(EMPTY|\(.*\))\s*$", re.I | re.S)
+_WKT_TOKEN = re.compile(r"\(|\)|,|[^\s(),]+")
 
 
 def polys_of(geom):
@@ -8,6 +13,61 @@ def polys_of(geom):
     if geom is None:
         return []
     return [geom["coordinates"]] if geom["type"] == "Polygon" else list(geom["coordinates"])
+
+
+def parse_wkt(text):
+    """WKT (or EWKT, with an SRID=…; prefix) POLYGON or MULTIPOLYGON -> list of
+    polygons, coordinates as (x, y) floats (a Z or M value is dropped).
+    ValueError on anything else."""
+    m = _WKT.match(text)
+    if not m:
+        raise ValueError(f"not a WKT (MULTI)POLYGON: {text[:60]!r}")
+    kind, body = m.group(1).upper(), m.group(2)
+    if body.upper() == "EMPTY":
+        return []
+    tokens = _WKT_TOKEN.findall(body)
+
+    def nested(i):  # tokens[i] == "(" -> (list, index after the matching ")")
+        i += 1
+        items = []
+        if tokens[i] == "(":
+            while True:
+                node, i = nested(i)
+                items.append(node)
+                if tokens[i] == ")":
+                    return items, i + 1
+                if tokens[i] != ",":
+                    raise ValueError(f"WKT: unexpected {tokens[i]!r}")
+                i += 1
+        pt = []
+        while True:
+            t = tokens[i]
+            if t in (",", ")"):
+                if len(pt) < 2:
+                    raise ValueError("WKT: a point needs x and y")
+                items.append((pt[0], pt[1]))
+                pt = []
+                if t == ")":
+                    return items, i + 1
+            elif t == "(":
+                raise ValueError("WKT: unexpected '('")
+            else:
+                pt.append(float(t))
+            i += 1
+
+    try:
+        tree, end = nested(0)
+    except IndexError:
+        raise ValueError("WKT: unbalanced parentheses") from None
+    if end != len(tokens):
+        raise ValueError("WKT: trailing text")
+    depth = 3 if kind == "MULTIPOLYGON" else 2
+    node = tree
+    for _ in range(depth - 1):
+        if not node or not isinstance(node[0], list):
+            raise ValueError(f"WKT: {kind} nesting")
+        node = node[0]
+    return tree if kind == "MULTIPOLYGON" else [tree]
 
 
 def open_ring(r):
