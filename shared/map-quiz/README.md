@@ -242,6 +242,14 @@ What the engine reads (`mapgen.map_svg` writes exactly this):
 </svg>
 ```
 
+`#overlays` may also hold an `<image>` (japan-quiz: `<image id="relief"
+href="relief.png" …>`, a shaded relief, written by the image's adapter
+after `mapgen.map_svg`): drawn in document order with the paths, never
+hit (`#overlays` has `pointer-events: none`), never a line or a blocking
+overlay (those must be paths), styled by its id in the image's
+stylesheet. Its `href` is relative: it resolves against the page, and
+`img-src 'self'` allows it.
+
 No styling in the file. Every id once, none of the page's (`index.html`)
 nor `markers` / `fade*`: the engine checks when it loads the map. An
 overlay a round lists in `lines` gets class `line` (a stroke only, the
