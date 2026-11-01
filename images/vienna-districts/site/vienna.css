@@ -1,7 +1,9 @@
 /* Wiener Bezirke: colour tokens over the shared engine's style.css (linked
    before this file; token list in shared/map-quiz/README.md, "Styling").
    --sea is the plain page background here (no land around the city).
-   The water overlay is fill plus an outline of the same
+   Water: a muted grey-blue, close in value to the districts so it reads as
+   water without pulling the eye (lighter than the dark districts, darker
+   than the light ones). The overlay is fill plus an outline of the same
    colour, 0.9 map units wide (≈ 27 m; in map units, so it scales with the
    map): it keeps narrow channels like the Wienfluss visible at the full
    view and closes the small gaps between water pieces; wider bridge gaps
@@ -12,18 +14,18 @@
 
 :root {
   --sea: #dfdbd2;
-  --water: #9cc7e4;
+  --water: #b6cfdd;
   --overlay-stroke: 0.9px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --sea: #11181c;
-    --water: #3b7fae;
+    --water: #35546a;
   }
 }
 
 :root[data-theme="dark"] {
   --sea: #11181c;
-  --water: #3b7fae;
+  --water: #35546a;
 }

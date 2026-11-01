@@ -162,6 +162,10 @@ build and `data.test.mjs` both check it, via `WATER_STROKE` in
 is: the long vault from the Naschmarkt to the Stadtpark, the square at
 Hietzing (Kennedybrücke, 89 m) and a few wide road crossings stay breaks.
 
+Colour (`site/vienna.css`): a muted grey-blue, `#b6cfdd` light and
+`#35546a` dark, close in value to the districts; chosen 2026-11-01 from
+three candidates over the earlier, more saturated `#9cc7e4` / `#3b7fae`.
+
 ## Map geometry
 
 - No projection: EPSG:31256 is a transverse Mercator with its central
