@@ -4,6 +4,7 @@ python3 -I shared/map-quiz/tools/mapgen_test.py   (stdlib unittest)
 
 The real-data check is each image's own `build_map.py --check` (its inputs
 aren't committed)."""
+import hashlib
 import os
 import re
 import sys
@@ -145,6 +146,15 @@ class Pipeline(unittest.TestCase):
         two = mapgen.map_svg(synthetic()[0].build(), ["A", "B", "C"], "h")
         self.assertEqual(one, two)
 
+    def test_golden(self):
+        """The synthetic map.svg, byte for byte, as of 37bd3a6 (captured before
+        the boundary-line work): a change to the core that moves any output
+        shows here, before the images' build_map.py --check (whose inputs
+        aren't committed)."""
+        svg = mapgen.map_svg(synthetic()[0].build(), ["A", "B", "C"], "h")
+        self.assertEqual(hashlib.sha256(svg.encode("utf-8")).hexdigest(),
+                         "3984fdd3bec9fc8926712f527511db02f06f4cbea8cd74bc45e668a0e2016a70")
+
     def test_region_outside_window_fails(self):
         mb, _ = synthetic()
         with self.assertRaises(mapgen.BuildError):
@@ -200,10 +210,144 @@ class Pipeline(unittest.TestCase):
         path = os.path.abspath(__file__)
         with open(path, "rb") as fh:
             raw = fh.read()
-        import hashlib
         self.assertEqual(mapgen.read_pinned(path, hashlib.sha256(raw).hexdigest(), len(raw)), raw)
         with self.assertRaises(mapgen.BuildError):
             mapgen.read_pinned(path, "0" * 64, len(raw), "https://example.org/x")
+
+
+def lines_of(d, grid):
+    """Path data written by lines_d -> polylines of integer points."""
+    out, last = [], (0, 0)
+    for part in re.findall(r"m([^m]*)", d):
+        v = [round(float(t) * grid) for t in NUM.findall(part)]
+        x, y = last
+        line = []
+        for i in range(0, len(v), 2):
+            x, y = x + v[i], y + v[i + 1]
+            line.append((x, y))
+        out.append(line)
+        last = line[-1]
+    return out
+
+
+def segments(lines):
+    return [(min(a, b), max(a, b)) for ln in lines for a, b in zip(ln, ln[1:])]
+
+
+def region_edges(res, rids):
+    """Every edge of the regions' drawn rings, as integer points."""
+    g = res.grid
+    out = set()
+    for rid in rids:
+        for ring in rings_of(res.paths[rid]):
+            ring = [(round(x * g), round(y * g)) for x, y in ring]
+            for k in range(len(ring)):
+                a, b = ring[k - 1], ring[k]
+                out.add((min(a, b), max(a, b)))
+    return out
+
+
+def block():
+    """A 2x2 block of regions (nw ne / sw se, 250 units square each, y down)
+    and an island to the right; 1 degree = 250 units, grid 10."""
+    window = mapgen.Window([planar(0, 0), planar(4, 2)], 0, 1000.0, (0, 0))
+    ids = ["nw", "ne", "sw", "se", "isl"]
+    mb = mapgen.MapBuilder(planar, window, ids)
+    mb.add_region("nw", square(0, 1, 1, 2))
+    mb.add_region("ne", square(1, 1, 2, 2))
+    mb.add_region("sw", square(0, 0, 1, 1))
+    mb.add_region("se", square(1, 0, 2, 1))
+    mb.add_region("isl", square(3, 0.5, 3.5, 1.5))
+    return mb.build(), ids
+
+
+class Lines(unittest.TestCase):
+    """Result.arcs / topo, boundary_lines, lines_d."""
+
+    def test_arcs_and_topo_rebuild_the_paths(self):
+        for res in (synthetic()[0].build(), block()[0]):
+            self.assertEqual((res.grid, res.dec), (10, 1))
+            self.assertTrue(res.topo)
+            for fid, refs in res.topo.items():
+                rings = [mapgen.ring_from_arcs(r, res.arcs) for r in refs]
+                self.assertEqual(mapgen.path_d(rings, res.dec), res.paths[fid], fid)
+        res = synthetic()[0].build()
+        self.assertEqual(set(res.topo), {"A", "B", "land"}, "C fell below the grid: not in topo")
+        self.assertIn("C", res.paths)
+
+    def test_identity_grouping_gives_every_edge_once(self):
+        res, ids = block()
+        lines = mapgen.boundary_lines(res, {rid: rid for rid in ids})
+        segs = segments(lines)
+        self.assertEqual(len(segs), len(set(segs)), "no edge twice")
+        self.assertEqual(set(segs), region_edges(res, ids))
+        res = synthetic()[0].build()  # with context land beside B
+        segs = segments(mapgen.boundary_lines(res, {"A": "A", "B": "B"}))
+        self.assertEqual(len(segs), len(set(segs)))
+        self.assertEqual(set(segs), region_edges(res, ["A", "B"]))
+
+    def test_groups_inner_and_outer(self):
+        res, _ = block()
+        top_bottom = {"nw": "top", "ne": "top", "sw": "bottom", "se": "bottom"}
+        inner = mapgen.boundary_lines(res, top_bottom, outer=False)
+        self.assertEqual(inner, [[(0, 2500), (2500, 2500), (5000, 2500)]], "one line on through the centre")
+        outer = mapgen.boundary_lines(res, top_bottom, inner=False)
+        self.assertEqual(len(outer), 1)
+        self.assertEqual(outer[0][0], (0, 0))
+        self.assertEqual(outer[0][-1], (0, 0), "a closed loop from its smallest point")
+        self.assertEqual(len(outer[0]), 9)
+        self.assertTrue(all(0 <= x <= 5000 and 0 <= y <= 5000 for x, y in outer[0]), "the island is ungrouped")
+        both = mapgen.boundary_lines(res, top_bottom)
+        self.assertEqual(set(segments(both)), set(segments(inner)) | set(segments(outer)))
+        self.assertEqual(mapgen.boundary_lines(res, top_bottom, inner=False, outer=False), [])
+        # the island as a group of its own: its coast joins the outer lines
+        with_isl = mapgen.boundary_lines(res, {**top_bottom, "isl": "isl"}, inner=False)
+        self.assertEqual(set(segments(with_isl)) - set(segments(outer)), region_edges(res, ["isl"]))
+        # an ungrouped region (inert) is outside: the edges against it are outer
+        no_ne = {"nw": "top", "sw": "bottom", "se": "bottom"}
+        segs = set(segments(mapgen.boundary_lines(res, no_ne, inner=False)))
+        self.assertIn(((2500, 0), (2500, 2500)), segs, "nw | ne")
+        self.assertIn(((2500, 2500), (5000, 2500)), segs, "se | ne")
+        self.assertNotIn(((2500, 0), (5000, 0)), segs, "ne's own coast")
+        self.assertNotIn(((5000, 0), (5000, 2500)), segs, "ne's own coast")
+        self.assertEqual(set(segments(mapgen.boundary_lines(res, no_ne, outer=False))),
+                         {((0, 2500), (2500, 2500))}, "inner: top | bottom only")
+
+    def test_context_land_is_outside(self):
+        res = synthetic()[0].build()
+        one = mapgen.boundary_lines(res, {"A": "g", "B": "g"}, outer=False)
+        self.assertEqual(one, [], "one group: no inner edges")
+        coast = set(segments(mapgen.boundary_lines(res, {"A": "g", "B": "g"}, inner=False)))
+        self.assertEqual(coast, region_edges(res, ["A", "B"]) - set(segments(
+            mapgen.boundary_lines(res, {"A": "a", "B": "b"}, outer=False))))
+        land = region_edges(res, ["land"])
+        self.assertTrue(coast & land, "the edge against context land is outer")
+        ab = mapgen.boundary_lines(res, {"A": "a", "B": "b"}, outer=False)
+        self.assertEqual(len(ab), 1)
+        self.assertEqual(len(ab[0]), 2, "the shared A | B edge")
+
+    def test_order_independent(self):
+        res, ids = block()
+        groups = {"nw": 1, "ne": 2, "sw": 1, "se": 3, "isl": 2}
+        rev = dict(reversed(list(groups.items())))
+        for kw in ({}, {"inner": False}, {"outer": False}):
+            self.assertEqual(mapgen.boundary_lines(res, groups, **kw), mapgen.boundary_lines(res, rev, **kw))
+
+    def test_bad_groups(self):
+        res = synthetic()[0].build()
+        for bad in ({"C": "g"}, {"A": "g", "Z": "g"}, {"land": "g"}):
+            with self.assertRaises(mapgen.BuildError, msg=str(bad)):
+                mapgen.boundary_lines(res, bad)
+
+    def test_lines_d_round_trip(self):
+        lines = [[(0, 0), (15, 0), (15, 5)], [(100, 100), (95, 103)]]
+        d = mapgen.lines_d(lines, 1)
+        self.assertEqual(d, "m0 0 1.5 0 0 .5m8.5 9.5-.5.3")
+        self.assertEqual(lines_of(d, 10), lines)
+        res, ids = block()
+        lines = mapgen.boundary_lines(res, {rid: rid for rid in ids})
+        self.assertEqual(lines_of(mapgen.lines_d(lines, res.dec), res.grid), lines)
+        self.assertEqual(mapgen.lines_d([], 1), "")
 
 
 if __name__ == "__main__":

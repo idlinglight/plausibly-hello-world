@@ -46,6 +46,33 @@ def path_d(rings, dec):
     return "".join(out)
 
 
+def lines_d(lines, dec):
+    """Polylines of integer points (10**-dec units, e.g. from boundary_lines)
+    -> compact relative path data of open subpaths (no 'z'): each 'm' is
+    relative to the previous line's end. Stroke only (fill: none)."""
+    out = []
+    prev_num = None
+
+    def num(s):
+        nonlocal prev_num
+        if prev_num is not None and not (s[0] == "-" or (s[0] == "." and "." in prev_num)):
+            out.append(" ")
+        out.append(s)
+        prev_num = s
+
+    last = (0, 0)
+    for line in lines:
+        out.append("m")
+        prev_num = None
+        px, py = last
+        for x, y in line:
+            num(fmt_fixed(x - px, dec))
+            num(fmt_fixed(y - py, dec))
+            px, py = x, y
+        last = (px, py)
+    return "".join(out)
+
+
 def js_string(s):
     return json.dumps(s, ensure_ascii=False)
 

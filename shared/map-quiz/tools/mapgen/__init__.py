@@ -11,18 +11,20 @@ python3 -I shared/map-quiz/tools/mapgen_test.py"""
 from .build import CONTEXT, MapBuilder, Result, Window
 from .geometry import (area2, bbox, build_topology, clip_ring, count_crossings, dissolve, douglas_peucker, in_polygon,
                        in_ring, open_ring, owner_of, parse_wkt, polys_of, ring_from_arcs, simplify_arc)
+from .lines import boundary_lines, chain_edges
 from .output import BuildError, emit, read_pinned
 from .projection import (AIRY_1830, BESSEL_1841, GRS80, WGS84, Identity, LambertAzimuthalEqualArea, Projection,
                          TransverseMercator, epsg3035, osgb_example)
-from .svg import fmt_fixed, js_string, map_svg, path_d
+from .svg import fmt_fixed, js_string, lines_d, map_svg, path_d
 
 __all__ = [
     "CONTEXT", "MapBuilder", "Result", "Window",
     "area2", "bbox", "build_topology", "clip_ring", "count_crossings", "dissolve", "douglas_peucker", "in_polygon",
     "in_ring",
     "open_ring", "owner_of", "parse_wkt", "polys_of", "ring_from_arcs", "simplify_arc",
+    "boundary_lines", "chain_edges",
     "BuildError", "emit", "read_pinned",
     "AIRY_1830", "BESSEL_1841", "GRS80", "WGS84", "Identity", "LambertAzimuthalEqualArea", "Projection",
     "TransverseMercator", "epsg3035", "osgb_example",
-    "fmt_fixed", "js_string", "map_svg", "path_d",
+    "fmt_fixed", "js_string", "lines_d", "map_svg", "path_d",
 ]
