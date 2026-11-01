@@ -522,7 +522,8 @@ def build(ne_path):
                          f"(ring bbox {tuple(round(v, 1) for v in bbox(pr))}, window 0 0 {W} {H})")
                 inside = all(ex0 <= x <= ex1 and ey0 <= y <= ey1 for x, y in pr)
                 if not inside:
-                    if is_quiz and ri == 0:
+                    # (quiz rings outside the extent are remote: the rest failed above)
+                    if is_quiz and ri == 0 and remote is not None:
                         clipped_remote.append(f"{a3} {REMOTE[remote][1]}")
                     pr = clip_ring(pr, ex0, ey0, ex1, ey1)
                 q = []
@@ -538,9 +539,6 @@ def build(ne_path):
                 if (ri == 0) != (area2(q) > 0):
                     q.reverse()
                 features.setdefault(fid, []).append(q)
-    for a3 in quiz:
-        if a3 not in features and a3 != "VAT":
-            fail(f"{a3}: nothing left inside the window")
     for fid in list(features):
         features[fid] = dissolve(features[fid])
 
@@ -603,8 +601,11 @@ def build(ne_path):
         bx = bbox([p for r in rings for p in r])
         sizes[fid] = max(bx[2] - bx[0], bx[3] - bx[1]) / GRID
 
-    # Countries lost to the grid (the Vatican): their own outline, 10x finer,
-    # outside the shared topology. Drawn on top of the neighbour.
+    # Countries lost to the grid entirely (none at 50m: the Vatican snaps to
+    # a 0.2-unit speck): their own outline, 10x finer, outside the shared
+    # topology, drawn on top of the neighbour.
+    # (All quiz geometry lies inside the window, see above, so whatever is
+    # missing here was snapped away.)
     for a3 in quiz:
         if a3 in paths:
             continue
@@ -612,11 +613,13 @@ def build(ne_path):
         for p in geo[a3]:
             ring = [to_view(c[0], c[1]) for c in open_ring(p[0])]
             q = [(round(x * GRID * 10), round(y * GRID * 10)) for x, y in ring]
+            if len(set(q)) < 3 or area2(q) == 0:
+                continue
             if area2(q) < 0:
                 q.reverse()
             fine.append(q)
         if not fine:
-            fail(f"{a3}: no geometry")
+            fail(f"{a3}: nothing left even at 1/{GRID * 10} unit")
         paths[a3] = path_d(fine, 2)
         bx = bbox([p for r in fine for p in r])
         sizes[a3] = max(bx[2] - bx[0], bx[3] - bx[1]) / (GRID * 10)
@@ -682,7 +685,7 @@ def build(ne_path):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("ne", help=f"path to {NE_FILE} (Natural Earth v5.1.2)")
     ap.add_argument("--out", default=os.path.join(HERE, "..", "site"), help="output folder (default: ../site)")
     ap.add_argument("--check", action="store_true", help="compare with the files in --out instead of writing")

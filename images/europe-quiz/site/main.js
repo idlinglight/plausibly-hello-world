@@ -14,17 +14,21 @@
 // rather than an empty band.
 //
 // Input: a press that moves more than SLOP px is a pan, never a click; two
-// fingers pinch-zoom (and pan); the wheel zooms at the cursor; buttons and
-// + / - / 0 / arrow keys zoom and pan with a short animation. A click
-// first checks the marker rings of the small countries (nearest within
-// MARKER_HIT px wins), then the country shape under the pointer; sea and
-// context land are ignored.
+// fingers pinch-zoom (and pan); the wheel zooms at the cursor (a ctrl-wheel
+// trackpad pinch anywhere on the page zooms the map, not the page); buttons
+// and + / - / 0 / arrow keys zoom and pan with a short animation. A click
+// picks a small country's ring if it lands inside the drawn ring, or within
+// MARKER_HIT px of it over sea, context land or that country itself (never
+// over another quiz country); the nearest such ring wins. Otherwise it
+// picks the country shape under the pointer; sea and context land are
+// ignored. Rings shrink at low zoom (MARKER_R_UNITS), so they don't cover
+// their neighbours on a phone.
 //
 // State on <html>: data-round (countries | capitals), data-progress
 // ("12/46"), data-zoom (s / fitScale), data-ready (1 once the map is in;
 // "error" if it failed). Quiz state and counters persist in localStorage
-// (optional). Debug: ?seed=<int> makes the shuffles reproducible (stored
-// state with another seed is replaced).
+// (optional). Debug: ?seed=<int> (0 … 4294967295, digits only) makes the
+// shuffles reproducible (stored state with another seed is replaced).
 
 import { MAP, COUNTRIES } from './countries.js';
 import { Quiz } from './quiz.js';
@@ -41,8 +45,11 @@ const PULSE_MS = 700;
 const TOAST_MS = 4000;
 const RESET_ARM_MS = 3000;
 const SLOP = { mouse: 5, pen: 8, touch: 10 }; // px of movement that make a press a pan
-const MARKER_R = 7; // ring radius, CSS px
-const MARKER_HIT = { mouse: 14, pen: 18, touch: 22 }; // hit radius around a ring, CSS px
+const MARKER_R = 7; // ring radius, CSS px …
+const MARKER_R_UNITS = 11; // … but at most this many map units at low zoom …
+const MARKER_R_MIN = 4; // … and at least this many px
+const RING_SLACK = 2; // px around the drawn ring that count as inside (its halo)
+const MARKER_HIT = { mouse: 14, pen: 18, touch: 22 }; // wider hit zone around a ring, CSS px
 const MARKER_HIDE = 28; // a ring hides once its country is this many CSS px across
 
 const root = document.documentElement;
@@ -72,8 +79,8 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const coarse = matchMedia('(pointer: coarse)').matches;
 
 const params = new URLSearchParams(location.search);
-const seedArg = parseInt(params.get('seed') || '', 10);
-const seedParam = Number.isFinite(seedArg) ? seedArg >>> 0 : null;
+const seedText = params.get('seed') || '';
+const seedParam = /^\d{1,10}$/.test(seedText) && Number(seedText) <= 0xffffffff ? Number(seedText) : null;
 
 // ── Quiz state ──────────────────────────────────────────────────────────
 
@@ -104,7 +111,7 @@ const quiz = resumed
 let svg = null;
 let countriesG = null;
 const shapes = {}; // id -> <path>
-const rings = {}; // id -> { g, halo, ring, x, y, size, on }
+const rings = {}; // id -> { g, halo, ring, x, y, size, on, r (drawn radius, px) }
 
 // Four gradient bands along the edge of the drawn extent (style.css fills
 // them with the sea colour, opaque at the edge), over the outer half of the
@@ -175,6 +182,13 @@ function mark(id, cls, ms) {
   }, ms);
 }
 
+function unmark(id, cls) {
+  const key = id + ' ' + cls;
+  clearTimeout(markTimers[key]);
+  delete markTimers[key];
+  for (const el of targets(id)) el.classList.remove(cls);
+}
+
 // ── Camera ──────────────────────────────────────────────────────────────
 
 let cam = { s: 1, tx: 0, ty: 0 };
@@ -236,13 +250,15 @@ function render() {
   if (!svg) return;
   const { s, tx, ty } = cam;
   svg.setAttribute('viewBox', `${num(-tx / s)} ${num(-ty / s)} ${num(view.w / s)} ${num(view.h / s)}`);
-  const r = num(MARKER_R / s);
+  const rpx = Math.min(MARKER_R, Math.max(MARKER_R_MIN, MARKER_R_UNITS * s));
+  const r = num(rpx / s);
   for (const m of Object.values(rings)) {
     const on = m.size * s < MARKER_HIDE;
     if (on !== m.on) {
       m.on = on;
       m.g.classList.toggle('off', !on);
     }
+    m.r = rpx;
     if (on) {
       m.halo.setAttribute('r', r);
       m.ring.setAttribute('r', r);
@@ -352,19 +368,23 @@ function relayout() {
 
 function hitTest(x, y, type) {
   if (renderQueued) render(); // the DOM must show the current camera
+  const el = document.elementFromPoint(x, y);
+  const shape = el && el.parentNode === countriesG ? el.id : null;
+  const reach = MARKER_HIT[type] || MARKER_HIT.touch;
   let best = null;
-  let bestD = MARKER_HIT[type] || MARKER_HIT.touch;
+  let bestD = Infinity;
   for (const [id, m] of Object.entries(rings)) {
     if (!m.on) continue;
     const d = Math.hypot(m.x * cam.s + cam.tx - x, m.y * cam.s + cam.ty - y);
-    if (d <= bestD) {
+    // Inside the drawn ring the ring wins; in the wider zone only where no
+    // other quiz country is under the pointer.
+    const hit = d <= m.r + RING_SLACK || (d <= reach && (shape === null || shape === id));
+    if (hit && d < bestD) {
       best = id;
       bestD = d;
     }
   }
-  if (best) return best;
-  const el = document.elementFromPoint(x, y);
-  return el && el.parentNode === countriesG ? el.id : null;
+  return best || shape;
 }
 
 let hovered = null;
@@ -400,6 +420,13 @@ let lastMouse = null;
 function onDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   stopAnim();
+  if (e.isPrimary) {
+    // A primary pointer starts a fresh gesture: whatever is still listed
+    // lost its up/cancel (e.g. capture failed and it ended elsewhere).
+    pointers.clear();
+    press = null;
+    pinch = null;
+  }
   try {
     svg.setPointerCapture(e.pointerId);
   } catch {
@@ -472,8 +499,13 @@ function onUp(e, cancelled) {
   if (e.pointerType === 'mouse') queueHover(e.clientX, e.clientY);
 }
 
+// On window, not the SVG: a ctrl-wheel (trackpad pinch, ctrl + wheel) over
+// the card or the controls would otherwise zoom the whole page.
 function onWheel(e) {
+  const onMap = !!svg && svg.contains(e.target);
+  if (!onMap && !e.ctrlKey) return; // plain wheel over the HUD: nothing to do
   e.preventDefault();
+  if (!svg) return;
   stopAnim();
   const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? view.h : 1;
   // ctrlKey: a trackpad pinch (small deltas) — zoom faster per unit
@@ -502,6 +534,8 @@ function pick(x, y, type) {
   const res = quiz.answer(id);
   if (res.result === 'correct') {
     paint(id);
+    unmark(id, 'flash'); // picked right after a misclick on it
+    if (labelId === id) hideLabel();
     mark(id, 'pulse', PULSE_MS);
     if (res.completed) roundDone(res.completed);
   } else if (res.result === 'miss') {
@@ -515,8 +549,16 @@ function pick(x, y, type) {
 }
 
 let labelTimer = 0;
+let labelId = null;
+function hideLabel() {
+  clearTimeout(labelTimer);
+  labelEl.classList.remove('show');
+  labelId = null;
+}
+
 function showLabel(id, x, y, type) {
   const c = byId[id];
+  labelId = id;
   labelEl.textContent = quiz.kind === 'capital' ? `${c.name} · ${c.capital}` : c.name;
   const w = labelEl.offsetWidth;
   const h = labelEl.offsetHeight;
@@ -529,7 +571,7 @@ function showLabel(id, x, y, type) {
   labelEl.style.transform = `translate(${Math.round(lx)}px, ${Math.round(Math.min(ly, view.h - h - 8))}px)`;
   labelEl.classList.add('show');
   clearTimeout(labelTimer);
-  labelTimer = setTimeout(() => labelEl.classList.remove('show'), LABEL_MS);
+  labelTimer = setTimeout(hideLabel, LABEL_MS);
 }
 
 let toastTimer = 0;
@@ -589,6 +631,11 @@ resetButton.addEventListener('click', () => {
   }
   disarmReset();
   quiz.reset();
+  for (const id of ids) {
+    unmark(id, 'flash');
+    unmark(id, 'pulse');
+  }
+  hideLabel();
   paintAll();
   updateHud();
   save();
@@ -673,10 +720,12 @@ async function loadMap() {
   svg.addEventListener('pointermove', onMove);
   svg.addEventListener('pointerup', (e) => onUp(e, false));
   svg.addEventListener('pointercancel', (e) => onUp(e, true));
+  // Capture lost without an up (tab switch mid-drag …): end that pointer.
+  // After a normal pointerup the pointer is already gone, so this no-ops.
+  svg.addEventListener('lostpointercapture', (e) => onUp(e, true));
   svg.addEventListener('pointerleave', (e) => {
     if (e.pointerType === 'mouse' && !press) setHover(null);
   });
-  svg.addEventListener('wheel', onWheel, { passive: false });
   svg.addEventListener('contextmenu', (e) => e.preventDefault());
   for (const t of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(t, onGesture);
 
@@ -687,6 +736,7 @@ async function loadMap() {
   root.dataset.ready = '1';
 }
 
+window.addEventListener('wheel', onWheel, { passive: false });
 updateHud();
 loadMap().then(
   () => {

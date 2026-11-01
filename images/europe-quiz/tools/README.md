@@ -38,11 +38,13 @@ and what it clipped, merged and dropped.
 domain**; no attribution required (it's credited here anyway).
 
 1:50m has every quiz country, microstates included; the whole map.svg is
-about 115 KB (47 KB as served, gzip -1). The Vatican is below the 0.1-unit
-grid; its outline is kept at a finer grid on top of Italy. At this scale
-Natural Earth's Vatican sits 1–2 km west of the real one, so the marker
-rings (Vatican, Monaco, San Marino, Liechtenstein, Andorra, Malta,
-Luxembourg) use curated points from `countries.json`, not the polygons.
+about 115 KB (47 KB as served, gzip -1). The Vatican snaps to a 0.2-unit
+speck on the 0.1-unit grid (still its own shape, drawn on top of Italy); a
+country that vanished entirely would fall back to its outline at a 10x finer
+grid. At this scale Natural Earth's Vatican sits 1–2 km west of the real
+one, so the marker rings (Vatican, Monaco, San Marino, Liechtenstein,
+Andorra, Malta, Luxembourg) use curated points from `countries.json`, not
+the polygons.
 
 ## Border view
 

@@ -127,11 +127,14 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   alternate: every country by name, then by capital, each shuffled; a
   correct pick colours the country (A in name rounds, B in capital rounds:
   the map recolours round by round, blank only after a reset); a misclick
-  counts, blinks and shows the name (+ capital) for 1.5 s. Reset asks
-  twice. Vatican, Monaco, San Marino, Liechtenstein, Andorra, Malta and
-  Luxembourg get rings with a generous hit area that win over the shapes
-  beneath (nearest ring wins); a ring hides once its country is 28 px
-  across. Zoom: pinch, wheel (at the cursor), buttons, `+ - 0` keys; drag
+  counts, blinks and shows the name (+ capital) for 1.5 s. Reset takes
+  two presses (the first arms it for 3 s). Vatican, Monaco, San Marino,
+  Liechtenstein, Andorra, Malta and Luxembourg get rings: a tap inside the
+  drawn ring picks it, a tap in the wider zone around it only over sea,
+  context land or that country itself (never over a neighbour); nearest
+  ring wins. Rings shrink at low zoom (phones) and hide once their country
+  is 28 px across. Answering needs a pointer (click or tap); keys only
+  zoom and pan. Zoom: pinch, wheel (at the cursor), buttons, `+ - 0` keys; drag
   pans; a press that moves more than 5–10 px is a pan, never a click. The
   full view fits the window around all quiz countries; the SVG draws more
   context around it, faded out, so tall or wide screens show map. Two
