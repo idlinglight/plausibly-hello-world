@@ -161,11 +161,13 @@ none is lost to the grid, which the line overlays need.
   neighbours use identical vertices.
 - Simplification: none for pieces. Context-only arcs get Douglas-Peucker
   0.2 units near the window and 1.5 units outside it.
-- Line overlays (`mapgen.boundary_lines` on the shared arcs, each edge
-  once, never simplified on their own): `coast-main` = the outline of the
-  main pieces (the four main islands), `coast-isles` = the outline of all
-  other pieces, `borders-prefectures` = every land border between two
-  prefectures, `borders-regions` = the land borders between two regions.
+- Line overlays (`mapgen.boundary_lines` on the shared arcs, never
+  simplified on their own; each edge in one overlay only): `coast-main` =
+  the outline of the main pieces (the four main islands), `coast-isles` =
+  the outline of all other pieces, `borders-regions` = the land borders
+  between two regions, `borders-prefectures` = the other land borders
+  between two prefectures (the rounds that show it show
+  `borders-regions` too).
   The four main islands share no land border, so there is no
   `borders-islands` (the build checks it).
 

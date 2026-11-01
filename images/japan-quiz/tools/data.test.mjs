@@ -122,6 +122,8 @@ check('config: rounds islands → regions → prefectures → capitals, answers,
     ['coast-main', 'coast-isles', 'borders-prefectures', 'borders-regions'],
   ]);
   assert.ok(config.rounds.every((r) => r.subLang === 'ja' && typeof r.sub === 'function' && typeof r.missSub === 'function'));
+  // map.svg's borders-prefectures leaves out the region borders (each edge in one overlay)
+  for (const r of config.rounds) if (r.lines.includes('borders-prefectures')) assert.ok(r.lines.includes('borders-regions'), r.key);
 });
 
 check('config: English texts, sub-lines, misclick labels', () => {

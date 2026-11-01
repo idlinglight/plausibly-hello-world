@@ -45,14 +45,16 @@ Pipeline:
      piece keeps all its islands (keep_islands).
   8. Overlays above the pieces, never hit: lakes (water, see-through: a
      click on Lake Biwa picks Shiga beneath), then lines along the piece
-     edges (mapgen.boundary_lines), each edge
-     once: coast-main (the outline of the four main islands), coast-isles
-     (the outline of every other piece), borders-prefectures and
-     borders-regions (land borders only). The engine shows per round the
-     ones it lists.
+     edges (mapgen.boundary_lines), each edge in one overlay only:
+     coast-main (the outline of the four main islands), coast-isles (the
+     outline of every other piece), borders-prefectures (land borders
+     between prefectures, without the region borders) and borders-regions
+     (land borders between regions). The engine shows per round the ones
+     it lists.
   9. Write map.svg (one <path> per piece in <g id="pieces">, the lakes and
-     the lines in <g id="overlays">) and japan.js (MAP, PIECES, ISLANDS, REGIONS,
-     PREFECTURES: the answers of the rounds with their pieces and texts).
+     the lines in <g id="overlays">) and japan.js (MAP, PIECES, ISLANDS,
+     REGIONS, PREFECTURES: the answers of the rounds with their pieces and
+     texts).
 """
 import argparse
 import json
@@ -438,6 +440,11 @@ def load_lakes(path, pieces, notes):
     return out
 
 
+def edges_of(lines):
+    """The undirected edges of polylines (mapgen.chain_edges' input)."""
+    return {(min(a, b), max(a, b)) for ln in lines for a, b in zip(ln, ln[1:]) if a != b}
+
+
 def build(adm1_path, adm0_path, lakes_path):
     notes = []
     project = mapgen.LambertAzimuthalEqualArea(LAT0, LON0, ellipsoid=mapgen.GRS80, name=f"LAEA {LAT0:g}N {LON0:g}E")
@@ -473,15 +480,19 @@ def build(adm1_path, adm0_path, lakes_path):
     if res.stats["notes"]:
         fail("pieces below the grid: " + "; ".join(res.stats["notes"]))
 
-    # Line overlays along the piece edges, each edge once.
+    # Line overlays along the piece edges, each edge in one overlay only:
+    # borders-prefectures leaves out the region borders (the rounds that
+    # show it show borders-regions too; tools/data.test.mjs checks that).
     main_ids = [p["id"] for p in pl if p["island"] is not None]
     other_ids = [pid for pid in piece_ids if pid not in main_ids]
+    regions_of = {pid: by_id[owner[pid]]["region"] for pid in piece_ids}
+    region_lines = mapgen.boundary_lines(res, regions_of, outer=False)
     lines = {
         "coast-main": mapgen.boundary_lines(res, {pid: "main" for pid in main_ids}, inner=False),
         "coast-isles": mapgen.boundary_lines(res, {pid: "isles" for pid in other_ids}, inner=False),
-        "borders-prefectures": mapgen.boundary_lines(res, owner, outer=False),
-        "borders-regions": mapgen.boundary_lines(res, {pid: by_id[owner[pid]]["region"] for pid in piece_ids},
-                                                 outer=False),
+        "borders-prefectures": mapgen.chain_edges(edges_of(mapgen.boundary_lines(res, owner, outer=False))
+                                                  - edges_of(region_lines)),
+        "borders-regions": region_lines,
     }
     islands_of = {pid: by_id[pid]["island"] for pid in main_ids}
     if mapgen.boundary_lines(res, islands_of, outer=False):
