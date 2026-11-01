@@ -1,21 +1,28 @@
 // quiz.js: the rules. No DOM, so it also runs under plain node.
+// Shared map-quiz engine file: the source is shared/map-quiz/site/, images
+// get byte-identical copies (python3 shared/sync.py). Edit the source.
 //
-// A game is an endless run of rounds. Even rounds (0, 2, …) ask for every
-// country by name, odd rounds by its capital, each round in its own
-// shuffled order; the answer is always a country (an id). A correct answer
-// colours that country with the round's colour (1 in name rounds, 2 in
-// capital rounds) and moves on; the last one starts the next round at once.
-// Colours carry over: each round recolours the map as it goes, so the map
-// is blank only at the start of a game. A wrong answer (any other quiz
-// country, coloured or not) counts as a miss and the question stays.
-// Unknown ids (sea, context land) are ignored.
+// A game is an endless run of rounds over one set of regions (ids). Round
+// r asks for every region once, in its own shuffled order, using round
+// kind r % kinds (the image's config.rounds: names, capitals, numbers …);
+// the answer is always a region id. A correct answer colours that region
+// with the round's colour (1 in even rounds, 2 in odd ones) and moves on;
+// the last one starts the next round at once. Colours carry over: each
+// round recolours the map as it goes, so the map is blank only at the
+// start of a game. A wrong answer (any other region, coloured or not)
+// counts as a miss and the question stays. Unknown ids (sea, context land)
+// are ignored.
 //
 // Shuffles are reproducible: round r of game g with seed s always gets the
 // same order, from makeRng(mix(s, g, r)); a round never opens with the
-// country that closed the round before. reset() starts game g + 1: colours
-// and counters cleared, a fresh name round.
+// region that closed the round before. reset() starts game g + 1: colours
+// and counters cleared, a fresh first round.
+//
+// A saved game records its round kinds (the rounds' keys), so restore()
+// turns it down once the image's rounds change: a saved round index would
+// otherwise continue as a different kind. Saves from before that field
+// (europe-quiz only) had two kinds and restore wherever there are two.
 
-export const KINDS = ['country', 'capital'];
 export const VERSION = 1; // of serialize()'s format
 
 // Small, seedable PRNG (mulberry32), as in the snake image.
@@ -53,11 +60,29 @@ export function shuffled(items, rng) {
 
 const isCount = (v) => Number.isSafeInteger(v) && v >= 0;
 
+// Saved kinds (keys or a count) against the current ones: keys must match
+// exactly when both sides have them, otherwise the counts.
+function sameKinds(saved, now) {
+  const count = (k) => (Array.isArray(k) ? k.length : k);
+  if (Array.isArray(saved) && !saved.every((k) => typeof k === 'string')) return false;
+  if (!Array.isArray(saved) && !Number.isSafeInteger(saved)) return false;
+  if (Array.isArray(saved) && Array.isArray(now)) return saved.length === now.length && saved.every((k, i) => k === now[i]);
+  return count(saved) === count(now);
+}
+
 export class Quiz {
-  // ids: the quiz set (any stable order); seed: 32-bit integer.
-  constructor(ids, seed) {
+  // ids: the regions (any stable order); seed: 32-bit integer; kinds: the
+  // round kinds that alternate, as their keys (config.rounds' keys) or just
+  // a count.
+  constructor(ids, seed, kinds = 2) {
+    const keys = Array.isArray(kinds) ? kinds.slice() : null;
+    const n = keys ? keys.length : kinds;
+    if (!Number.isSafeInteger(n) || n < 1 || (keys && !keys.every((k) => typeof k === 'string')))
+      throw new RangeError('kinds: a positive integer, or a non-empty array of round keys');
     this.ids = ids.slice();
     this.idSet = new Set(this.ids);
+    this.kinds = n;
+    this.kindKeys = keys;
     this.seed = seed >>> 0;
     this.game = 0;
     this.colours = {}; // id -> 1 | 2
@@ -80,8 +105,14 @@ export class Quiz {
     this.order = order;
   }
 
+  // The current round's kind: an index into config.rounds.
   get kind() {
-    return KINDS[this.round % 2];
+    return this.round % this.kinds;
+  }
+
+  // The current round's colour: 1 (A) in even rounds, 2 (B) in odd ones.
+  get colour() {
+    return (this.round % 2) + 1;
   }
 
   get target() {
@@ -112,7 +143,7 @@ export class Quiz {
       return { result: 'miss', id };
     }
     this.correct++;
-    this.colours[id] = (this.round % 2) + 1;
+    this.colours[id] = this.colour;
     this.pos++;
     if (this.pos < this.order.length) return { result: 'correct', id };
     const completed = { kind: this.kind, misses: this.roundMisses };
@@ -140,13 +171,15 @@ export class Quiz {
       correct: this.correct,
       misses: this.misses,
       roundMisses: this.roundMisses,
+      kinds: this.kindKeys ? this.kindKeys.slice() : this.kinds,
     };
   }
 
-  // A Quiz from serialize()'s output, or null if it doesn't fit `ids`
-  // (another version, a changed country list, tampering).
-  static restore(data, ids) {
+  // A Quiz from serialize()'s output, or null if it doesn't fit `ids` and
+  // `kinds` (another version, a changed region list or rounds, tampering).
+  static restore(data, ids, kinds = 2) {
     if (!data || typeof data !== 'object' || data.v !== VERSION) return null;
+    if (!sameKinds(data.kinds === undefined ? 2 : data.kinds, kinds)) return null;
     const { seed, game, round, pos, order, colours, correct, misses, roundMisses } = data;
     if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) return null;
     if (![game, round, pos, correct, misses, roundMisses].every(isCount)) return null;
@@ -155,7 +188,7 @@ export class Quiz {
     if (new Set(order).size !== order.length || !order.every((id) => idSet.has(id))) return null;
     if (!colours || typeof colours !== 'object' || Array.isArray(colours)) return null;
     for (const [id, c] of Object.entries(colours)) if (!idSet.has(id) || (c !== 1 && c !== 2)) return null;
-    const q = new Quiz(ids, seed);
+    const q = new Quiz(ids, seed, kinds);
     Object.assign(q, { game, round, pos, order: order.slice(), colours: { ...colours }, correct, misses, roundMisses });
     return q;
   }

@@ -1,13 +1,19 @@
-/* Europe Quiz. Layers, bottom to top: the map (#map: inline SVG, zoomed
-   and panned by main.js; the page background is its sea, and the context
-   land fades out at the edge of the drawn extent), the question card, the
-   controls, and the transient toast and misclick label.
+/* Map quiz. Layers, bottom to top: the map (#map: inline SVG, zoomed and
+   panned by main.js; the page background is its sea, and the context land
+   fades out at the edge of the drawn extent), the question card, the
+   controls, the optional attribution line, and the transient toast and
+   misclick label.
+   Shared map-quiz engine file: the source is shared/map-quiz/site/, images
+   get byte-identical copies (python3 shared/sync.py). Edit the source; an
+   image overrides tokens (colours) in a stylesheet of its own, linked after
+   this one.
 
    Two layouts (LANDSCAPE in main.js is the same media query):
    - default (portrait, square-ish): card across the top, controls across
      the bottom; main.js fits the map into the band between them.
    - landscape: card top right, controls in a column bottom right; the map
-     uses the full height (at the full view, the card covers only Russia).
+     uses the full height (at the full view the card covers a corner of it:
+     keep that corner to context land, as Russia in europe-quiz).
 
    Theme: light tokens on :root, dark tokens for prefers-color-scheme: dark
    unless <html data-theme="light">, and for <html data-theme="dark"> (set
@@ -18,8 +24,8 @@
   --sea: #bfd9e7;
   --land: #e2ddd1;
   --land-line: #b5ad9e;
-  --country: #fbf8f0;
-  --country-hover: #efe7d6;
+  --region: #fbf8f0;
+  --region-hover: #efe7d6;
   --border: #7f8b91;
   --a: #74bf8f;
   --a-hover: #62b080;
@@ -40,6 +46,8 @@
   --label-bg: rgba(29, 42, 48, 0.92);
   --label-fg: #ffffff;
   --focus: #2f7fae;
+  --water: var(--sea); /* overlays (rivers, lakes) … */
+  --overlay-stroke: 0; /* … and their outline, map units */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -48,8 +56,8 @@
     --sea: #0d1e2a;
     --land: #1a2932;
     --land-line: #2e414c;
-    --country: #2b3e48;
-    --country-hover: #375058;
+    --region: #2b3e48;
+    --region-hover: #375058;
     --border: #6b8794;
     --a: #3aa982;
     --a-hover: #48bc93;
@@ -78,8 +86,8 @@
   --sea: #0d1e2a;
   --land: #1a2932;
   --land-line: #2e414c;
-  --country: #2b3e48;
-  --country-hover: #375058;
+  --region: #2b3e48;
+  --region-hover: #375058;
   --border: #6b8794;
   --a: #3aa982;
   --a-hover: #48bc93;
@@ -199,6 +207,23 @@ p {
   fill: url(#fade-gr);
 }
 
+/* Overlays (map.svg's #overlays, e.g. rivers): above the regions, never
+   hit: clicks and hover go to what lies beneath. Fill and an outline of
+   the same colour, its width in map units (it scales with the map, so it
+   closes the same gaps, e.g. under bridges, at any zoom): --water and
+   --overlay-stroke, both per image; style one overlay by its id. */
+#overlays {
+  pointer-events: none;
+}
+
+#overlays path {
+  fill: var(--water);
+  stroke: var(--water);
+  stroke-width: var(--overlay-stroke);
+  stroke-linejoin: round;
+  vector-effect: none;
+}
+
 #land {
   fill: var(--land);
   stroke: var(--land-line);
@@ -207,42 +232,43 @@ p {
   pointer-events: none;
 }
 
-/* --fill: the country's resting colour (the blink returns to it). */
-#countries path {
-  --fill: var(--country);
+/* Regions (main.js adds class "regions" to their group in map.svg).
+   --fill: the region's resting colour (the blink returns to it). */
+.regions path {
+  --fill: var(--region);
   fill: var(--fill);
   stroke: var(--border);
   stroke-width: 0.75px;
   stroke-linejoin: round;
 }
 
-#countries path.hover {
-  --fill: var(--country-hover);
+.regions path.hover {
+  --fill: var(--region-hover);
 }
 
-#countries path.c1 {
+.regions path.c1 {
   --fill: var(--a);
 }
 
-#countries path.c1.hover {
+.regions path.c1.hover {
   --fill: var(--a-hover);
 }
 
-#countries path.c2 {
+.regions path.c2 {
   --fill: var(--b);
 }
 
-#countries path.c2.hover {
+.regions path.c2.hover {
   --fill: var(--b-hover);
 }
 
 /* A correct answer: the new colour fades in from a bright flash. */
-#countries path.pulse {
+.regions path.pulse {
   animation: pulse 0.7s ease-out;
 }
 
-/* A misclick: the picked country blinks twice. */
-#countries path.flash {
+/* A misclick: the picked region blinks twice. */
+.regions path.flash {
   animation: flash 0.5s linear 2;
 }
 
@@ -263,8 +289,8 @@ p {
   }
 }
 
-/* Rings for countries too small to tap at the full view (main.js hides a
-   ring once its country is big enough on screen). The hit area is larger
+/* Rings for regions too small to tap at the full view (main.js hides a
+   ring once its region is big enough on screen). The hit area is larger
    than the ring and handled in main.js. */
 #markers {
   pointer-events: none;
@@ -281,7 +307,7 @@ p {
 }
 
 .marker {
-  fill: var(--country);
+  fill: var(--region);
   fill-opacity: 0;
   stroke: var(--ring);
   stroke-width: 1.5px;
@@ -365,7 +391,8 @@ p {
   box-shadow: 0 0 0 1px var(--panel-line);
 }
 
-:root[data-round="capitals"] .swatch {
+/* Odd rounds colour with B (main.js). */
+.swatch.b {
   background: var(--b);
 }
 
@@ -456,6 +483,33 @@ p {
   opacity: 1;
   visibility: visible;
   transition: opacity 0.12s;
+}
+
+/* ── Attribution (optional: config.attribution) ──────────────────────── */
+
+/* Portrait: a line under the controls, which move up to make room.
+   Landscape (below): the bottom-left corner, clear of the controls column. */
+#attribution {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5px);
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+:root.has-attribution #controls {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
 }
 
 /* ── Controls ────────────────────────────────────────────────────────── */
@@ -596,6 +650,18 @@ p {
   .group:last-child {
     flex-direction: column-reverse;
   }
+
+  #attribution {
+    left: calc(env(safe-area-inset-left, 0px) + 12px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    transform: none;
+    /* the controls column: 12 px margin, up to 44 px buttons, a gap */
+    max-width: calc(100% - 88px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  }
+
+  :root.has-attribution #controls {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  }
 }
 
 /* ── Reduced motion: no transitions, no pulse; a misclick is a steady
@@ -609,11 +675,11 @@ p {
     transition: none;
   }
 
-  #countries path.pulse {
+  .regions path.pulse {
     animation: none;
   }
 
-  #countries path.flash {
+  .regions path.flash {
     animation: none;
     fill: var(--miss);
   }

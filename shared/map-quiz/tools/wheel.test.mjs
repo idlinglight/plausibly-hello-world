@@ -1,8 +1,9 @@
-// Plain-node replay of real wheel events through site/wheel.js: every
-// recorded gesture must be classified as the device that made it (mouse
-// wheel → zoom, trackpad → pan). No packages: node tools/wheel.test.mjs
-// The events (tools/wheel-fixture.json) were recorded on macOS in Safari,
-// Chrome and Firefox at 100 % and 125 % page zoom; see "about" in the file.
+// Plain-node replay of real wheel events through the engine's wheel.js:
+// every recorded gesture must be classified as the device that made it
+// (mouse wheel → zoom, trackpad → pan). No packages:
+// node shared/map-quiz/tools/wheel.test.mjs
+// The events (wheel-fixture.json) were recorded on macOS in Safari, Chrome
+// and Firefox at 100 % and 125 % page zoom; see "about" in the file.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { wheelKind } from '../site/wheel.js';

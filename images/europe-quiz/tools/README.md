@@ -5,13 +5,20 @@ copies `site/` only); its outputs are committed:
 
 - `site/map.svg`: one `<path id="<ADM0_A3>">` per quiz country inside
   `<g id="countries">`, plus `<path id="land">` (all context land, merged).
-  No styling in the file: `site/style.css` does that.
+  No styling in the file: the engine's `style.css` does that.
 - `site/countries.js`: names, capitals, projected marker points, and the
-  map's window/extent (`MAP`).
+  map's window/extent (`MAP`). `site/config.js` (hand-written) hands it
+  and the English texts to the shared map-quiz engine.
 
 Both carry a "generated, don't edit" header. Edit `countries.json` (codes,
 names, capitals, marker points: the single source of truth) or
 `build_map.py`, then regenerate.
+
+`build_map.py` is this image's adapter: Natural Earth, the border view,
+remote parts, the window and the quiz set. The geometry (projection,
+clipping, shared borders, simplification, SVG writing, `--check`) is the
+shared core in `shared/map-quiz/tools/mapgen` (`shared/map-quiz/README.md`),
+which the script imports from there.
 
 ## Regenerate
 
@@ -20,9 +27,13 @@ mkdir -p /tmp/ne && curl -fsSL -o /tmp/ne/ne_50m_admin_0_countries.geojson \
   https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/ne_50m_admin_0_countries.geojson
 python3 -I images/europe-quiz/tools/build_map.py /tmp/ne/ne_50m_admin_0_countries.geojson
 python3 -I images/europe-quiz/tools/build_map.py /tmp/ne/ne_50m_admin_0_countries.geojson --check  # files up to date?
-node images/europe-quiz/tools/quiz.test.mjs   # checks of site/quiz.js (Node 22.12+)
-node images/europe-quiz/tools/wheel.test.mjs  # site/wheel.js against recorded wheel events
+node images/europe-quiz/tools/data.test.mjs   # this image's data and config (Node 22.12+)
 ```
+
+The engine's own tests (quiz rules, config contract, wheel replay) and
+the generator core's live in `shared/map-quiz/tools/`; CI runs them all
+(`.github/workflows/shared-sync.yml`), not `build_map.py --check` (its
+input isn't committed).
 
 Python 3.9+, standard library only. The script verifies the input's sha256
 (`3e458fc036ad0a66411f2c1e6cac49c5d7bfb81cb1123bc513b22511a2b7fdeb`,

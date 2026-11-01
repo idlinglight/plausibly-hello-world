@@ -1,0 +1,15 @@
+{
+  "about": [
+    "Rules for shared/sync.py: each copies 'from' (a file, or every file below a folder; relative to shared/) to 'to' (relative to images/<name>/) in each listed image.",
+    "images: \"*\" = every images/<name>/ with a Dockerfile (new folders join on their own); otherwise an explicit list of folder names.",
+    "A file source with a 'to' ending in / lands in that folder under its own name. require: files each listed image must contain, matching a regular expression ({image} = the folder name, escaped); checked by every run.",
+    "Copies are byte-identical and committed, listed in shared/sync-manifest.json (written by sync.py: copies no rule produces any more are removed). After changing a source or a rule: python3 shared/sync.py; CI runs python3 shared/sync.py --check."
+  ],
+  "rules": [
+    { "from": "nginx.conf", "to": "nginx.conf", "images": "*" },
+    {
+      "from": "map-quiz/site/", "to": "site/", "images": ["europe-quiz"],
+      "require": [{ "file": "site/index.html", "pattern": "<html\\b[^>]*\\sdata-quiz=\"{image}\"" }]
+    }
+  ]
+}

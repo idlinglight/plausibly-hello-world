@@ -9,10 +9,18 @@ Not bound to one idea: each image is a self-contained folder under `images/`.
 ```
 images/<name>/        one folder = one image, build context = this folder
   Dockerfile
-  nginx.conf          → /etc/nginx/conf.d/default.conf
+  nginx.conf          → /etc/nginx/conf.d/default.conf (synced copy)
   site/               → /usr/share/nginx/html/ (static files, no build step)
   tools/              optional: offline generators for data in site/ — not
                       shipped, outputs committed (europe-quiz's map)
+shared/               files several images use: one source, synced copies
+  sync.py             writes the copies into images/; --check (CI) fails on drift
+  sync.json           which source goes to which images (+ files they must have)
+  sync-manifest.json  written by sync.py: every copy, its source, sha256
+  nginx.conf          → every images/*/nginx.conf
+  map-quiz/           the map-quiz engine (README.md: config contract)
+    site/               → site/ of each map image (engine JS/CSS)
+    tools/              generator core (mapgen), engine tests; not synced
 .github/
   dependabot.yml
   workflows/
@@ -21,6 +29,7 @@ images/<name>/        one folder = one image, build context = this folder
     image-<name>.yml        thin caller per image (paths-filtered)
     build-image-branch.yml  build-image/** fan-out, all images, no paths filter
     image-scan.yml          weekly CVE scan of every :latest
+    shared-sync.yml         synced copies match shared/; engine tests
   tool-images/        pin holders for images used from run: steps — never
     buildkit/           built; they exist so Dependabot bumps the pins
     grype/              (+ grype.yaml: scan ignore rules)
@@ -62,7 +71,7 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
 
 - Set `add_header` **only at server level**. A location with any
   `add_header` of its own drops all inherited ones, CSP included. Vary
-  per-URI values through a `map` (see `images/gradient-ripple/nginx.conf`,
+  per-URI values through a `map` (see `shared/nginx.conf`,
   `$phw_cache_control`).
 - Pages are self-contained so a strict CSP works: no inline `<script>` or
   `style="…"`, no external requests (CDNs, fonts, analytics). Setting styles
@@ -74,9 +83,50 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
 - The CSP sets `frame-ancestors 'none'` (+ `X-Frame-Options: DENY`): pages
   can't be iframed. Loosen per image if embedding is ever wanted.
 - `nginx.conf` is the same file in every image (JSON access log incl. the
-  Host header, security headers, endpoints): a copy per folder, since each
-  build context is its own folder. Change it in all images together; a new
-  image starts from a copy.
+  Host header, security headers, endpoints). Each build context is its own
+  folder, so every image holds a byte-identical copy of `shared/nginx.conf`.
+  Edit the source, run `python3 shared/sync.py`, commit both; a new image
+  gets its copy from the same command.
+
+### Shared files (`shared/`)
+
+A file several images need lives once under `shared/`; `shared/sync.py`
+(stdlib Python) copies it byte-identically into each consuming image
+folder, and the copies are committed (Dockerfiles stay COPY-only, the
+build contexts per folder). `shared/sync.json` says what goes where:
+`nginx.conf` to every image, `map-quiz/site/` to an explicit list of map
+images, which must also have `data-quiz="<folder>"` in their
+`site/index.html` (a rule's `require`). `shared/sync-manifest.json`
+(written by the sync, committed) lists every copy with source and sha256:
+a copy no rule produces any more (source renamed or removed, image taken
+off a rule) is removed by the next sync, unless it was edited since —
+then the sync stops until it is deleted, or kept as the image's own file
+by deleting its manifest entry. `python3 shared/sync.py --check` (CI:
+`shared-sync.yml`) fails on any missing, differing or stale copy, an
+outdated manifest or a missing required file, and names what to edit.
+Commit sources, copies and manifest together. Dockerfiles are never
+synced (Dependabot bumps them per folder).
+
+### Map-quiz engine
+
+`shared/map-quiz/`: a map quiz on an inline SVG map, shared by the map
+images (now `europe-quiz`). Its `README.md` has the contracts and the
+behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
+layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
+(`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`)
+are synced into each map image's `site/`; per image: `index.html` (static
+text, `lang`, `<html data-quiz="<name>">`, which namespaces localStorage),
+`config.js` (regions from the generated data module, rounds, every UI
+text, optional attribution line and view options), the generated data module
+and `map.svg`, favicons, optionally an own stylesheet for colours. The
+offline generator is `tools/build_map.py` per image, an adapter (inputs,
+fix-ups, selection) over the shared core `shared/map-quiz/tools/mapgen`
+(projections incl. already-projected input, clipping, shared borders,
+simplification, SVG, `--check`). Adding a map image: folder + `config.js`
++ data adapter (+ `tools/data.test.mjs`), its name in the map-quiz rule
+of `shared/sync.json` and `python3 shared/sync.py`, then "Adding an
+image" below (caller workflow, README row). Engine changes go to
+`shared/map-quiz/site/` and reach all map images by the sync.
 
 ### Per-image notes
 
@@ -112,57 +162,33 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   `game.js` and `autopilot.js` have no DOM, so they also run under plain
   node. Favicon raster files are exports of `favicon.svg` (`.ico` = one
   32 px PNG inside an ICO; the touch icon without the rounded corners).
-- **europe-quiz**: inline SVG map, no canvas. 46 quiz countries (the UN
-  geoscheme's Europe minus Russia, plus Kosovo, Cyprus, Türkiye); all other
-  land is muted, non-interactive context. Border view EU/Austrian (Crimea →
-  Ukraine, Northern Cyprus → Cyprus, Kosovo separate, Transnistria →
-  Moldova); names and capitals in English per the EU Interinstitutional
-  Style Guide. Data: `tools/build_map.py` (Python stdlib, deterministic,
-  `--check`) turns Natural Earth 50m v5.1.2 (public domain, sha256-pinned,
-  not committed) and `tools/countries.json` (the single source of truth:
-  codes, names, capitals, marker points) into `site/map.svg` and
-  `site/countries.js`, committed with a "generated" header; fix-ups,
-  window and remote parts in `tools/README.md`. `map.svg` is fetched and
-  inserted (gzip and MIME already covered by `nginx.conf`). Rounds
-  alternate: every country by name, then by capital, each shuffled; a
-  correct pick colours the country (A in name rounds, B in capital rounds:
-  the map recolours round by round, blank only after a reset); a misclick
-  counts, blinks and shows the name (+ capital) for 1.5 s. Reset takes
-  two presses (the first arms it for 3 s). Vatican, Monaco, San Marino,
-  Liechtenstein, Andorra, Malta and Luxembourg get rings: a tap inside the
-  drawn ring picks it, a tap in the wider zone around it only over sea,
-  context land or that country itself (never over a neighbour); nearest
-  ring wins. Rings shrink at low zoom (phones) and hide once their country
-  is 28 px across. Answering needs a pointer (click or tap); keys only
-  zoom and pan. Zoom: pinch (touch, trackpad), mouse wheel and ctrl +
-  wheel (at the cursor), buttons, `+ - 0` keys. Pan: drag, a trackpad's
-  two-finger scroll, arrow keys. Wheel events are classified per gesture
-  as trackpad or mouse by `site/wheel.js` (DOM-free; rules from real
-  macOS recordings in Safari, Chrome, Firefox at 100 % and 125 % zoom:
-  trackpads send whole CSS or device pixels, mice fractional steps or
-  lines). `node tools/wheel.test.mjs` replays those recordings
-  (`tools/wheel-fixture.json`); re-record and extend it when a device
-  misbehaves. A press
-  that moves more than 5–10 px is a pan, never a click. The
-  full view fits the window around all quiz countries; the SVG draws more
-  context around it, faded out, so tall or wide screens show map. Two
-  layouts (`min-aspect-ratio: 4/3` in `style.css` and `main.js`). Theme
-  follows the OS; the toggle stores the other theme, pressing again clears
-  it, and an override that matches the OS is dropped (`theme.js`, a
-  classic script in `<head>`: no flash). `?seed=<int>` makes the shuffles
-  reproducible (stored state with another seed is replaced);
-  `<html data-round>` (`countries`, `capitals`), `data-progress`,
-  `data-zoom`, `data-wheel`, `data-theme`, `data-theme-pref`,
-  `data-ready`. Quiz state
-  lives in `localStorage` (optional). `quiz.js` has no DOM (checks: `node
-  tools/quiz.test.mjs`). Favicon rasters exported once from `favicon.svg`
-  with headless Chrome (`.ico` = one 32 px PNG; touch icon square).
+- **europe-quiz**: a map-quiz image (engine above; its `site/` engine
+  files are synced copies). 46 quiz countries (the UN geoscheme's Europe
+  minus Russia, plus Kosovo, Cyprus, Türkiye); all other land is muted,
+  non-interactive context, faded out around the window. Border view
+  EU/Austrian (Crimea → Ukraine, Northern Cyprus → Cyprus, Kosovo
+  separate, Transnistria → Moldova); names and capitals in English per the
+  EU Interinstitutional Style Guide. Rounds: every country by name, then
+  by capital (`<html data-round>` `countries`, `capitals`); a misclick
+  shows the name (+ capital). Rings for Vatican, Monaco, San Marino,
+  Liechtenstein, Andorra, Malta and Luxembourg. Texts in `site/config.js`
+  and `site/index.html`. Data: `tools/build_map.py` (adapter over mapgen,
+  deterministic, `--check`) turns Natural Earth 50m v5.1.2 (public domain,
+  sha256-pinned, not committed) and `tools/countries.json` (the single
+  source of truth: codes, names, capitals, marker points) into
+  `site/map.svg` and `site/countries.js`, committed with a "generated"
+  header; fix-ups, window and remote parts in `tools/README.md`. Checks:
+  `node tools/data.test.mjs`. Favicon rasters exported once from
+  `favicon.svg` with headless Chrome (`.ico` = one 32 px PNG; touch icon
+  square).
 
 ## CI
 
 - **Adding an image**: `images/<name>/` + a copy of `image-gradient-ripple.yml`
-  named `image-<name>.yml`, every `gradient-ripple` replaced. The scan, the
-  `build-image/**` fan-out and Dependabot find new folders on their own. The
+  named `image-<name>.yml`, every `gradient-ripple` replaced, and
+  `python3 shared/sync.py` for its `nginx.conf` (a map-quiz image: see
+  "Map-quiz engine" first). The scan, the `build-image/**` fan-out,
+  Dependabot and the sync's `"*"` rule find new folders on their own. The
   first publish creates `phw-<name>` already public and linked to this repo
   (observed 2026-10-31): nothing to set in the package settings. The
   README's "Live" column lists the owner's public instances
@@ -171,6 +197,13 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   hosting provider or deploy details in the repo.
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
   and BuildKit bumps are proven before merge. Push to main also publishes.
+- **shared-sync.yml** (PRs and main, paths `shared/**`, `images/**`):
+  `python3 shared/sync.py --check`, the generator core's unittest, and the
+  node tests (`shared/map-quiz/tools/*.test.mjs`,
+  `images/*/tools/*.test.mjs`) with the runner's own python3 and node (no
+  setup actions; the tests need Node 22.12+, the step checks). The image
+  callers need no `shared/**` path: a shared change reaches an image only
+  through its synced copies, inside its folder.
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in
   publish. Prove them before merge by pushing the PR head to a
   `build-image/<topic>` branch.
