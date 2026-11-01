@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en" data-quiz="japan-quiz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Japan Quiz · phw</title>
+  <meta name="description" content="A map quiz: find Japan's main islands, its eight regions and 47 prefectures, then the prefectures by their capitals.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#bfd9e7">
+  <link rel="icon" href="favicon.ico" sizes="32x32">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="japan.css">
+  <script src="theme.js"></script>
+  <script type="module" src="main.js"></script>
+</head>
+<body>
+  <div id="map" aria-hidden="true"></div>
+
+  <section id="card" aria-label="Question">
+    <div class="card-row">
+      <p class="round"><span class="swatch" aria-hidden="true"></span><span id="round">Islands</span> <span id="progress" class="num">0 / 4</span></p>
+      <p class="score">
+        <span class="ok" title="correct"><span aria-hidden="true">✓</span> <span id="correct" class="num">0</span><span class="sr-only"> correct,</span></span>
+        <span class="bad" title="misclicks"><span aria-hidden="true">✗</span> <span id="misses" class="num">0</span><span class="sr-only"> misclicks</span></span>
+      </p>
+    </div>
+    <p id="prompt" aria-live="polite" aria-atomic="true"><span id="prompt-kind" class="sr-only">Find the island:</span> <span id="prompt-text"></span></p>
+  </section>
+
+  <p id="toast" role="status"></p>
+
+  <nav id="controls" aria-label="Quiz and map controls">
+    <div class="group">
+      <button id="reset" class="btn" type="button" aria-label="Reset the quiz">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 3.5v4h4"/></svg>
+        <span class="btn-text">Reset?</span>
+      </button>
+      <button id="theme" class="btn" type="button" aria-label="Switch to dark theme">
+        <svg class="icon icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 14.5A8 8 0 0 1 9.5 4.5a8 8 0 1 0 10 10z"/></svg>
+        <svg class="icon icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
+      </button>
+    </div>
+    <div class="group">
+      <button id="zoom-out" class="btn" type="button" aria-label="Zoom out">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12h13"/></svg>
+      </button>
+      <button id="zoom-fit" class="btn" type="button" aria-label="Show the whole map">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+      <button id="zoom-in" class="btn" type="button" aria-label="Zoom in">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12h13M12 5.5v13"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <p id="label" aria-live="polite"></p>
+  <div id="safe" aria-hidden="true"></div>
+  <p class="sr-only">A map quiz of Japan, played by clicking or tapping on the map: answering needs a mouse, touch or pen, there is no keyboard way to pick a place. The first round names one of the four main islands, the second one of the eight regions, the third one of the 47 prefectures; click or tap it on the map. The fourth round names a capital that differs from its prefecture's name; pick the prefecture it is the capital of. Then the rounds start over in a new order. Every name comes with its Japanese spelling in kanji and hiragana. Found places are coloured, a wrong pick shows the name of the place you picked. Zoom with the buttons, a mouse wheel or a pinch; move the map by dragging it or with a two-finger scroll on a trackpad; the plus, minus and 0 keys zoom and the arrow keys move the map.</p>
+  <noscript><p class="noscript">This map quiz needs JavaScript.</p></noscript>
+</body>
+</html>
