@@ -13,7 +13,10 @@
 // all its pieces with the round's colour (1 in even rounds, 2 in odd
 // ones) and moves on; the last one starts the next round at once. Colours
 // are per piece and carry over: each round recolours the map as it goes,
-// so the map is blank only at the start of a game. A wrong answer (any
+// so the map is blank only at the start of a game. With carryColours
+// false every round starts blank instead (coloured = found this round):
+// the colours are cleared as the next round starts, right after the last
+// answer coloured its pieces. A wrong answer (any
 // other answer of the kind: asked or not, found or not) counts as a miss
 // and the question stays. Ids that are no answer of the kind (sea,
 // context land, inert pieces) are ignored.
@@ -136,7 +139,8 @@ export class Quiz {
   // 32-bit integer; kinds: the round kinds that cycle, as a count, their
   // keys (config.rounds' keys), or specs { key, answers?, asked? } (see
   // kindOf; a key alone is a kind where every piece is its own answer).
-  constructor(ids, seed, kinds = 2) {
+  // options.carryColours: false clears the colours at each round's start.
+  constructor(ids, seed, kinds = 2, { carryColours = true } = {}) {
     const n = Array.isArray(kinds) ? kinds.length : kinds;
     if (!Number.isSafeInteger(n) || n < 1) throw new RangeError('kinds: a positive integer, or a non-empty array of round keys or specs');
     this.ids = ids.slice();
@@ -148,6 +152,7 @@ export class Quiz {
     this.kinds = n;
     this.kindKeys = Array.isArray(kinds) ? this.specs.map((k) => k.key) : null;
     this.groups = fingerprint(this.specs); // null for one piece per answer
+    this.carryColours = carryColours !== false;
     this.seed = seed >>> 0;
     this.game = 0;
     this.colours = {}; // piece id -> 1 | 2
@@ -162,6 +167,7 @@ export class Quiz {
     this.round = round;
     this.pos = 0;
     this.roundMisses = 0;
+    if (!this.carryColours) this.colours = {};
     const k = this.specs[round % this.kinds];
     const rng = makeRng(mix(this.seed, this.game, round));
     const order = shuffled(k.asked, rng);
@@ -273,15 +279,15 @@ export class Quiz {
 
   // A Quiz from serialize()'s output, or null if it doesn't fit `ids` and
   // `kinds` (another version, changed pieces, rounds, answers or asked
-  // answers, tampering). kinds: as for the constructor.
-  static restore(data, ids, kinds = 2) {
+  // answers, tampering). kinds, options: as for the constructor.
+  static restore(data, ids, kinds = 2, options = {}) {
     if (!data || typeof data !== 'object' || data.v !== VERSION) return null;
     const now = Array.isArray(kinds) ? kinds.map((k) => (typeof k === 'string' ? k : k && k.key)) : kinds;
     if (!sameKinds(data.kinds === undefined ? 2 : data.kinds, now)) return null;
     const { seed, game, round, pos, order, colours, correct, misses, roundMisses } = data;
     if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff) return null;
     if (![game, round, pos, correct, misses, roundMisses].every(isCount)) return null;
-    const q = new Quiz(ids, seed, kinds);
+    const q = new Quiz(ids, seed, kinds, options);
     if ((data.groups === undefined ? null : data.groups) !== q.groups) return null; // answers or asked changed
     const k = q.specs[round % q.kinds];
     if (!Array.isArray(order) || order.length !== k.asked.length || pos >= order.length) return null;

@@ -92,4 +92,8 @@ export default {
     }),
   },
   view: { maxScale: 6, besideHud: true },
+  // Every round starts blank: rounds cover different pieces (the islands
+  // round leaves outlying islands out), so carried-over colours would mix
+  // found and not-found. Coloured = found in this round.
+  carryColours: false,
 };

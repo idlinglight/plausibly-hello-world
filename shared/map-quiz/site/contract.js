@@ -29,7 +29,7 @@ function checkMarker(m, size, where) {
 // Shapes and types.
 export function checkConfig(config) {
   if (!config || typeof config !== 'object') bad('no default export object');
-  const { map, items, rounds, text, view, attribution, blockingOverlays } = config;
+  const { map, items, rounds, text, view, attribution, blockingOverlays, carryColours } = config;
   if (!map || !num(map.width) || !num(map.height) || !(map.width > 0 && map.height > 0)) bad('map: width and height, finite numbers > 0');
   const ex = map.extent;
   if (!Array.isArray(ex) || ex.length !== 4 || !ex.every(num) || !(ex[2] > 0 && ex[3] > 0)) bad('map: extent [x, y, w, h], finite numbers, w and h > 0');
@@ -81,6 +81,7 @@ export function checkConfig(config) {
   if (!text.intro || !str(text.intro.mouse) || !str(text.intro.touch)) bad('text.intro: { mouse, touch }');
   if (typeof text.theme !== 'function') bad('text.theme: a function');
   if (attribution !== undefined && !str(attribution)) bad('attribution: a string');
+  if (carryColours !== undefined && typeof carryColours !== 'boolean') bad('carryColours: true or false');
   if (view !== undefined && !(view && typeof view === 'object' && (view.maxScale === undefined || (num(view.maxScale) && view.maxScale > 0)) &&
       (view.besideHud === undefined || typeof view.besideHud === 'boolean')))
     bad('view: { maxScale: CSS px per map unit, > 0; besideHud: boolean }');

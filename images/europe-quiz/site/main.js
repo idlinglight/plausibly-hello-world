@@ -150,11 +150,12 @@ function save() {
   }
 }
 
-const restored = Quiz.restore(loadState(), ids, SPECS);
+const QUIZ_OPTIONS = { carryColours: config.carryColours !== false }; // false: every round starts blank
+const restored = Quiz.restore(loadState(), ids, SPECS, QUIZ_OPTIONS);
 const resumed = !!restored && (seedParam === null || restored.seed === seedParam);
 const quiz = resumed
   ? restored
-  : new Quiz(ids, seedParam ?? crypto.getRandomValues(new Uint32Array(1))[0], SPECS);
+  : new Quiz(ids, seedParam ?? crypto.getRandomValues(new Uint32Array(1))[0], SPECS, QUIZ_OPTIONS);
 
 // ── Map elements ────────────────────────────────────────────────────────
 
@@ -730,7 +731,7 @@ function showLabel(id, x, y, type) {
   labelTimer = setTimeout(hideLabel, LABEL_MS);
 }
 
-// A toast fades after `ms`; with ms = Infinity (the first visit's intro)
+// A toast fades after `ms`; with ms = Infinity (the intro, on every load)
 // it stays until the first interaction: a press anywhere on the page (map
 // or controls: answers, pans, pinches, buttons), a wheel or gesture event,
 // or a key. Any later toast replaces it and ends that.
@@ -1019,11 +1020,8 @@ async function loadMap() {
 window.addEventListener('wheel', onWheel, { passive: false });
 updateHud();
 loadMap().then(
-  () => {
-    if (!resumed) {
-      toast(coarse ? TEXT.intro.touch : TEXT.intro.mouse, Infinity); // until the first interaction
-    }
-  },
+  // the intro on every load (a reload is how to read it again), until the first interaction
+  () => toast(coarse ? TEXT.intro.touch : TEXT.intro.mouse, Infinity),
   (err) => {
     root.dataset.ready = 'error';
     toast(TEXT.mapError, 1e9);

@@ -219,7 +219,9 @@ image" below (caller workflow, README row). Engine changes go to
   "Kansai" 関西 is the official Kinki 近畿 incl. Mie, named by its common
   name on purpose), `prefectures` (47), `capitals` (only the 18 whose capital's
   name differs, a data flag: Tōkyō → Shinjuku counts); each round shows
-  its line overlays (coasts, region and prefecture borders). Names in
+  its line overlays (coasts, region and prefecture borders); every round
+  starts blank (`carryColours: false`: the rounds cover different pieces,
+  carried colours would mix found and not-found). Names in
   Hepburn with macrons; the card's second line has kanji · hiragana
   (`sub`, `lang="ja"`), a misclick the kanji. Lake Biwa is a see-through
   water overlay (a tap picks Shiga). No rings; `config.view`: `maxScale`

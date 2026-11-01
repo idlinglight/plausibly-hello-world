@@ -94,7 +94,7 @@ export default {
     },
   ],
   text: {
-    intro: { mouse: 'Klicke …', touch: 'Tippe …' }, // first visit's toast, until the first interaction
+    intro: { mouse: 'Klicke …', touch: 'Tippe …' }, // toast on every load, until the first interaction
     newGame: 'Neues Spiel …',                       // toast after a reset
     reset: 'Quiz zurücksetzen',                     // reset button label …
     resetArmed: 'Wirklich zurücksetzen? …',         // … while armed (3 s)
@@ -106,6 +106,7 @@ export default {
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
   view: { maxScale: 6, besideHud: true }, // optional, see below
   blockingOverlays: ['water'],           // optional, see below
+  carryColours: true,                    // optional, see below
 };
 ```
 
@@ -190,6 +191,11 @@ export default {
   controls in portrait (they move up for it), the bottom-left corner in
   landscape. The full view stays clear of it in both. Fits about 50
   characters on a 320 px phone.
+- **carryColours** (default `true`): colours carry over from round to
+  round (each round recolours the map). `false`: every round starts
+  blank, so coloured means found in this round (e.g. when a round leaves
+  some clickable pieces unasked or inert, which would otherwise start the
+  next round partly coloured).
 - **view.maxScale**: maps are 1000 units wide; at most this many CSS px
   per unit at the closest zoom (default 12, europe; a city map needs
   less), but always at least 4× the full view.
@@ -276,7 +282,8 @@ theme-color meta.
   colours all pieces of the answer (A in even rounds, B in odd ones: the
   map recolours round by round, blank only after a reset); colours are
   per piece, so pieces a round doesn't ask (inert, or not asked) keep
-  theirs. A misclick (any other answer of the round: found, not yet, or
+  theirs. With `carryColours: false` the map is cleared as each round
+  starts, right after the last answer's pulse begins. A misclick (any other answer of the round: found, not yet, or
   not asked) counts, blinks all its pieces and shows the round's `miss`
   label for 1.5 s. A click on the sea, context land, an inert piece or a
   blocking overlay does nothing. Hover lights every piece of an answer.
@@ -287,11 +294,12 @@ theme-color meta.
   the nearest ring wins. A ring shows the colour all its pieces share.
   Rings shrink at low zoom (phones) and hide once their piece is 28 px
   across; they are rebuilt when a round's ring set differs.
-- Toasts under the card: the first visit's intro (`text.intro`; none
-  when a saved game resumes) stays until the first interaction, a press
-  anywhere on the page (map or controls), a wheel or pinch, or a key, and
-  then fades; the round-end toast fades after 4 s, reset's after 2.5 s; a
-  newer toast replaces the one shown.
+- Toasts under the card: the intro (`text.intro`) shows on every page
+  load, also when a saved game resumes (a reload is how to read it
+  again), and stays until the first interaction, a press anywhere on the
+  page (map or controls), a wheel or pinch, or a key, and then fades; the
+  round-end toast fades after 4 s, reset's after 2.5 s; a newer toast
+  replaces the one shown.
 - Answering needs a pointer (click or tap); keys only zoom and pan. Zoom:
   pinch (touch, trackpad), mouse wheel and ctrl + wheel (at the cursor),
   buttons, `+ - 0` keys. Pan: drag, a trackpad's two-finger scroll, arrow
