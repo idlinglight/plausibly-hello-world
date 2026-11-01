@@ -60,8 +60,10 @@ Snapshot: downloaded 2026-11-01 (and again later that day: identical). The
 district file is byte-stable between requests. The water file is not: the
 server numbers the features anew on every request (`FID`, the first
 column, e.g. `REALNUT2024OGD.fid-73bffeb0_…`), so the script hashes it
-with everything up to the first comma of each line cut off (the `FID`
-holds no comma) and checks that. Both files stay outside the repository,
+with everything up to the first comma of each line cut off and checks
+that. It first checks the cut is exactly the CSV's first field on every
+line (header `FID`, one record per line, a plain `FID` without comma or
+quote) and stops otherwise. Both files stay outside the repository,
 like europe-quiz's Natural Earth file; there is no archive of the raw
 input.
 
@@ -75,11 +77,14 @@ and size it found. Then:
    `DISTRICTS_BYTES` or `WATER_SHA256` / `WATER_BYTES` in `build_map.py`,
    and the download date in its comment and here.
 3. Regenerate. The script checks district numbers and names against
-   `districts.json`; a seed point outside all water, or two seeds in one
-   body, stops it (fix the seed in `districts.json`). Read the report: the
-   water drawn (bodies, hectares), the largest water left out, the widest
-   gaps between drawn water (`site/vienna.css`'s `--overlay-stroke`, 1.6
-   map units ≈ 49 m, has to stay above them).
+   `districts.json` and stops (fix `districts.json`) on a seed point
+   outside all water, two seeds in one body, or water within 60 m of
+   drawn water that is neither drawn nor listed in `water_out` (a river
+   split by a new gap: give the new piece a seed). It also stops if a gap
+   in the final map.svg between water that was closer than 60 m is wider
+   than the outline (`WATER_STROKE`, 1.6 units; `site/vienna.css` must say
+   the same). Read the report: the water drawn, the near water left out,
+   the largest water left out, the widest gap the outline closes.
 4. Review the map diff: `git diff --stat site/`, and look at the page
    (full view and zoomed into the Donaukanal), before committing the new
    pins together with the regenerated files.
@@ -105,19 +110,31 @@ the other creeks, ponds and gravel-pit lakes, the Donau-Oder-Kanal basins,
 the Prater's Heustadelwasser.
 
 How: the layer has 450 polygons, cut wherever a bridge crosses. Polygons
-closer than 20 m form a body (`BODY_GAP`: footbridges, weirs); a body is
-drawn if it holds one of the seed points in `districts.json` (EPSG:31256
-metres, a point well inside the body's largest piece; 37 seeds, grouped by
-river). Bridges wider than 20 m split a river into several bodies, each
-with its own seed. A seed list rather than a size or width rule: such
-rules kept fragments of creeks and ponds and lost short river pieces. To
-draw more water, add a seed inside it (any point in its largest piece).
+closer than 20 m form a body (`BODY_GAP`: footbridges, weirs; measured
+edge to edge over all rings, holes included, and overlapping pieces count
+as touching); a body is drawn if it holds one of the seed points in
+`districts.json` (EPSG:31256 metres, a point well inside the body's
+largest piece; 37 seeds, grouped by river). Bridges wider than 20 m split
+a river into several bodies, each with its own seed. A seed list rather
+than a size or width rule: such rules kept fragments of creeks and ponds
+and lost short river pieces. To draw more water, add a seed inside it.
 
-Gaps: the widest gap between drawn bodies is 40 m (bridges over the Danube
-and the Donaukanal); the overlay's same-coloured outline (1.6 units)
-closes them on the page at every zoom. Where the Wienfluss is covered, the
-map shows it as it is: the long vault from the Naschmarkt to the
-Stadtpark, the square at Hietzing (Kennedybrücke, 89 m) and a few wide
+Near water: every body within 60 m (`BRIDGE_GAP`) of drawn water is either
+drawn or listed in `water_out` with a point inside it (now six: Mauerbach,
+Halterbach, the Lobau, an old arm by the Alte Donau, a basin at Albern, a
+pond on the Donauinsel); anything else that close stops the build, so a
+piece of a river can't vanish unnoticed.
+
+Gaps: the widest gap between drawn bodies is 40 m in the source (bridges
+over the Danube and the Donaukanal). The build checks the final map.svg:
+for every pair of drawn pieces closer than 60 m in the source, the widest
+gap on the best chain of water outlines between them (1.34 units now)
+must stay below the outline width `WATER_STROKE` (1.6 units ≈ 49 m),
+which `site/vienna.css` uses as `--overlay-stroke` (the build and
+`data.test.mjs` both check it, via `WATER_STROKE` in `districts.js`). So
+the outline closes them on the page at every zoom. Where the Wienfluss is
+covered, the map shows it as it is: the long vault from the Naschmarkt to
+the Stadtpark, the square at Hietzing (Kennedybrücke, 89 m) and a few wide
 road crossings stay breaks.
 
 ## Map geometry

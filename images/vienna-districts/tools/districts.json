@@ -2,7 +2,8 @@
   "about": [
     "The single source of truth for vienna-districts besides the two Stadt Wien files (tools/README.md): the 23 districts and the water drawn on the map.",
     "districts: number (BEZNR) and the official name; build_map.py checks each name against the source's NAMEK. Region ids are d01 … d23.",
-    "water: which water of Realnutzungskartierung 2024 (CODE 241) is drawn. Pieces closer than 20 m form a body (a river cut by footbridges, a weir); a body is drawn if one of these seed points (EPSG:31256, metres) lies in one of its pieces. Wider bridges split a river into several bodies, each with its own seed; the overlay's stroke closes those gaps on the page. A seed outside all water, or two seeds in one body, stops the build."
+    "water: which water of Realnutzungskartierung 2024 (CODE 241) is drawn. Pieces closer than 20 m (edge to edge, any ring, or overlapping) form a body (a river cut by footbridges, a weir); a body is drawn if one of these seed points (EPSG:31256, metres) lies in one of its pieces. Wider bridges split a river into several bodies, each with its own seed; the overlay's outline closes those gaps on the page. A seed outside all water, or two seeds in one body, stops the build.",
+    "water_out: bodies within 60 m of drawn water that are deliberately not drawn, each by a point inside it. Any other body that close stops the build (after a re-pin a river split by a new gap would otherwise lose a piece silently): give it a seed or list it here. The names are only labels."
   ],
   "districts": [
     { "number": 1, "name": "Innere Stadt" },
@@ -35,5 +36,13 @@
     { "name": "Donaukanal", "seeds": [[2594, 345076], [2215, 344174], [2190, 343912], [2717, 342440], [2767, 342337], [2992, 342103], [3369, 341565], [3731, 341504], [4013, 341584], [4810, 341090], [5546, 340323], [5983, 339650]] },
     { "name": "Alte Donau", "seeds": [[6471, 345048], [7582, 342817]] },
     { "name": "Wienfluss", "seeds": [[-9503, 340843], [-1442, 338786], [-1317, 338759], [-581, 338473], [-163, 338379], [290, 338631], [968, 338932], [1566, 339184], [1649, 339436], [3676, 340787], [3564, 340713], [3821, 341087]] }
+  ],
+  "water_out": [
+    { "name": "Mauerbach (joins the Wienfluss at Hadersdorf)", "point": [-8926, 342964] },
+    { "name": "Halterbach (joins the Wienfluss at Hütteldorf)", "point": [-6152, 342270] },
+    { "name": "Lobau backwaters", "point": [12550, 339839] },
+    { "name": "old Danube arm east of the Alte Donau's southern end", "point": [8297, 341992] },
+    { "name": "basin beside the Danube at Albern", "point": [11929, 335878] },
+    { "name": "pond on the Donauinsel", "point": [7205, 341798] }
   ]
 }

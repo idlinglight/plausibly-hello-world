@@ -3,11 +3,14 @@
 // node images/vienna-districts/tools/data.test.mjs   (Node 22.12+)
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DISTRICTS, MAP } from '../site/districts.js';
+import { DISTRICTS, MAP, WATER_STROKE } from '../site/districts.js';
 import config from '../site/config.js';
 import { checkTexts } from '../site/contract.js';
 
 const site = (f) => readFileSync(new URL(`../site/${f}`, import.meta.url), 'utf8');
+// tools/districts.json: the source of the names (build_map.py checks them
+// against Stadt Wien's NAMEK); the generated module must match it.
+const SOURCE = JSON.parse(readFileSync(new URL('./districts.json', import.meta.url), 'utf8'));
 let checks = 0;
 function check(name, fn) {
   fn();
@@ -15,18 +18,11 @@ function check(name, fn) {
   console.log('ok', name);
 }
 
-// Stadt Wien's official district names (NAMEK), by number.
-const OFFICIAL = [
-  'Innere Stadt', 'Leopoldstadt', 'Landstraße', 'Wieden', 'Margareten', 'Mariahilf', 'Neubau', 'Josefstadt',
-  'Alsergrund', 'Favoriten', 'Simmering', 'Meidling', 'Hietzing', 'Penzing', 'Rudolfsheim-Fünfhaus', 'Ottakring',
-  'Hernals', 'Währing', 'Döbling', 'Brigittenau', 'Floridsdorf', 'Donaustadt', 'Liesing',
-];
-
-check('data: 23 districts, numbers 1-23, ids d01-d23, the official names', () => {
+check('data: districts.js matches districts.json (23, numbers 1-23, ids d01-d23, names)', () => {
   assert.equal(DISTRICTS.length, 23);
+  assert.deepEqual(DISTRICTS.map(({ number, name }) => ({ number, name })), SOURCE.districts);
   assert.deepEqual(DISTRICTS.map((d) => d.number), Array.from({ length: 23 }, (_, i) => i + 1));
   assert.deepEqual(DISTRICTS.map((d) => d.id), DISTRICTS.map((d) => `d${String(d.number).padStart(2, '0')}`));
-  assert.deepEqual(DISTRICTS.map((d) => d.name), OFFICIAL);
   assert.equal(new Set(DISTRICTS.map((d) => d.name)).size, 23);
   assert.ok(DISTRICTS.every((d) => d.marker === undefined), 'no rings');
 });
@@ -79,11 +75,12 @@ check('map.svg: a shape per district in #districts, the water overlay above', ()
   assert.equal((svg.match(/ id="/g) || []).length, 23 + 3);
 });
 
-check('vienna.css: background, water and outline tokens; colours in all three token blocks', () => {
+check('vienna.css: background and water colours in all three token blocks; the outline is WATER_STROKE', () => {
   const css = site('vienna.css');
   assert.equal((css.match(/--sea:/g) || []).length, 3);
   assert.equal((css.match(/--water:/g) || []).length, 3);
-  assert.match(css, /--overlay-stroke: 1\.6px;/);
+  const strokes = [...css.matchAll(/--overlay-stroke:\s*([\d.]+)px/g)].map((m) => Number(m[1]));
+  assert.ok(strokes.length >= 1 && strokes.every((v) => v === WATER_STROKE), `--overlay-stroke ${strokes} vs WATER_STROKE ${WATER_STROKE} (build_map.py checks the gaps)`);
 });
 
 console.log(`${checks} checks passed`);

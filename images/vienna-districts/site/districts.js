@@ -4,6 +4,8 @@
 // about 30.6 m); nothing is drawn around it, so extent = window.
 // DISTRICTS: number and official name, in number order; id d01 … d23 is the
 // district's <path> in map.svg.
+// WATER_STROKE: the water outline in map units that closes every gap
+// between drawn water; site/vienna.css --overlay-stroke must be this.
 
 export const MAP = { width: 1000, height: 782.2, extent: [0, 0, 1000, 782.2] };
 
@@ -32,3 +34,5 @@ export const DISTRICTS = [
   { id: "d22", number: 22, name: "Donaustadt" },
   { id: "d23", number: 23, name: "Liesing" },
 ];
+
+export const WATER_STROKE = 1.6;
