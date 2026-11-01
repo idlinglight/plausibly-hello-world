@@ -33,7 +33,7 @@ function good() {
       theme: (other, override) => ({ label: other, title: override ? 'System' : other }),
     },
     attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at',
-    view: { maxScale: 6 },
+    view: { maxScale: 6, besideHud: true },
   };
 }
 
@@ -67,6 +67,7 @@ check('structure: each broken field is named', () => {
     [(c) => (c.text.theme = {}), /text\.theme/],
     [(c) => (c.attribution = ''), /attribution/],
     [(c) => (c.view = { maxScale: 0 }), /view:/],
+    [(c) => (c.view = { besideHud: 'yes' }), /view:/],
   ];
   for (const [breakIt, re] of cases) {
     const c = good();

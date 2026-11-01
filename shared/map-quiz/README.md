@@ -97,7 +97,7 @@ export default {
     theme: (other, override) => ({ label: '…', title: '…' }),
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
-  view: { maxScale: 6 }, // optional: CSS px per map unit at the closest zoom (default 12)
+  view: { maxScale: 6, besideHud: true }, // optional, see below
 };
 ```
 
@@ -115,10 +115,15 @@ export default {
   be unique within a round (`checkTexts` tests it).
 - **attribution**: a credit line where it never meets the HUD: under the
   controls in portrait (they move up for it), the bottom-left corner in
-  landscape. Fits about 50 characters on a 320 px phone.
+  landscape. The full view stays clear of it in both. Fits about 50
+  characters on a 320 px phone.
 - **view.maxScale**: maps are 1000 units wide; at most this many CSS px
-  per unit (europe 12; a city map needs less), but always at least 4× the
-  full view.
+  per unit at the closest zoom (default 12, europe; a city map needs
+  less), but always at least 4× the full view.
+- **view.besideHud**: in landscape, fit the full view left of the card
+  and the controls column. Default false: the card covers the full view's
+  top-right corner, fine where that is context land (europe: Russia), not
+  for a map whose regions reach that corner.
 
 `contract.js`: `checkConfig(config)` (main.js runs it at start: a broken
 config throws, naming the field) and `checkTexts(config)` (every ask/miss

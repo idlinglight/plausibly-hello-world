@@ -49,6 +49,7 @@ const { map: MAP, items: ITEMS, rounds: ROUNDS, text: TEXT } = config;
 const LANDSCAPE = '(min-aspect-ratio: 4/3)'; // same query as in style.css
 const PAD = 12; // CSS px between the map (full view) and the edges / HUD bands
 const MAX_SCALE = (config.view && config.view.maxScale) || 12; // CSS px per map unit at the closest zoom (maps are 1000 units wide)
+const BESIDE_HUD = !!(config.view && config.view.besideHud); // landscape: full view left of the card + controls
 const MIN_ZOOM_RANGE = 4; // … but at least this many times the full view
 const ZOOM_STEP = 1.75; // buttons and keys
 const ANIM_MS = 260;
@@ -233,13 +234,21 @@ function measure() {
   const ins = insets();
   let y0 = ins.t + PAD;
   let y1 = view.h - ins.b - PAD;
+  let x1 = view.w - ins.r - PAD;
   if (!landscape.matches) {
     // The card and the controls run across the screen: keep the full view
     // between them.
     y0 = Math.max(y0, card.getBoundingClientRect().bottom + PAD);
     y1 = Math.min(y1, controls.getBoundingClientRect().top - PAD);
+  } else {
+    // The card covers a corner of the full view unless config.view.besideHud
+    // keeps it left of the card and the controls column; never under the
+    // attribution line (bottom left).
+    if (BESIDE_HUD) x1 = Math.min(x1, card.getBoundingClientRect().left - PAD, controls.getBoundingClientRect().left - PAD);
+    const attr = document.getElementById('attribution');
+    if (attr) y1 = Math.min(y1, attr.getBoundingClientRect().top - PAD);
   }
-  free = { x0: ins.l + PAD, y0, x1: Math.max(ins.l + PAD + 40, view.w - ins.r - PAD), y1: Math.max(y0 + 40, y1) };
+  free = { x0: ins.l + PAD, y0, x1: Math.max(ins.l + PAD + 40, x1), y1: Math.max(y0 + 40, y1) };
   fitScale = Math.min((free.x1 - free.x0) / MAP.width, (free.y1 - free.y0) / MAP.height);
 }
 

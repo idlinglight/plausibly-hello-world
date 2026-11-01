@@ -42,8 +42,9 @@ export function checkConfig(config) {
   if (!text.intro || !str(text.intro.mouse) || !str(text.intro.touch)) bad('text.intro: { mouse, touch }');
   if (typeof text.theme !== 'function') bad('text.theme: a function');
   if (attribution !== undefined && !str(attribution)) bad('attribution: a string');
-  if (view !== undefined && !(view && typeof view === 'object' && (view.maxScale === undefined || view.maxScale > 0)))
-    bad('view: { maxScale: CSS px per map unit, > 0 }');
+  if (view !== undefined && !(view && typeof view === 'object' && (view.maxScale === undefined || view.maxScale > 0) &&
+      (view.besideHud === undefined || typeof view.besideHud === 'boolean')))
+    bad('view: { maxScale: CSS px per map unit, > 0; besideHud: boolean }');
 }
 
 // What the functions return, for every item: prompts and misclick labels

@@ -109,7 +109,7 @@ layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
 are synced into each map image's `site/`; per image: `index.html` (static
 text, `lang`, `<html data-quiz="<name>">`, which namespaces localStorage),
 `config.js` (regions from the generated data module, rounds, every UI
-text, optional attribution line and max zoom), the generated data module
+text, optional attribution line and view options), the generated data module
 and `map.svg`, favicons, optionally an own stylesheet for colours. The
 offline generator is `tools/build_map.py` per image, an adapter (inputs,
 fix-ups, selection) over the shared core `shared/map-quiz/tools/mapgen`
