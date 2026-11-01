@@ -21,9 +21,10 @@ Pipeline:
      the 47 JPN features, matched by ISO 3166-2 code, NE's name checked.
   3. Fix-ups (MOVES, DROPS): the Amami islands (filed under Okinawa) and
      Nagashima + Shishijima (under Kumamoto) move to Kagoshima; Tōkyō's
-     Ogasawara islands (incl. the Iwo islands and Minami-Torishima, 1,000+
-     km out in the Pacific) are dropped; specks below SPECK_KM2 too. Point
-     checks (VIEW_CHECKS) assert the result.
+     Ogasawara islands are dropped (the Bonin islands about 1,000 km south
+     of Tokyo, the Iwo islands about 1,250 km, Minami-Torishima about
+     1,850 km south-east); specks below SPECK_KM2 too. Point checks
+     (VIEW_CHECKS) assert the result.
   4. Pieces: each prefecture's parts on its main island (the connected
      landmass of Honshū, Hokkaidō, Kyūshū or Shikoku; plus ATTACHED: spits
      Natural Earth draws apart) form its main piece, id = the prefecture's
@@ -161,7 +162,11 @@ LAKES = [(1159115641, "Biwa Ko", "shiga")]
 PREFILTER = ((95, 180), (0, 70))  # lon/lat box: context polygons entirely outside are skipped early
 
 ID = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
-RESERVED = {"land", "overlays", "regions", "markers", "pieces"}
+# Overlay ids map.svg gets (build() checks it writes no other), and the
+# ids of map.svg's own elements and the engine's layers: no prefecture,
+# island or region id may be one of them.
+OVERLAY_IDS = ("lakes", "coast-main", "coast-isles", "borders-prefectures", "borders-regions", "borders-islands")
+RESERVED = {"land", "overlays", "regions", "markers", "pieces", *OVERLAY_IDS}
 
 
 def fail(msg):
@@ -169,6 +174,12 @@ def fail(msg):
 
 
 # ------------------------------------------------------------------ kana check
+# Long vowels: a syllable ending in the key vowel, followed by the bare
+# vowel kana, is written with a macron (ei and ii stay as they are).
+_LONG = {"o": {"o": "ō", "u": "ō"}, "u": {"u": "ū"}, "a": {"a": "ā"}, "e": {"e": "ē"}}
+# Readings where お + う meet across a morpheme boundary and stay "ou"
+# (e.g. いのうえ, Inoue). None of today's names needs one.
+OU_SPLIT = set()
 _KANA = {}
 for row in ("あa いi うu えe おo", "かka きki くku けke こko", "さsa しshi すsu せse そso", "たta ちchi つtsu てte とto",
             "なna にni ぬnu ねne のno", "はha ひhi ふfu へhe ほho", "まma みmi むmu めme もmo", "やya ゆyu よyo",
@@ -197,7 +208,9 @@ def hepburn(kana):
         else:
             raise ValueError(f"not hiragana: {kana[i]!r} in {kana!r}")
     out = []
-    for k, s in enumerate(syl):
+    k = 0
+    while k < len(syl):
+        s = syl[k]
         nxt = syl[k + 1] if k + 1 < len(syl) else ""
         if s == "っ":
             if not nxt or nxt[0] in "aiueon":
@@ -205,12 +218,15 @@ def hepburn(kana):
             out.append("t" if nxt.startswith("ch") else nxt[0])
         elif s == "ん":
             out.append("n'" if nxt and nxt[0] in "aiueoy" else "n")
+        elif s[-1:] in _LONG and nxt in _LONG[s[-1]] and not (nxt == "u" and s[-1] == "o" and kana in OU_SPLIT):
+            # a syllable's vowel and the bare vowel kana after it: one long
+            # vowel (おお before おう: おおう is ō + u, not o + ō)
+            out.append(s[:-1] + _LONG[s[-1]][nxt])
+            k += 1
         else:
             out.append(s)
-    text = "".join(out)
-    for a, b in (("ou", "ō"), ("oo", "ō"), ("uu", "ū"), ("aa", "ā"), ("ee", "ē")):
-        text = text.replace(a, b)
-    return text
+        k += 1
+    return "".join(out)
 
 
 # ------------------------------------------------------------------ steps
@@ -329,7 +345,9 @@ def km2(poly, project):
 def split_pieces(geo, islands, pl, notes):
     """{piece id: polygons} in JIS order (main piece, then -isles), and
     {piece id: prefecture id}. Main island = the connected landmass (parts
-    sharing vertices) holding the island's prefectures' largest parts."""
+    sharing a border edge: two consecutive vertices, in either direction;
+    a single shared vertex doesn't join) holding the island's prefectures'
+    largest parts."""
     parts = [(p["iso"], poly) for p in pl for poly in geo[p["iso"]]]
     parent = list(range(len(parts)))
 
@@ -339,13 +357,16 @@ def split_pieces(geo, islands, pl, notes):
             a = parent[a]
         return a
 
-    seen = {}
+    seen = {}  # undirected edge -> first part using it
     for k, (_, poly) in enumerate(parts):
-        for c in poly[0]:
-            j = seen.setdefault((c[0], c[1]), k)
+        ring = mapgen.open_ring(poly[0])
+        for i in range(len(ring)):
+            a, b = tuple(ring[i - 1][:2]), tuple(ring[i][:2])
+            if a == b:
+                continue
+            j = seen.setdefault((min(a, b), max(a, b)), k)
             if find(j) != find(k):
                 parent[find(k)] = find(j)
-    by_iso = {p["iso"]: p for p in pl}
     main_comp = {}  # island id -> component root
     for isl in islands:
         members = [p for p in pl if p["island"] == isl["id"]]
@@ -385,7 +406,7 @@ def split_pieces(geo, islands, pl, notes):
                  ", ".join(f"{pid[:-6]} ({len(polys)})" for pid, polys in pieces.items() if pid.endswith("-isles")))
     for _, label, _ in ATTACHED:
         notes.append(f"{label}: part of the main piece")
-    return pieces, owner, by_iso
+    return pieces, owner
 
 
 def load_context(path, notes):
@@ -454,7 +475,7 @@ def build(adm1_path, adm0_path, lakes_path):
     islands, regions, pl = load_data()
     geo = load_adm1(adm1_path, pl)
     apply_fixups(geo, project, notes)
-    pieces, owner, _ = split_pieces(geo, islands, pl, notes)
+    pieces, owner = split_pieces(geo, islands, pl, notes)
     piece_ids = list(pieces)
     by_id = {p["id"]: p for p in pl}
     for lon, lat, pref, piece, label in VIEW_CHECKS:
@@ -503,6 +524,9 @@ def build(adm1_path, adm0_path, lakes_path):
         res.overlays[oid] = mapgen.lines_d(ln, res.dec)
         notes.append(f"{oid}: {len(ln)} lines, {sum(len(x) for x in ln)} points")
 
+    unknown = [oid for oid in res.overlays if oid not in OVERLAY_IDS]
+    if unknown:
+        fail(f"overlay ids not in OVERLAY_IDS: {unknown}")
     svg_text = mapgen.map_svg(res, piece_ids, HEAD, group_id="pieces")
 
     def pieces_of(pred):

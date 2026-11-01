@@ -90,10 +90,10 @@ it).
 ## Fix-ups
 
 Natural Earth files a few islands under the wrong prefecture, and Tōkyō
-reaches 1,800 km into the Pacific. `build_map.py` (`MOVES`, `DROPS`,
-`ATTACHED`, `KURILS`) fixes that up; each rule must match exactly the
-expected number of parts, and point checks (`VIEW_CHECKS`,
-`KURIL_CHECKS`) assert the result on every run:
+reaches some 1,850 km into the Pacific (Minami-Torishima).
+`build_map.py` (`MOVES`, `DROPS`, `ATTACHED`, `KURILS`) fixes that up;
+each rule must match exactly the expected number of parts, and point
+checks (`VIEW_CHECKS`, `KURIL_CHECKS`) assert the result on every run:
 
 - **Amami islands → Kagoshima**: Okinawa's parts north of 27.0°N and
   east of 128.3°E (Amami Ōshima, Kakeromajima, Kikaijima, Tokunoshima,
@@ -101,10 +101,11 @@ expected number of parts, and point checks (`VIEW_CHECKS`,
   west of that line, stay in Okinawa.
 - **Nagashima and Shishijima → Kagoshima**: filed under Kumamoto, both
   belong to Nagashima town, Kagoshima.
-- **Ogasawara dropped**: Tōkyō's parts south of 29°N (the Bonin islands,
-  the Iwo islands, Nishinoshima, Minami-Torishima: 12 parts) would
-  stretch the map by a whole ocean for a few specks. The Izu islands
-  down to Torishima stay.
+- **Ogasawara dropped**: Tōkyō's parts south of 29°N (12 parts: the
+  Bonin islands and Nishinoshima, about 1,000 km south of Tokyo; the Iwo
+  islands, about 1,250 km; Minami-Torishima, about 1,850 km south-east)
+  would stretch the map by a whole ocean for a few specks. The Izu
+  islands down to Torishima (about 580 km) stay.
 - **Specks**: parts below 0.5 km² are dropped: 12 rocks and islets
   (Sumisu-tō, the Kusagaki islands, the smaller Senkaku islets, a few
   nameless ones), a few pixels at most even at the closest zoom.
@@ -130,9 +131,10 @@ pieces that each answer is a set of (`japan.js`):
 
 - **Main piece**, id = the prefecture's id (`niigata`): its parts on its
   main island (`prefectures.json` `island`). The main island is the
-  connected landmass (parts sharing border vertices) that holds the
-  largest part of each of its prefectures; the build checks that the
-  four landmasses hold exactly the expected prefectures.
+  connected landmass (parts sharing a border edge; a single shared
+  vertex doesn't join) that holds the largest part of each of its
+  prefectures; the build checks that the four landmasses hold exactly
+  the expected prefectures.
 - **`<id>-isles`** (`niigata-isles`): all other parts of the prefecture,
   merged into one piece (17 prefectures, e.g. Sado, Awaji, Oki, Tsushima,
   Gotō, Amakusa, Yakushima, the Izu islands; also the airport islands of
@@ -186,8 +188,14 @@ each Japanese Wikipedia article and English Wikipedia's "List of regions
 of Japan" (every reading confirmed by at least two of them; that list's
 ぎふけん for Gifu is a slip, the other two say ぎふ). The build also
 reads every kana back into Hepburn and fails on a mismatch with the
-name.
+name (long vowels per syllable: おお, おう → ō, うう → ū; お + う across a
+morpheme boundary, as in いのうえ, would need an entry in `OU_SPLIT`,
+none does today).
 
-Choices the quiz makes: the eight standard regions, Mie in Kansai and
-Okinawa in Kyūshū; Tōkyō's capital is Shinjuku (seat of the metropolitan
-government), so `capital_differs` marks 18 prefectures (17 + Tōkyō).
+Choices the quiz makes: the eight standard regions, Okinawa in Kyūshū.
+The region the official division calls Kinki (近畿 · きんき, which
+includes Mie) goes by its common name on purpose: Kansai (関西 ·
+かんさい), the usual English name and the title of Wikipedia's article;
+its extent is Kinki's, Mie included. Tōkyō's capital is Shinjuku (seat
+of the metropolitan government), so `capital_differs` marks 18
+prefectures (17 + Tōkyō).

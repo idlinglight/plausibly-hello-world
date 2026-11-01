@@ -215,8 +215,9 @@ image" below (caller workflow, README row). Engine changes go to
   main island (id = the prefecture's, e.g. `niigata`) plus, for 17, an
   `<id>-isles` piece; Okinawa is one piece. Rounds (`<html data-round>`):
   `islands` (Honshū, Hokkaidō, Kyūshū, Shikoku; the -isles pieces and
-  Okinawa are inert), `regions` (the standard 8, Mie in Kansai, Okinawa
-  in Kyūshū), `prefectures` (47), `capitals` (only the 18 whose capital's
+  Okinawa are inert), `regions` (the standard 8, Okinawa in Kyūshū;
+  "Kansai" 関西 is the official Kinki 近畿 incl. Mie, named by its common
+  name on purpose), `prefectures` (47), `capitals` (only the 18 whose capital's
   name differs, a data flag: Tōkyō → Shinjuku counts); each round shows
   its line overlays (coasts, region and prefecture borders). Names in
   Hepburn with macrons; the card's second line has kanji · hiragana
