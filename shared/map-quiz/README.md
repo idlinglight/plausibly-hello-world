@@ -2,8 +2,8 @@
 
 A map quiz as a static page: an inline SVG map, a question card, round
 after round of "find this region". One engine for several images
-(`images/europe-quiz`, more to come); each image brings its own data,
-texts and map, the engine stays the same.
+(`images/europe-quiz`, `images/vienna-districts`); each image brings its
+own data, texts and map, the engine stays the same.
 
 ```
 shared/map-quiz/
@@ -60,7 +60,10 @@ data.
   `label`, `safe`. Start from europe-quiz's `index.html` and translate its
   text: title, description, `aria-label`s, the `sr-only` help paragraph,
   `noscript`, "Reset?". The engine overwrites the round label, prompt and
-  the reset/theme button labels from the config once it runs.
+  the reset/theme button labels from the config once it runs. Keep the
+  armed reset's word ("Reset?", `.btn-text`) short: on a 320 px screen
+  about 40 px fit beside the zoom buttons (vienna-districts: "Echt?";
+  europe's "Reset?" is 3 px over there, so the button groups touch).
 
 ### config.js
 
@@ -178,7 +181,8 @@ context around the window (`MAP.extent` starts below 0), and the rings.
 Tokens on `:root` in `style.css`, each defined three times (light;
 `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) }`;
 `:root[data-theme="dark"]`): `--sea` (page background, also beyond the
-drawn extent), `--land`, `--land-line`, `--region`, `--region-hover`,
+drawn extent; a map without sea sets its plain background here, as
+vienna-districts does), `--land`, `--land-line`, `--region`, `--region-hover`,
 `--border`, `--a` / `--b` (+ `-hover`), `--miss`, `--ring`, panel and text
 colours; `--water` (overlay fill and outline, default `--sea`) and
 `--overlay-stroke` (overlay outline width in map units, e.g. `1.2px`,
@@ -267,11 +271,12 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   1/`grid`; parts of a region merge, neighbours share border vertices
   (shared arcs), unshared specks below `min_island` are dropped (never for
   `keep_islands`), context-only arcs are simplified (`context_tol`,
-  `far_tol` beyond `far_gap`), overlays get `overlay_tol` and stay outside
-  the shared topology. Region arcs keep every vertex unless `region_tol`
-  is set (Douglas-Peucker on the shared arcs, so neighbours stay
-  gap-free): europe's Natural Earth data is coarse enough as it is, city
-  data densified to centimetre steps (vienna-districts) is not.
+  `far_tol` beyond `far_gap`), overlays get `overlay_tol` (and drop rings
+  below `min_island` too) and stay outside the shared topology. Region
+  arcs keep every vertex unless `region_tol` is set (Douglas-Peucker on
+  the shared arcs, so neighbours stay gap-free): europe's Natural Earth
+  data is coarse enough as it is, city data densified to centimetre
+  steps (vienna-districts) is not.
   Simplification can make arcs cross; `res.stats["crossings"]` counts
   them (the report prints it; europe's 5 are all in context land) and an
   adapter that simplifies region arcs should require 0. A region lost to

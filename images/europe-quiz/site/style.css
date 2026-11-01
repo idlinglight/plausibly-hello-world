@@ -17,7 +17,10 @@
 
    Theme: light tokens on :root, dark tokens for prefers-color-scheme: dark
    unless <html data-theme="light">, and for <html data-theme="dark"> (set
-   by theme.js, which also handles the toggle). */
+   by theme.js, which also handles the toggle). Dark mode: the round
+   colours (A, B, their hovers, the misclick) are dark fills under a light
+   border line, so the line stays visible between two neighbours of the
+   same colour (contrast ≥ 2:1 against every fill). */
 
 :root {
   color-scheme: light;
@@ -58,13 +61,13 @@
     --land-line: #2e414c;
     --region: #2b3e48;
     --region-hover: #375058;
-    --border: #6b8794;
-    --a: #3aa982;
-    --a-hover: #48bc93;
-    --b: #d49d45;
-    --b-hover: #e5b05a;
+    --border: #9ab2bd;
+    --a: #20774f;
+    --a-hover: #278460;
+    --b: #a3530f;
+    --b-hover: #b8600f;
     --pulse: #f0fff8;
-    --miss: #ff7562;
+    --miss: #c44a3f;
     --ring: #e4eef2;
     --ring-halo: rgba(4, 11, 17, 0.8);
     --fg: #e4eef2;
@@ -88,13 +91,13 @@
   --land-line: #2e414c;
   --region: #2b3e48;
   --region-hover: #375058;
-  --border: #6b8794;
-  --a: #3aa982;
-  --a-hover: #48bc93;
-  --b: #d49d45;
-  --b-hover: #e5b05a;
+  --border: #9ab2bd;
+  --a: #20774f;
+  --a-hover: #278460;
+  --b: #a3530f;
+  --b-hover: #b8600f;
   --pulse: #f0fff8;
-  --miss: #ff7562;
+  --miss: #c44a3f;
   --ring: #e4eef2;
   --ring-halo: rgba(4, 11, 17, 0.8);
   --fg: #e4eef2;

@@ -1,0 +1,52 @@
+/* Wiener Bezirke: colour tokens over the shared engine's style.css (linked
+   before this file; token list in shared/map-quiz/README.md, "Styling").
+   --sea is the plain page background here (no land around the city).
+   Water: a muted grey-blue, close in value to the districts so it reads as
+   water without pulling the eye (lighter than the dark districts, darker
+   than the light ones). The overlay is fill plus an outline of the same
+   colour, 0.9 map units wide (≈ 27 m; in map units, so it scales with the
+   map): it keeps narrow channels like the Wienfluss visible at the full
+   view and closes the small gaps between water pieces; wider bridge gaps
+   are closed by patches in map.svg. tools/build_map.py checks that this
+   width is WATER_STROKE and that it closes every gap it has to. Each token
+   block three times, as in style.css: light, dark by the OS, dark by the
+   toggle. */
+
+/* District borders above the water: map.svg's #borders (an overlay, so
+   never hit) draws every border once, after #water, as the same hairline
+   the region outlines are (0.75 px at any zoom). The regions then draw no
+   outline of their own, so there is one line, not two; their states
+   (hover, found, misclick) are fills and don't need one. --border is a
+   little darker than the engine's in light mode, so the line stays
+   legible over the water and the round colours; dark mode uses the
+   engine's (a light line over dark round colours). */
+#overlays #borders {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 0.75px;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.regions path {
+  stroke: none;
+}
+
+:root {
+  --sea: #dfdbd2;
+  --water: #b6cfdd;
+  --border: #6f7c83;
+  --overlay-stroke: 0.9px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --sea: #11181c;
+    --water: #35546a;
+  }
+}
+
+:root[data-theme="dark"] {
+  --sea: #11181c;
+  --water: #35546a;
+}
