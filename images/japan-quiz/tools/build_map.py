@@ -3,7 +3,7 @@
 
 usage:
   python3 -I tools/build_map.py <ne_10m_admin_1_states_provinces.geojson> \\
-      <ne_50m_admin_0_countries.geojson> [--out DIR] [--check]
+      <ne_50m_admin_0_countries.geojson> <ne_10m_lakes.geojson> [--out DIR] [--check]
 
 Offline, stdlib only (Python 3.9+), deterministic: the same inputs give
 byte-identical outputs. --check builds in memory and exits 1 if the files in
@@ -32,6 +32,8 @@ Pipeline:
      europe-quiz pins), without Japan (drawn from admin-1) and without the
      Kuril islands (KURILS: the Southern Kurils are neither clickable nor
      Japanese-administered, the rest of the chain would start mid-sea).
+     Lakes: Lake Biwa from Natural Earth's 10m lakes (LAKES; the only
+     Japanese lake in that file), checked to lie inside Shiga.
   6. Projection: Lambert azimuthal equal-area centred on 35°N 135°E (GRS80):
      135°E is Japan's standard meridian and runs through the middle of the
      window; equal-area keeps prefecture sizes comparable. The window is
@@ -41,13 +43,15 @@ Pipeline:
      of a piece, build shared arcs (neighbours use identical vertices);
      context-only arcs are simplified, piece arcs keep every vertex; every
      piece keeps all its islands (keep_islands).
-  8. Line overlays along the piece edges (mapgen.boundary_lines), each edge
+  8. Overlays above the pieces, never hit: lakes (water, see-through: a
+     click on Lake Biwa picks Shiga beneath), then lines along the piece
+     edges (mapgen.boundary_lines), each edge
      once: coast-main (the outline of the four main islands), coast-isles
      (the outline of every other piece), borders-prefectures and
      borders-regions (land borders only). The engine shows per round the
      ones it lists.
-  9. Write map.svg (one <path> per piece in <g id="pieces">, the lines in
-     <g id="overlays">) and japan.js (MAP, PIECES, ISLANDS, REGIONS,
+  9. Write map.svg (one <path> per piece in <g id="pieces">, the lakes and
+     the lines in <g id="overlays">) and japan.js (MAP, PIECES, ISLANDS, REGIONS,
      PREFECTURES: the answers of the rounds with their pieces and texts).
 """
 import argparse
@@ -70,6 +74,9 @@ ADM1_BYTES = 40726851
 ADM0_FILE = "ne_50m_admin_0_countries.geojson"
 ADM0_SHA256 = "3e458fc036ad0a66411f2c1e6cac49c5d7bfb81cb1123bc513b22511a2b7fdeb"
 ADM0_BYTES = 3083490
+LAKES_FILE = "ne_10m_lakes.geojson"
+LAKES_SHA256 = "2d036f53dedec578001c5c30c2959ee7d4eebc1306900fa4367c49929ec8f2d9"
+LAKES_BYTES = 5043554
 
 PREFECTURES_JSON = os.path.join(HERE, "prefectures.json")
 
@@ -146,6 +153,9 @@ KURIL_CHECKS = [  # (lon, lat, label, still context land afterwards?)
     (142.80, 47.00, "Sakhalin", True),
     (159.00, 55.00, "Kamchatka", True),
 ]
+# Lakes drawn as the "lakes" overlay: (Natural Earth ne_id, name, the
+# prefecture whose main piece must contain it entirely).
+LAKES = [(1159115641, "Biwa Ko", "shiga")]
 PREFILTER = ((95, 180), (0, 70))  # lon/lat box: context polygons entirely outside are skipped early
 
 ID = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
@@ -409,7 +419,26 @@ def load_context(path, notes):
     return ctx
 
 
-def build(adm1_path, adm0_path):
+def load_lakes(path, pieces, notes):
+    raw = mapgen.read_pinned(path, LAKES_SHA256, LAKES_BYTES, NE_BASE + LAKES_FILE)
+    by_id = {f["properties"]["ne_id"]: f for f in json.loads(raw.decode("utf-8"))["features"]}
+    out = []
+    for ne_id, name, pref in LAKES:
+        f = by_id.get(ne_id)
+        if f is None or f["properties"]["name"] != name:
+            fail(f"{LAKES_FILE}: no lake {ne_id} named {name!r}")
+        polys = mapgen.polys_of(f["geometry"])
+        for poly in polys:
+            for ring in poly:
+                for c in ring:
+                    if not any(mapgen.in_polygon(c[0], c[1], p) for p in pieces[pref]):
+                        fail(f"lake {name}: point {c[0]}, {c[1]} outside {pref}")
+        out.extend(polys)
+        notes.append(f"lake {name}: {sum(len(p[0]) for p in polys)} points, inside {pref}")
+    return out
+
+
+def build(adm1_path, adm0_path, lakes_path):
     notes = []
     project = mapgen.LambertAzimuthalEqualArea(LAT0, LON0, ellipsoid=mapgen.GRS80, name=f"LAEA {LAT0:g}N {LON0:g}E")
     x, y = project(LON0, LAT0)
@@ -427,6 +456,7 @@ def build(adm1_path, adm0_path):
             fail(f"view check {label} ({lon}, {lat}): in {got}, expected {piece} ({pref})")
     notes.append(f"{len(VIEW_CHECKS)} point checks passed")
     context = load_context(adm0_path, notes)
+    lakes = load_lakes(lakes_path, pieces, notes)
 
     pts = [project(c[0], c[1]) for polys in pieces.values() for p in polys for c in p[0]]
     window = mapgen.Window(pts, MARGIN, WIDTH, EXTENT)
@@ -437,6 +467,8 @@ def build(adm1_path, adm0_path):
             mb.add_region(pid, p)
     for p in context:
         mb.add_context(p)
+    for p in lakes:
+        mb.add_overlay("lakes", p)
     res = mb.build(keep_islands=set(piece_ids))
     if res.stats["notes"]:
         fail("pieces below the grid: " + "; ".join(res.stats["notes"]))
@@ -521,11 +553,12 @@ def main():
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("adm1", help=f"path to {ADM1_FILE} (Natural Earth v5.1.2)")
     ap.add_argument("adm0", help=f"path to {ADM0_FILE} (Natural Earth v5.1.2)")
+    ap.add_argument("lakes", help=f"path to {LAKES_FILE} (Natural Earth v5.1.2)")
     ap.add_argument("--out", default=os.path.join(HERE, "..", "site"), help="output folder (default: ../site)")
     ap.add_argument("--check", action="store_true", help="compare with the files in --out instead of writing")
     args = ap.parse_args()
     try:
-        files, report = build(args.adm1, args.adm0)
+        files, report = build(args.adm1, args.adm0, args.lakes)
     except (mapgen.BuildError, ValueError, OSError) as e:
         sys.exit(f"build_map: {e}")
     sys.exit(mapgen.emit(files, args.out, args.check, report))

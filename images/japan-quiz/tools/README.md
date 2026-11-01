@@ -4,14 +4,17 @@ Offline generator for the map data. Not part of the image (the Dockerfile
 copies `site/` only); its outputs are committed:
 
 - `site/map.svg`: one `<path>` per map piece inside `<g id="pieces">`,
-  `<path id="land">` (all context land, merged), and four line overlays in
-  `<g id="overlays">` (open paths, stroke only): `coast-main`,
-  `coast-isles`, `borders-prefectures`, `borders-regions`. No styling in
-  the file: the engine's `style.css` (and the image's own stylesheet) does
-  that.
+  `<path id="land">` (all context land, merged), and in
+  `<g id="overlays">` Lake Biwa (`lakes`, water) and four line overlays
+  (open paths, stroke only): `coast-main`, `coast-isles`,
+  `borders-prefectures`, `borders-regions`. No styling in the file: the
+  engine's `style.css` (and the image's `japan.css`) does that.
 - `site/japan.js`: the map's window/extent (`MAP`), the pieces (`PIECES`)
   and the answers of the rounds with the pieces each covers and their
   texts: `ISLANDS` (4), `REGIONS` (8), `PREFECTURES` (47).
+  `site/config.js` (hand-written) hands them and the English texts to
+  the shared map-quiz engine: the rounds' answers, which line overlays
+  each round shows, the card's kanji · kana line.
 
 Both carry a "generated, don't edit" header. Edit `prefectures.json`
 (names, kanji, kana, capitals, regions, islands: the single source of
@@ -26,25 +29,30 @@ clipping, shared borders, simplification, boundary lines, SVG writing,
 ## Regenerate
 
 ```sh
-mkdir -p /tmp/ne && for f in ne_10m_admin_1_states_provinces ne_50m_admin_0_countries; do
+mkdir -p /tmp/ne && for f in ne_10m_admin_1_states_provinces ne_50m_admin_0_countries ne_10m_lakes; do
   curl -fsSL -o /tmp/ne/$f.geojson \
     https://raw.githubusercontent.com/nvkelso/natural-earth-vector/v5.1.2/geojson/$f.geojson
 done
 python3 -I images/japan-quiz/tools/build_map.py /tmp/ne/ne_10m_admin_1_states_provinces.geojson \
-  /tmp/ne/ne_50m_admin_0_countries.geojson
+  /tmp/ne/ne_50m_admin_0_countries.geojson /tmp/ne/ne_10m_lakes.geojson
 python3 -I images/japan-quiz/tools/build_map.py /tmp/ne/ne_10m_admin_1_states_provinces.geojson \
-  /tmp/ne/ne_50m_admin_0_countries.geojson --check   # files up to date?
+  /tmp/ne/ne_50m_admin_0_countries.geojson /tmp/ne/ne_10m_lakes.geojson --check   # files up to date?
+node images/japan-quiz/tools/data.test.mjs   # this image's data and config (Node 22.12+)
 ```
 
-CI doesn't run `build_map.py --check` (its inputs aren't committed).
+The engine's own tests (quiz rules, config contract, wheel replay) and
+the generator core's live in `shared/map-quiz/tools/`; CI runs them all
+(`.github/workflows/shared-sync.yml`), not `build_map.py --check` (its
+inputs aren't committed).
 
-Python 3.9+, standard library only. The script verifies both inputs and
-stops on any other file:
+Python 3.9+, standard library only. The script verifies its three inputs
+and stops on any other file:
 
 | File | Bytes | sha256 |
 | --- | --- | --- |
 | `ne_10m_admin_1_states_provinces.geojson` | 40 726 851 | `22d0e3ad85eb3e27f17cabf8ba2d50e554fbc27a87796ff891d958185da62fb5` |
 | `ne_50m_admin_0_countries.geojson` | 3 083 490 | `3e458fc036ad0a66411f2c1e6cac49c5d7bfb81cb1123bc513b22511a2b7fdeb` |
+| `ne_10m_lakes.geojson` | 5 043 554 | `2d036f53dedec578001c5c30c2959ee7d4eebc1306900fa4367c49929ec8f2d9` |
 
 (The second is the file europe-quiz pins.) Output is deterministic:
 re-running gives byte-identical files (`--check` compares without
@@ -66,12 +74,18 @@ repository. Natural Earth is **public domain**; no attribution required
   `prefectures.json`.
 - Context land: admin-0 countries, 1:50m, everything except Japan (drawn
   from admin-1) and the Kuril islands (below).
+- Lakes: Lake Biwa (`ne_id` 1159115641) from lakes, 1:10m, the only
+  Japanese lake in that file (Kasumigaura isn't in it). The build checks
+  that it lies inside Shiga; it is drawn as the `lakes` overlay above the
+  pieces, see-through: a click on it picks Shiga (not a blocking overlay).
 
 At 1:10m the coast is generalised to steps of roughly 1–2 km: fine up to
 about 6 px per map unit (1 unit ≈ 2.2 km), visibly angular at the
-engine's default closest zoom of 12. Some small islands are missing from
-the source (e.g. Kōzushima, Teuri, Yagishiri, Awashima, Hateruma), and
-lakes are not cut out (Lake Biwa is part of Shiga's land).
+engine's default closest zoom of 12 (`config.view.maxScale` is 6). Some
+small islands are missing from the source (e.g. Kōzushima, Teuri,
+Yagishiri, Awashima, Hateruma). Lakes are not cut out of the prefectures
+(Lake Biwa is part of Shiga's shape; the overlay draws the water above
+it).
 
 ## Fix-ups
 
@@ -103,9 +117,10 @@ expected number of parts, and point checks (`VIEW_CHECKS`,
   RUS parts inside 145–157°E, 43–51°N (14 parts at 1:50m) are left out of
   the context land; Sakhalin and Kamchatka stay.
 
-Not changed: the Senkaku islands are part of Okinawa in Natural Earth
-(Uotsuri-jima and Kuba-jima are above the speck limit, the rest are
-specks); Takeshima is not in Natural Earth's JPN features, nor in the
+Not changed: the Senkaku islands stay part of Okinawa as in Natural
+Earth (Japan administers them, the same rule that leaves the Kurils out;
+Uotsuri-jima and Kuba-jima are above the speck limit, the rest are
+specks). Takeshima is not in Natural Earth's JPN features, nor in the
 1:50m admin-0 file.
 
 ## Pieces
