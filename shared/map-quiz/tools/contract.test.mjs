@@ -46,6 +46,8 @@ check('a valid config passes both checks; optional fields may be left out', () =
   delete c.attribution;
   delete c.view;
   checkTexts(c);
+  checkConfig({ ...good(), blockingOverlays: ['water', 'lakes'] });
+  checkConfig({ ...good(), blockingOverlays: [] });
 });
 
 check('structure: each broken field is named', () => {
@@ -76,6 +78,12 @@ check('structure: each broken field is named', () => {
     [(c) => (c.attribution = ''), /attribution/],
     [(c) => (c.view = { maxScale: 0 }), /view:/],
     [(c) => (c.view = { besideHud: 'yes' }), /view:/],
+    [(c) => (c.blockingOverlays = 'water'), /blockingOverlays: an array/],
+    [(c) => (c.blockingOverlays = ['water', 'water']), /blockingOverlays: id "water"/],
+    [(c) => (c.blockingOverlays = ['d02']), /blockingOverlays: id "d02"/],
+    [(c) => (c.blockingOverlays = ['overlays']), /blockingOverlays: id "overlays"/],
+    [(c) => (c.blockingOverlays = ['']), /blockingOverlays: id ""/],
+    [(c) => (c.blockingOverlays = [7]), /blockingOverlays: id 7/],
   ];
   for (const [breakIt, re] of cases) {
     const c = good();

@@ -100,6 +100,7 @@ export default {
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
   view: { maxScale: 6, besideHud: true }, // optional, see below
+  blockingOverlays: ['water'],           // optional, see below
 };
 ```
 
@@ -131,6 +132,14 @@ export default {
   and the controls column. Default false: the card covers the full view's
   top-right corner, fine where that is context land (europe: Russia), not
   for a map whose regions reach that corner.
+- **blockingOverlays**: ids of overlays in `map.svg`'s `#overlays` (each a
+  `<path>`) whose area swallows clicks and taps like the background: no
+  answer, no misclick, no hover on the region beneath. Their outline
+  counts too, at its drawn width (`--overlay-stroke`). Left out (europe):
+  every overlay is see-through, a click on it picks the region beneath.
+  A drawn ring still wins over a blocking overlay; in a ring's wider zone
+  the overlay counts as sea. Unique, not an item's id; main.js stops with
+  `text.mapError` if one isn't an overlay `<path>`.
 
 `contract.js`: `checkConfig(config)` and `checkTexts(config)` (every
 ask/miss text for every item; for an image's node test). At start main.js
@@ -152,7 +161,8 @@ What the engine reads (`mapgen.map_svg` writes exactly this):
   …                               (europe: id="countries"; mapgen default "regions")
 </g>
 <g id="overlays">                 optional: drawn above the regions, never hit
-  <path id="water" d="…"/>        (clicks go to the region beneath)
+  <path id="water" d="…"/>        (clicks go to the region beneath, or nowhere
+                                  if config.blockingOverlays names it)
 </g>
 </svg>
 ```
@@ -186,7 +196,8 @@ theme-color meta.
   shuffled (a round never opens with the region that closed the last). A
   correct pick colours the region (A in even rounds, B in odd ones: the
   map recolours round by round, blank only after a reset); a misclick
-  counts, blinks and shows the round's `miss` label for 1.5 s. Reset takes
+  counts, blinks and shows the round's `miss` label for 1.5 s. A click on
+  the sea, context land or a blocking overlay does nothing. Reset takes
   two presses (the first arms it for 3 s).
 - Rings (optional): a tap inside the drawn ring picks it, a tap in the
   wider zone around it only over sea, context land or that region itself

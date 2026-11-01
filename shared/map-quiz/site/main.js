@@ -26,7 +26,9 @@
 // MARKER_HIT px of it over sea, context land or that region itself (never
 // over another region); the nearest such ring wins. Otherwise it picks the
 // region shape under the pointer; sea, context land and overlays (drawn
-// above the regions, pointer-events: none) are ignored or see-through.
+// above the regions, pointer-events: none) are ignored or see-through,
+// except a blocking overlay (config.blockingOverlays, e.g. water): its
+// fill and outline count as background (no answer, no misclick, no hover).
 // Rings shrink at low zoom (MARKER_R_UNITS), so they don't cover their
 // neighbours on a phone.
 //
@@ -147,6 +149,8 @@ const quiz = resumed
 let svg = null;
 let regionsG = null; // the group of region shapes (class "regions")
 const shapes = {}; // id -> <path>
+const blockers = []; // <path>s of config.blockingOverlays
+let blockPoint = null; // an SVGPoint, reused by blocked()
 const rings = {}; // id -> { g, halo, ring, x, y, size, on, r (drawn radius, px) }
 
 // Four gradient bands along the edge of the drawn extent (style.css fills
@@ -410,10 +414,22 @@ function relayout() {
 
 // ── Hit testing and hover ───────────────────────────────────────────────
 
+// Is screen point (x, y) on a blocking overlay (fill or outline)? Map
+// units: the viewBox follows the camera, and overlays have no transform.
+function blocked(x, y) {
+  if (!blockers.length) return false;
+  blockPoint.x = (x - cam.tx) / cam.s;
+  blockPoint.y = (y - cam.ty) / cam.s;
+  return blockers.some((b) => b.isPointInFill(blockPoint) || b.isPointInStroke(blockPoint));
+}
+
 function hitTest(x, y, type) {
   if (renderQueued) render(); // the DOM must show the current camera
   const el = document.elementFromPoint(x, y);
-  const shape = el && el.parentNode === regionsG ? el.id : null;
+  let shape = el && el.parentNode === regionsG ? el.id : null;
+  // A blocking overlay over the region counts as background (a drawn ring
+  // still wins; in a ring's wider zone it counts as sea).
+  if (shape && blocked(x, y)) shape = null;
   const reach = MARKER_HIT[type] || MARKER_HIT.touch;
   let best = null;
   let bestD = Infinity;
@@ -798,6 +814,12 @@ async function loadMap() {
   regionsG = shapes[ids[0]].parentNode;
   if (regionsG === svg || ids.some((id) => shapes[id].parentNode !== regionsG)) throw new Error('map.svg: the region shapes must share one <g>');
   regionsG.classList.add('regions');
+  for (const id of config.blockingOverlays || []) {
+    const el = svg.querySelector('#' + CSS.escape(id));
+    if (!el || el.localName !== 'path' || !el.closest('#overlays')) throw new Error(`map.svg: no overlay <path id="${id}"> in #overlays (config.blockingOverlays)`);
+    blockers.push(el);
+  }
+  blockPoint = svg.createSVGPoint();
   // The fade only where context is drawn around the full view.
   if (MAP.extent[0] < 0 || MAP.extent[1] < 0) svg.append(fade());
   const withMarkers = ITEMS.filter((c) => c.marker);

@@ -2,8 +2,8 @@
   "about": "Written by shared/sync.py, don't edit: every synced copy, its source and sha256. Exception: to keep a former copy as an image's own file, delete its entry.",
   "copies": {
     "images/europe-quiz/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
-    "images/europe-quiz/site/contract.js": {"from": "shared/map-quiz/site/contract.js", "sha256": "0a33cd8f5c7e158abe42d03190797f61fe1e49a2a36c8612438a6d5ea3ca4193"},
-    "images/europe-quiz/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "5a53d97459ae3cc38df9f99ec9690be37ed0fb8968c9644125385d861f230fb9"},
+    "images/europe-quiz/site/contract.js": {"from": "shared/map-quiz/site/contract.js", "sha256": "ab3212744cd3988b2e76a7a1b63146983cf4f8e1b4c67c1aed6c977aab34f7fe"},
+    "images/europe-quiz/site/main.js": {"from": "shared/map-quiz/site/main.js", "sha256": "bcea86be216d45155b1c70626573d827b42e966dee64d786f43c10ce7de62202"},
     "images/europe-quiz/site/quiz.js": {"from": "shared/map-quiz/site/quiz.js", "sha256": "e5ca5ebbd7703e4144107b29d83c2b8106d71c81aa04366503bac9272d20aafd"},
     "images/europe-quiz/site/style.css": {"from": "shared/map-quiz/site/style.css", "sha256": "f52a531a38550b175d4c257fa47730cc1b30c5827b5c187987f87de92e606ce8"},
     "images/europe-quiz/site/theme.js": {"from": "shared/map-quiz/site/theme.js", "sha256": "2d6290916523f7f968bb7c7ba97de58cc571307053f6895c8176f14865b15957"},
