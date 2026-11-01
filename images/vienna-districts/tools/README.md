@@ -169,7 +169,8 @@ Borders above the water: the districts' outlines run under the water
 overlay, so where the river covers a border (mid-Danube, along the
 Donaukanal, where the city limit crosses the river) the line would vanish
 or peek out between the two separately simplified datasets. The build
-writes every district edge once more, chained into open lines (65, one per
+writes every district edge once more, chained into open lines
+(`mapgen.boundary_lines`, each district its own group: 65 lines, one per
 shared arc and outer arc), as the last overlay `<path id="borders">`;
 `site/vienna.css` draws it as the hairline the region outlines were (0.75
 px, `--border`) and turns the region outlines off, so there is one line.

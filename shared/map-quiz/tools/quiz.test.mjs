@@ -17,7 +17,8 @@ const isPerm = (order, set = ids) => order.length === set.length && new Set(orde
 const wrongFor = (q) => q.ids.find((id) => id !== q.target);
 const finishRound = (q) => {
   let last;
-  for (let i = q.done; i < q.total; i++) last = q.answer(q.target);
+  const n = q.total; // the next round may ask another number
+  for (let i = q.done; i < n; i++) last = q.answer(q.target);
   return last;
 };
 
@@ -46,7 +47,7 @@ check('the shuffle does not depend on the number of kinds', () => {
 check('miss: counts, question stays; unknown ids ignored', () => {
   const q = new Quiz(ids, 5);
   const t = q.target;
-  assert.deepEqual(q.answer(wrongFor(q)), { result: 'miss', id: wrongFor(q) });
+  assert.deepEqual(q.answer(wrongFor(q)), { result: 'miss', id: wrongFor(q), pieces: [wrongFor(q)] });
   assert.equal(q.misses, 1);
   assert.equal(q.roundMisses, 1);
   assert.equal(q.target, t);
@@ -72,7 +73,7 @@ check('2 kinds: kind 0 -> kind 1 (recolour to 2) -> kind 0 (back to 1)', () => {
   const q = new Quiz(ids, 9, 2);
   q.answer(wrongFor(q));
   const r1 = finishRound(q);
-  assert.deepEqual(r1.completed, { kind: 0, misses: 1 });
+  assert.deepEqual(r1.completed, { kind: 0, misses: 1, total: N });
   assert.equal(q.kind, 1);
   assert.equal(q.colour, 2);
   assert.equal(q.round, 1);
@@ -85,7 +86,7 @@ check('2 kinds: kind 0 -> kind 1 (recolour to 2) -> kind 0 (back to 1)', () => {
   assert.equal(q.colourOf(t), 2);
   assert.equal(ids.filter((id) => q.colourOf(id) === 1).length, N - 1);
   const r2 = finishRound(q);
-  assert.deepEqual(r2.completed, { kind: 1, misses: 0 });
+  assert.deepEqual(r2.completed, { kind: 1, misses: 0, total: N });
   assert.equal(q.kind, 0);
   assert.equal(q.round, 2);
   assert.ok(ids.every((id) => q.colourOf(id) === 2));
@@ -124,7 +125,7 @@ check('kinds: a positive integer or a non-empty array of keys', () => {
 
 check('a single region: every answer completes a round', () => {
   const q = new Quiz(['only'], 3);
-  assert.deepEqual(q.answer('only').completed, { kind: 0, misses: 0 });
+  assert.deepEqual(q.answer('only').completed, { kind: 0, misses: 0, total: 1 });
   assert.equal(q.target, 'only');
   assert.equal(q.colourOf('only'), 1);
   q.answer('only');
@@ -246,6 +247,269 @@ check('restore rejects what does not fit', () => {
   for (const d of bad) assert.equal(Quiz.restore(d, ids), null, JSON.stringify(d)?.slice(0, 60));
   assert.equal(Quiz.restore(good, ids.slice(1)), null, 'changed region list');
   assert.ok(Quiz.restore(good, ids));
+});
+
+// ── Round specs: answers as groups of pieces, inert pieces, asked subsets ──
+
+// The order rule before grouped rounds (37bd3a6), for one-piece answers.
+function oldOrder(set, seed, game, round, prevLast) {
+  const rng = makeRng(mix(seed, game, round));
+  const order = shuffled(set, rng);
+  if (order.length > 1 && order[0] === prevLast) {
+    const j = 1 + Math.floor(rng() * (order.length - 1));
+    [order[0], order[j]] = [order[j], order[0]];
+  }
+  return order;
+}
+
+check('one piece per answer: the same orders as before grouped rounds, in every form', () => {
+  const singles = { key: 'y', answers: ids.map((id) => ({ id, pieces: [id] })) };
+  for (let seed = 0; seed < 300; seed++) {
+    const forms = [new Quiz(ids, seed, 3), new Quiz(ids, seed, ['x', 'y', 'z']), new Quiz(ids, seed, [{ key: 'x' }, singles, 'z'])];
+    let last = null;
+    for (let r = 0; r < 4; r++) {
+      const want = oldOrder(ids, seed, 0, r, last);
+      for (const q of forms) assert.deepEqual(q.order, want, `seed ${seed} round ${r}`);
+      last = want[want.length - 1];
+      for (const q of forms) finishRound(q);
+    }
+  }
+});
+
+check('identity specs = keys: saves restore across the forms', () => {
+  const keys = ['x', 'y', 'z'];
+  const specs = [{ key: 'x' }, { key: 'y' }, { key: 'z', answers: ids.map((id) => ({ id, pieces: [id] })) }];
+  const a = new Quiz(ids, 9, keys);
+  finishRound(a);
+  finishRound(a);
+  a.answer(a.target);
+  const saved = JSON.parse(JSON.stringify(a.serialize()));
+  const b = Quiz.restore(saved, ids, specs);
+  assert.deepEqual(b.serialize(), a.serialize());
+  finishRound(a);
+  finishRound(b);
+  assert.deepEqual(b.serialize(), a.serialize());
+  const back = Quiz.restore(JSON.parse(JSON.stringify(b.serialize())), ids, keys);
+  assert.deepEqual(back.serialize(), a.serialize());
+});
+
+// 8 pieces: two groups and three inert pieces, then every piece alone, then
+// a subset round (asked given out of configured order on purpose).
+const P = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8'];
+const GROUPS = { key: 'groups', answers: [{ id: 'g1', pieces: ['p1', 'p2', 'p3'] }, { id: 'g2', pieces: ['p4', 'p5'] }] };
+const SINGLES = { key: 'singles' };
+const SUBSET = { key: 'subset', answers: P.map((id) => ({ id, pieces: [id] })), asked: ['p5', 'p1', 'p3'] };
+const KINDS = [GROUPS, SINGLES, SUBSET];
+
+check('groups: total = asked answers, a correct answer colours its whole group, inert pieces and piece ids ignored', () => {
+  const q = new Quiz(P, 3, KINDS);
+  assert.equal(q.total, 2);
+  assert.deepEqual([...q.order].sort(), ['g1', 'g2']);
+  assert.equal(q.answerOf('p2'), 'g1');
+  assert.equal(q.answerOf('p6'), null, 'inert');
+  assert.equal(q.answerOf('sea'), null);
+  assert.deepEqual(q.piecesOf('g2'), ['p4', 'p5']);
+  assert.deepEqual(q.piecesOf('p4'), [], 'a piece is no answer of this kind');
+  assert.equal(q.answer('p1').result, 'ignored');
+  assert.equal(q.answer('p6').result, 'ignored');
+  const t = q.target;
+  const other = t === 'g1' ? 'g2' : 'g1';
+  assert.deepEqual(q.answer(other), { result: 'miss', id: other, pieces: GROUPS.answers.find((a) => a.id === other).pieces });
+  assert.equal(q.target, t);
+  const r = q.answer(t);
+  assert.equal(r.result, 'correct');
+  assert.deepEqual(r.pieces, GROUPS.answers.find((a) => a.id === t).pieces);
+  assert.ok(P.every((p) => q.colourOf(p) === (r.pieces.includes(p) ? 1 : 0)));
+  const done = q.answer(q.target);
+  assert.deepEqual(done.completed, { kind: 0, misses: 1, total: 2 });
+  assert.equal(q.kind, 1);
+  assert.equal(q.total, 8);
+  assert.deepEqual(P.map((p) => q.colourOf(p)), [1, 1, 1, 1, 1, 0, 0, 0]);
+});
+
+check('singles after groups, then a subset round: colours carry per piece, not-asked answers are misses', () => {
+  const q = new Quiz(P, 4, KINDS);
+  finishRound(q);
+  assert.equal(q.answer('g1').result, 'ignored', 'a group id is no answer of this kind');
+  assert.equal(q.answerOf('p6'), 'p6');
+  assert.deepEqual(finishRound(q).completed, { kind: 1, misses: 0, total: 8 });
+  assert.ok(P.every((p) => q.colourOf(p) === 2));
+  assert.equal(q.kind, 2);
+  assert.equal(q.total, 3);
+  assert.deepEqual([...q.order].sort(), ['p1', 'p3', 'p5']);
+  const t = q.target;
+  assert.deepEqual(q.answer('p2'), { result: 'miss', id: 'p2', pieces: ['p2'] }, 'not asked: a misclick');
+  assert.equal(q.target, t);
+  q.answer(t);
+  assert.equal(q.answer(t).result, 'miss', 'found already');
+  assert.deepEqual(finishRound(q).completed, { kind: 2, misses: 2, total: 3 });
+  assert.deepEqual(P.map((p) => q.colourOf(p)), [1, 2, 1, 2, 1, 2, 2, 2], 'not-asked pieces keep their colour');
+  assert.equal(q.kind, 0);
+  finishRound(q);
+  assert.deepEqual(P.map((p) => q.colourOf(p)), [2, 2, 2, 2, 2, 2, 2, 2], 'inert p6-p8 keep theirs');
+  // the shuffle starts from the configured order, whatever order asked came in
+  const again = [GROUPS, SINGLES, { ...SUBSET, asked: ['p1', 'p3', 'p5'] }];
+  for (let seed = 0; seed < 50; seed++) {
+    const a = new Quiz(P, seed, KINDS);
+    const b = new Quiz(P, seed, again);
+    finishRound(a), finishRound(a), finishRound(b), finishRound(b);
+    assert.deepEqual(a.order, b.order);
+  }
+});
+
+check('answer ids may equal one of their pieces, and repeat across rounds', () => {
+  const pieces = ['niigata', 'niigata-isles', 'nagano', 'kagawa', 'ehime'];
+  const islands = { key: 'islands', answers: [{ id: 'isl-honshu', pieces: ['niigata', 'nagano'] }, { id: 'shikoku', pieces: ['kagawa', 'ehime'] }] };
+  const regions = { key: 'regions', answers: [{ id: 'reg-chubu', pieces: ['niigata', 'niigata-isles', 'nagano'] }, { id: 'shikoku', pieces: ['ehime', 'kagawa'] }] };
+  const prefs = { key: 'prefectures', answers: [
+    { id: 'niigata', pieces: ['niigata', 'niigata-isles'] }, { id: 'nagano', pieces: ['nagano'] },
+    { id: 'kagawa', pieces: ['kagawa'] }, { id: 'ehime', pieces: ['ehime'] },
+  ] };
+  const q = new Quiz(pieces, 1, [islands, regions, prefs]);
+  assert.equal(q.answerOf('niigata'), 'isl-honshu');
+  assert.equal(q.answerOf('niigata-isles'), null, 'inert in the islands round');
+  assert.equal(q.answer('niigata').result, 'ignored', 'a piece id, no answer here');
+  assert.deepEqual(q.piecesOf('shikoku'), ['kagawa', 'ehime']);
+  finishRound(q);
+  assert.equal(q.answerOf('niigata-isles'), 'reg-chubu');
+  assert.deepEqual(q.piecesOf('shikoku'), ['ehime', 'kagawa'], 'same id, this round\'s pieces');
+  finishRound(q);
+  assert.equal(q.answerOf('niigata-isles'), 'niigata');
+  assert.equal(q.answerOf('niigata'), 'niigata');
+  assert.deepEqual(q.piecesOf('niigata'), ['niigata', 'niigata-isles']);
+  while (q.target !== 'niigata') q.answer(q.target);
+  const r = q.answer('niigata');
+  assert.deepEqual(r.pieces, ['niigata', 'niigata-isles']);
+  assert.equal(q.colourOf('niigata-isles'), 1);
+  assert.equal(q.colourOf('niigata'), 1);
+});
+
+check('a round never opens with an answer sharing a piece with the last one, unless all do', () => {
+  for (let seed = 0; seed < 300; seed++) {
+    const q = new Quiz(P, seed, [GROUPS, SINGLES]);
+    for (let r = 0; r < 4; r++) {
+      const last = q.piecesOf(q.order[q.total - 1]);
+      finishRound(q);
+      assert.ok(!q.piecesOf(q.order[0]).some((p) => last.includes(p)), `seed ${seed} round ${r}`);
+    }
+    // all-overlap fallback: every answer shares a piece with the last one: no swap
+    const whole = { key: 'whole', answers: [{ id: 'all', pieces: ['a', 'b', 'c'] }] };
+    const w = new Quiz(['a', 'b', 'c'], seed, [whole, 'singles']);
+    finishRound(w);
+    assert.deepEqual(w.order, shuffled(['a', 'b', 'c'], makeRng(mix(seed, 0, 1))));
+  }
+});
+
+check('restore: grouped and subset rounds; a changed asked set or grouping is turned down', () => {
+  const a = new Quiz(P, 5, KINDS);
+  finishRound(a);
+  finishRound(a);
+  a.answer(a.target);
+  const saved = JSON.parse(JSON.stringify(a.serialize()));
+  assert.equal(saved.v, 1);
+  assert.deepEqual(saved.kinds, ['groups', 'singles', 'subset']);
+  const b = Quiz.restore(saved, P, KINDS);
+  assert.deepEqual(b.serialize(), a.serialize());
+  finishRound(a);
+  finishRound(b);
+  assert.deepEqual(b.serialize(), a.serialize());
+  for (const asked of [['p1', 'p3'], ['p1', 'p3', 'p5', 'p7'], ['p1', 'p3', 'p6']])
+    assert.equal(Quiz.restore(saved, P, [GROUPS, SINGLES, { ...SUBSET, asked }]), null, asked.join());
+  const inGroups = JSON.parse(JSON.stringify(new Quiz(P, 5, KINDS).serialize()));
+  assert.ok(Quiz.restore(inGroups, P, KINDS));
+  const regrouped = { key: 'groups', answers: [{ id: 'g1', pieces: ['p1', 'p2'] }, { id: 'g3', pieces: ['p4', 'p5'] }] };
+  assert.equal(Quiz.restore(inGroups, P, [regrouped, SINGLES, SUBSET]), null, 'answer ids changed');
+  assert.equal(Quiz.restore({ ...inGroups, colours: { g1: 1 } }, P, KINDS), null, 'colours are per piece');
+});
+
+check('save fingerprint: grouped kinds record their answers and asked sets, one-piece kinds write no field', () => {
+  // one piece per answer: the save format as before grouping (no new field)
+  for (const kinds of [2, ['a', 'b'], [{ key: 'a' }, { key: 'b' }]]) {
+    const saved = new Quiz(ids, 3, kinds).serialize();
+    assert.deepEqual(Object.keys(saved), ['v', 'seed', 'game', 'round', 'pos', 'order', 'colours', 'correct', 'misses', 'roundMisses', 'kinds']);
+    assert.ok(Quiz.restore({ ...saved, groups: 'deadbeef' }, ids, kinds) === null, 'a fingerprint where none belongs');
+  }
+  const a = new Quiz(P, 5, KINDS);
+  finishRound(a);
+  a.answer(a.target);
+  const saved = JSON.parse(JSON.stringify(a.serialize()));
+  assert.match(saved.groups, /^[0-9a-f]{8}$/);
+  assert.equal(saved.v, 1);
+  assert.equal(new Quiz(P, 9, KINDS).serialize().groups, saved.groups, 'independent of seed and progress');
+  assert.ok(Quiz.restore(saved, P, KINDS));
+  // a piece moved between answers, ids kept (the saved round is a singles round: its order still fits)
+  const moved = { ...GROUPS, answers: [{ id: 'g1', pieces: ['p1', 'p2'] }, { id: 'g2', pieces: ['p3', 'p4', 'p5'] }] };
+  assert.equal(Quiz.restore(saved, P, [moved, SINGLES, SUBSET]), null, 'pieces moved between answers');
+  assert.equal(Quiz.restore(saved, P, [GROUPS, SINGLES, { ...SUBSET, asked: ['p1', 'p3', 'p6'] }]), null, 'another kind asks otherwise');
+  const { groups, ...noField } = saved;
+  assert.equal(Quiz.restore(noField, P, KINDS), null, 'a grouped config needs the fingerprint');
+  assert.equal(Quiz.restore({ ...saved, groups: 7 }, P, KINDS), null);
+});
+
+check('carryColours false: each round starts blank; true (the default) carries the colours', () => {
+  for (const kinds of [2, KINDS]) {
+    const set = kinds === 2 ? ids : P;
+    const q = new Quiz(set, 6, kinds, { carryColours: false });
+    const keep = new Quiz(set, 6, kinds);
+    const def = new Quiz(set, 6, kinds, {});
+    assert.equal(q.carryColours, false);
+    assert.equal(keep.carryColours, true);
+    assert.equal(def.carryColours, true);
+    for (let r = 0; r < 3; r++) {
+      // up to the round's last answer: found pieces have the round's colour, nothing else
+      const n = q.total;
+      const found = [];
+      for (let i = 0; i < n - 1; i++) found.push(...q.answer(q.target).pieces);
+      const colour = q.colour;
+      assert.ok(set.every((p) => q.colourOf(p) === (found.includes(p) ? colour : 0)), `round ${r}: coloured = found this round`);
+      const last = q.answer(q.target);
+      assert.ok(last.completed, 'the last answer ends the round');
+      assert.ok(last.pieces.length >= 1);
+      assert.ok(set.every((p) => q.colourOf(p) === 0), `round ${r + 1} starts blank (also the last answer's pieces)`);
+      assert.deepEqual(q.serialize().colours, {});
+      // the same play with carry: colours stay
+      for (let i = 0; i < n; i++) keep.answer(keep.target);
+      assert.ok(last.pieces.every((p) => keep.colourOf(p) === colour), 'carry: the last answer keeps its colour');
+      assert.deepEqual(q.order, keep.order, 'orders do not depend on the setting');
+    }
+  }
+  // restore mid-round with false: colours of this round come back; the round end clears them
+  const a = new Quiz(ids, 8, ['x', 'y'], { carryColours: false });
+  finishRound(a);
+  for (let i = 0; i < 4; i++) a.answer(a.target);
+  const saved = JSON.parse(JSON.stringify(a.serialize()));
+  assert.equal(Object.keys(saved.colours).length, 4);
+  assert.ok(!('carryColours' in saved), 'not part of the save');
+  const b = Quiz.restore(saved, ids, ['x', 'y'], { carryColours: false });
+  assert.deepEqual(b.serialize(), a.serialize());
+  finishRound(b);
+  assert.deepEqual(b.colours, {});
+  const c = Quiz.restore(saved, ids, ['x', 'y']);
+  finishRound(c);
+  assert.equal(Object.keys(c.colours).length, N, 'restored with the default: colours carry');
+  // reset clears either way
+  const d = new Quiz(ids, 8, 2, { carryColours: false });
+  d.answer(d.target);
+  d.reset();
+  assert.deepEqual(d.colours, {});
+});
+
+check('constructor: RangeError for a piece in two answers, unknown pieces, a round asking nothing', () => {
+  const bads = [
+    [{ key: 'x', answers: [{ id: 'g', pieces: ['p1', 'p2'] }, { id: 'h', pieces: ['p2'] }] }],
+    [{ key: 'x', answers: [{ id: 'g', pieces: ['p1', 'p1'] }] }],
+    [{ key: 'x', answers: [{ id: 'g', pieces: ['p1', 'zz'] }] }],
+    [{ key: 'x', answers: [{ id: 'g', pieces: [] }] }],
+    [{ key: 'x', answers: [{ id: 'g', pieces: ['p1'] }, { id: 'g', pieces: ['p2'] }] }],
+    [{ key: 'x', answers: [] }],
+    [{ key: 'x', answers: 'g' }],
+    [{ key: 'x', asked: [] }],
+    [{ key: 'x', asked: ['nope'] }],
+    [{ key: 'x', answers: [{ id: 'g', pieces: ['p1'] }], asked: ['p1'] }],
+    [{ answers: [{ id: 'g', pieces: ['p1'] }] }],
+    ['a', null],
+  ];
+  for (const k of bads) assert.throws(() => new Quiz(P, 1, k), RangeError, JSON.stringify(k));
 });
 
 console.log(`${checks} checks passed`);

@@ -118,12 +118,15 @@ are synced into each map image's `site/`; per image: `index.html` (static
 text, `lang`, `<html data-quiz="<name>">`, which namespaces localStorage),
 `config.js` (regions from the generated data module, rounds, every UI
 text, optional attribution line, view options and overlays that swallow
-taps), the generated data module
+taps; a round may group the map pieces into answers, e.g. islands or
+regions, with pieces in no answer inert that round, ask only a subset,
+show its own line overlays and a second card line), the generated data module
 and `map.svg`, favicons, optionally an own stylesheet for colours. The
 offline generator is `tools/build_map.py` per image, an adapter (inputs,
 fix-ups, selection) over the shared core `shared/map-quiz/tools/mapgen`
 (projections incl. already-projected input, clipping, shared borders,
-simplification, optionally of the region borders too, SVG, `--check`). Adding a map image: folder + `config.js`
+simplification, optionally of the region borders too, boundary lines
+between groups of regions for line overlays, SVG, `--check`). Adding a map image: folder + `config.js`
 + data adapter (+ `tools/data.test.mjs`), its name in the map-quiz rule
 of `shared/sync.json` and `python3 shared/sync.py`, then "Adding an
 image" below (caller workflow, README row). Engine changes go to

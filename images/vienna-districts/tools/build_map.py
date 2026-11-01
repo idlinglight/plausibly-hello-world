@@ -45,7 +45,8 @@ Pipeline:
      the overlay's outline (site/vienna.css --overlay-stroke, checked to be
      WATER_STROKE) closes what the patches leave.
   6. Borders above the water: every district edge once, chained into
-     open lines, as the last overlay (<path id="borders">, stroke only in
+     open lines (mapgen.boundary_lines with each district its own group),
+     as the last overlay (<path id="borders">, stroke only in
      site/vienna.css, never hit), so the borders run on unbroken across
      the rivers. Water edges within SNAP inside a border move onto it (no
      strips of district colour between water and line).
@@ -646,77 +647,6 @@ def final_gaps(polys, keep, links, water_d, window):
     return worst, len(lost)
 
 
-def border_lines(paths, ids, grid):
-    """The districts' borders, each once: every edge of the district
-    outlines (shared borders come twice, as identical vertices) chained
-    into polylines between junctions; closed loops start at their smallest
-    point. Deterministic. Integer points (1/grid units)."""
-    edges = set()
-    for rid in ids:
-        for ring in path_rings(paths[rid], grid):
-            for k in range(len(ring)):
-                a, b = ring[k - 1], ring[k]
-                if a != b:
-                    edges.add((min(a, b), max(a, b)))
-    nbrs = {}
-    for a, b in edges:
-        nbrs.setdefault(a, []).append(b)
-        nbrs.setdefault(b, []).append(a)
-    for v in nbrs.values():
-        v.sort()
-    used = set()
-
-    def walk(a, b):
-        line = [a, b]
-        used.add((min(a, b), max(a, b)))
-        while len(nbrs[b]) == 2:
-            c = nbrs[b][0] if nbrs[b][1] == a else nbrs[b][1]
-            e = (min(b, c), max(b, c))
-            if e in used:
-                break
-            used.add(e)
-            line.append(c)
-            a, b = b, c
-        return line
-
-    lines = []
-    for v in sorted(p for p, n in nbrs.items() if len(n) != 2):
-        for w in nbrs[v]:
-            if (min(v, w), max(v, w)) not in used:
-                lines.append(walk(v, w))
-    for v in sorted(nbrs):  # closed loops without a junction
-        for w in nbrs[v]:
-            if (min(v, w), max(v, w)) not in used:
-                lines.append(walk(v, w))
-    return lines
-
-
-def lines_d(lines, dec):
-    """Polylines of integer points -> compact relative path data, open
-    subpaths (no 'z'): each 'm' is relative to the previous line's end."""
-    out = []
-    prev = None
-
-    def num(t):
-        nonlocal prev
-        if prev is not None and not (t[0] == "-" or (t[0] == "." and "." in prev)):
-            out.append(" ")
-        out.append(t)
-        prev = t
-
-    last = (0, 0)
-    for line in lines:
-        out.append("m")
-        prev = None
-        px, py = last
-        for x, y in line:
-            num(mapgen.fmt_fixed(x - px, dec))
-            num(mapgen.fmt_fixed(y - py, dec))
-            px, py = x, y
-        last = (px, py)
-    return "".join(out)
-
-
 def snap_to_borders(water_d, lines, dec):
     """Water path data with every vertex that lies within SNAP inside of a
     district border (the nearest border point outside its ring: water would
@@ -823,10 +753,9 @@ def build(districts_path, water_path):
         fail("no water left to draw")
     # The borders once more, above the water (an overlay: never hit), so they
     # run on unbroken where the river covers them; the water reaches them.
-    lines = border_lines(res.paths, ids, GRID)
-    dec = round(math.log10(GRID))
-    res.overlays["water"], moved = snap_to_borders(res.overlays["water"], lines, dec)
-    res.overlays["borders"] = lines_d(lines, dec)
+    lines = mapgen.boundary_lines(res, {rid: rid for rid in ids})
+    res.overlays["water"], moved = snap_to_borders(res.overlays["water"], lines, res.dec)
+    res.overlays["borders"] = mapgen.lines_d(lines, res.dec)
     notes.append(f"borders: {len(lines)} lines, {sum(len(ln) for ln in lines)} points, drawn above the water; "
                  f"{moved} water vertices moved onto a border")
     (gap, at), lost = final_gaps(opened, pieces, links, res.overlays["water"], window)

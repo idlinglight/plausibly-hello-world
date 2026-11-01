@@ -54,13 +54,25 @@ class Window:
 
 
 class Result:
-    def __init__(self, window, context, paths, sizes, overlays, stats):
+    """What MapBuilder.build made. paths, sizes and overlays go into map.svg
+    (mapgen.map_svg); arcs and topo are the shared topology the paths were
+    drawn from, for lines along the region edges (mapgen.boundary_lines):
+    arcs are the simplified arcs (lists of integer points, 1/grid units),
+    topo {fid: [[arc refs] per ring]} (~i = arc i reversed), exactly the
+    rings in paths. A region lost to the grid (drawn from its own finer
+    outline, a note in stats) is in paths but not in topo."""
+
+    def __init__(self, window, context, paths, sizes, overlays, stats, arcs=(), topo=None, grid=10, dec=1):
         self.window = window
         self.context = context
         self.paths = paths        # {fid: path data}, regions + context land
         self.sizes = sizes        # {fid: larger side of the bounding box, map units}
         self.overlays = overlays  # {overlay id: path data}, in add order
         self.stats = stats
+        self.arcs = list(arcs)    # simplified shared arcs, integer points (1/grid units)
+        self.topo = topo or {}    # {fid: [[arc refs] per ring]}, the rings of paths
+        self.grid = grid          # points are in 1/grid units …
+        self.dec = dec            # … grid = 10 ** dec
 
     def report(self, regions, notes=()):
         s = self.stats
@@ -228,12 +240,14 @@ class MapBuilder:
         n_after = sum(len(a) for a in arcs)
         crossings = count_crossings(arcs)
 
-        paths, sizes = {}, {}
+        paths, sizes, drawn = {}, {}, {}
         for fid, refs in topo.items():
-            rings = [ring_from_arcs(r, arcs) for r in refs]
-            rings = [r for r in rings if len(set(r)) >= 3]
-            if not rings:
+            kept = [(r, ring_from_arcs(r, arcs)) for r in refs]
+            kept = [(r, ring) for r, ring in kept if len(set(ring)) >= 3]
+            if not kept:
                 continue
+            drawn[fid] = [r for r, _ in kept]
+            rings = [ring for _, ring in kept]
             paths[fid] = path_d(rings, self.dec)
             bx = bbox([p for r in rings for p in r])
             sizes[fid] = max(bx[2] - bx[0], bx[3] - bx[1]) / g
@@ -272,4 +286,4 @@ class MapBuilder:
 
         stats = {"arcs": len(arcs), "points_before": n_before, "points_after": n_after, "dropped": dropped,
                  "clipped": self.clipped, "notes": notes, "crossings": crossings, "region_tol": self.region_tol}
-        return Result(w, CONTEXT, paths, sizes, overlays, stats)
+        return Result(w, CONTEXT, paths, sizes, overlays, stats, arcs=arcs, topo=drawn, grid=g, dec=self.dec)
