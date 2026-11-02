@@ -20,6 +20,10 @@ shared/map-quiz/
   tools/            not synced, not shipped
     mapgen/           generator core (Python 3.9+, stdlib), see below
     mapgen_test.py    python3 -I shared/map-quiz/tools/mapgen_test.py
+    wikicheck.py      checks the data's Wikipedia titles online, by hand
+                      only (never a build or CI), see below
+    wikicheck_test.py python3 -I shared/map-quiz/tools/wikicheck_test.py
+                      (offline, canned answers; by hand, not in CI)
     quiz.test.mjs     node shared/map-quiz/tools/quiz.test.mjs (rules)
     contract.test.mjs node shared/map-quiz/tools/contract.test.mjs
     wheel.test.mjs    node shared/map-quiz/tools/wheel.test.mjs
@@ -527,6 +531,23 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   inputs in the same order give byte-identical files. `emit` writes, or
   with `check` compares and returns 1 on a difference, and prints sizes
   (raw, gzip -1 as nginx serves it, gzip -9).
+
+## Wikipedia titles: wikicheck
+
+An image may link the asked names to Wikipedia: its source-of-truth JSON
+holds the article titles (`wiki`, `capital_wiki`, …), `build_map.py`
+passes them into the data module and fails where one is missing or
+malformed (`mapgen.wiki_title_error`: spaces, no `_ # ? |`, no padding),
+and `tools/data.test.mjs` checks the same, all offline.
+`wikicheck.py` (stdlib) checks the titles against the live Wikipedia and
+Wikidata APIs: the page exists, the title is canonical (no redirect), no
+disambiguation page, and its Wikidata item is the expected one, or, for
+a capital, a current capital of the expected item (P36 / P1376). It is
+run by hand through a thin per-image entry point
+(`images/<name>/tools/wiki_titles.py <pinned input>`, `--suggest`
+proposes titles from Wikidata); world-quiz and japan-quiz have one, each
+`tools/README.md` ("Wikipedia titles") the method, date and special
+cases.
 
 ## Adding a map image
 

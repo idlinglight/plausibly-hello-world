@@ -216,6 +216,14 @@ class Pipeline(unittest.TestCase):
         with self.assertRaises(mapgen.BuildError):
             mapgen.read_pinned(path, "0" * 64, len(raw), "https://example.org/x")
 
+    def test_wiki_title_shape(self):
+        for ok in ("Georgia (country)", "St. John's, Antigua and Barbuda", "Kōchi Prefecture", "Chișinău"):
+            self.assertIsNone(mapgen.wiki_title_error(ok), ok)
+        for bad, why in ((None, "empty"), ("", "empty"), (" Vienna", "space"), ("Vienna ", "space"),
+                         ("New  Delhi", "space"), ("New_Delhi", "_"), ("Kyushu#Region", "#"), ("Who?", "?"),
+                         ("a|b", "|"), ("[[Vienna]]", "["), ("Kōchi Prefecture", "NFC")):
+            self.assertIn(why, mapgen.wiki_title_error(bad) or "", repr(bad))
+
 
 def lines_of(d, grid):
     """Path data written by lines_d -> polylines of integer points."""

@@ -1,8 +1,9 @@
 """Inputs and outputs: sha256-pinned reads, writing or checking the generated
-files, and the size report."""
+files, the size report, and the shape of Wikipedia titles in the data."""
 import gzip
 import hashlib
 import os
+import unicodedata
 
 
 class BuildError(Exception):
@@ -18,6 +19,24 @@ def read_pinned(path, sha256, size, url=None):
         hint = f"\n  (download: {url})" if url else ""
         raise BuildError(f"{path}: sha256 {digest} / {len(raw)} bytes, expected {sha256} / {size}{hint}")
     return raw
+
+
+def wiki_title_error(title):
+    """Why a Wikipedia article title in an image's data is malformed, or None.
+    Titles are stored as the article is named: spaces (no underscores), no
+    section (#), query (?) or link syntax (| [ ] { } < >), no leading,
+    trailing or double space, NFC. Whether the article exists and is the
+    right one is shared/map-quiz/tools/wikicheck.py's job (by hand, online)."""
+    if not isinstance(title, str) or not title:
+        return "empty or not a string"
+    if title != title.strip() or "  " in title:
+        return "leading, trailing or double space"
+    bad = sorted({c for c in title if c in "_#?|[]{}<>"})
+    if bad:
+        return "contains " + " ".join(bad)
+    if unicodedata.normalize("NFC", title) != title:
+        return "not NFC"
+    return None
 
 
 def emit(files, out_dir, check, report=None):
