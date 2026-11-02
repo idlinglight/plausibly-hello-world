@@ -88,6 +88,7 @@ const LANDSCAPE = '(min-aspect-ratio: 4/3)'; // same query as in style.css
 const PAD = 12; // CSS px between the map (full view) and the edges / HUD bands
 const MAX_SCALE = (config.view && config.view.maxScale) || 12; // CSS px per map unit at the closest zoom (maps are 1000 units wide)
 const BESIDE_HUD = !!(config.view && config.view.besideHud); // landscape: full view left of the card + controls
+const PAN_TO_CENTRE = !!(config.view && config.view.panToCentre); // any point of the full view can be dragged to the centre
 const MIN_ZOOM_RANGE = 4; // … but at least this many times the full view
 const ZOOM_STEP = 1.75; // buttons and keys
 const ANIM_MS = 260;
@@ -331,12 +332,25 @@ function measure() {
 
 // Keeps the map covering the free area on each axis where it is larger,
 // and inside it where it is smaller (centre: fitView). So a zoom stays
-// exactly at the cursor, also before the map fills the screen.
+// exactly at the cursor, also before the map fills the screen. With
+// config.view.panToCentre the range per axis also takes in [centre - len,
+// centre]: the map may move as far as any of its points reaching the
+// centre of the free area, at every zoom, the full view too (both ranges
+// share their middle, so the union is one interval; fit still returns to
+// the full view). For a one-handed pinch about the screen's centre: first
+// drag the region there.
 function clamp(c) {
   const s = clampScale(c.s);
   const axis = (t, size, lo, hi) => {
     const len = size * s;
-    return len <= hi - lo ? Math.min(hi - len, Math.max(lo, t)) : Math.min(lo, Math.max(hi - len, t));
+    let a = len <= hi - lo ? lo : hi - len; // the default range [a, b]: inside the free area, or covering it
+    let b = len <= hi - lo ? hi - len : lo;
+    if (PAN_TO_CENTRE) {
+      const mid = (lo + hi) / 2;
+      a = Math.min(a, mid - len);
+      b = Math.max(b, mid);
+    }
+    return Math.min(b, Math.max(a, t));
   };
   return { s, tx: axis(c.tx, MAP.width, free.x0, free.x1), ty: axis(c.ty, MAP.height, free.y0, free.y1) };
 }

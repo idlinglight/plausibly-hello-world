@@ -134,7 +134,9 @@ image" below (caller workflow, README row). Engine changes go to
 Opt-in per image: `roundPicker: true` (+ `text.roundPicker`) turns the
 card's round label into a native list of the rounds; picking one starts
 a fresh round of it (next round index of that kind, blank map, counters
-kept; no image has it on yet).
+kept; no image has it on yet). `view.panToCentre: true` lets any point of
+the full view be panned to the centre of the free area at every zoom (for
+a one-handed pinch about the centre; default off).
 
 ### Per-image notes
 

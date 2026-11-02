@@ -105,7 +105,7 @@ export default {
     roundPicker: 'Runde wählen (beginnt von vorn)', // with roundPicker: its name and tooltip
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
-  view: { maxScale: 6, besideHud: true }, // optional, see below
+  view: { maxScale: 6, besideHud: true, panToCentre: true }, // optional, see below
   blockingOverlays: ['water'],           // optional, see below
   carryColours: true,                    // optional, see below
   roundPicker: true,                     // optional, see below
@@ -214,6 +214,14 @@ export default {
   and the controls column. Default false: the card covers the full view's
   top-right corner, fine where that is context land (europe: Russia), not
   for a map whose regions reach that corner.
+- **view.panToCentre** (default false): the map may be panned until any
+  point of the full view sits at the centre of the free area, at every
+  zoom, the full view included (by default, at the full view, the map
+  moves at most within the free area, so an edge region never reaches the
+  centre). For a one-handed
+  pinch about the screen's centre, e.g. on a world map: drag the region
+  to the centre first. The default range stays a subset; fit (button, `0`)
+  returns to the full view.
 - **blockingOverlays**: ids of overlays in `map.svg`'s `#overlays` (each a
   `<path>`) whose area swallows clicks and taps like the background: no
   answer, no misclick, no hover on the region beneath. Their outline
@@ -348,7 +356,10 @@ theme-color meta.
 - Answering needs a pointer (click or tap); keys only zoom and pan. Zoom:
   pinch (touch, trackpad), mouse wheel and ctrl + wheel (at the cursor),
   buttons, `+ - 0` keys. Pan: drag, a trackpad's two-finger scroll, arrow
-  keys. A press that moves more than 5–10 px is a pan, never a click.
+  keys. A press that moves more than 5–10 px is a pan, never a click. Per
+  axis the map keeps covering the free area where it is larger and stays
+  inside it where it is smaller; with `view.panToCentre` it may also move
+  until any of its points reaches the centre.
 - Wheel events are classified per gesture as trackpad or mouse by
   `wheel.js` (DOM-free; rules from real macOS recordings in Safari,
   Chrome, Firefox at 100 % and 125 % zoom: trackpads send whole CSS or
