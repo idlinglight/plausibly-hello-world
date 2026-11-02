@@ -3,15 +3,16 @@
 Wikipedia and Wikidata APIs (shared map-quiz tool, stdlib only, Python 3.9+).
 
 Run by hand, with network access, after changing titles or when re-checking
-them. Never run by a build, a test or CI: the builds and the data tests
-only check that the titles are present and well-formed, offline.
+them. The live check never runs in a build or CI: the builds and the data
+tests only check that the titles are present and well-formed, offline, and
+CI runs wikicheck_test.py, this module's logic on canned answers with the
+network blocked.
 
 Each image has a thin entry point, images/<name>/tools/wiki_titles.py, that
 puts shared/map-quiz/tools on sys.path (as for mapgen, whose
 wiki_title_error this module shares), turns its data into entries and calls
 check() (or suggest() to propose titles); its tools/README.md ("Wikipedia
-titles") has the method, the date checked and the special cases. Offline
-tests of the pure parts: wikicheck_test.py.
+titles") has the method, the date checked and the special cases.
 
 An entry is a dict:
   key           a label for the report ("AUT wiki")
@@ -37,8 +38,10 @@ Retry-After, up to LAG_BUDGET per request), at most 50 titles per query,
 P36/P1376 read per item with wbgetclaims (small answers).
 """
 import datetime
+import http.client
 import json
 import re
+import socket
 import sys
 import time
 import unicodedata
@@ -63,6 +66,15 @@ def wikipedia(lang):
 
 # ------------------------------------------------------------------ network
 _last = [0.0]
+_urlopen = urllib.request.urlopen  # replaced by the offline tests
+_sleep = time.sleep                # likewise
+# Passing hiccups, retried with backoff up to `tries` times: network errors,
+# read timeouts (socket.timeout is TimeoutError only from Python 3.10 on),
+# dropped or broken connections (http.client: RemoteDisconnected,
+# IncompleteRead, ...), and a body that isn't JSON (ValueError: e.g. an HTML
+# error page from a proxy).
+TRANSIENT = (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, http.client.HTTPException,
+             ValueError)
 
 
 def _delay(retry_after, attempt):
@@ -74,22 +86,35 @@ def _delay(retry_after, attempt):
 
 def api_get(url, params, tries=TRIES, lag_budget=LAG_BUDGET):
     """GET a MediaWiki API: JSON, formatversion 2, maxlag 5. Waits out lag
-    and busy answers (RETRY_CODES, 429, 503) for up to lag_budget seconds,
-    retries other server and network errors tries times; raises
-    RuntimeError on any other API error."""
+    and busy answers (RETRY_CODES, HTTP 429 and 503) for up to lag_budget
+    seconds; retries TRANSIENT errors and HTTP 500, 502, 504 up to `tries`
+    times, with the same backoff. Raises RuntimeError on any other API or
+    HTTP error, and when the retries or the lag budget run out."""
     query = dict(params, format="json", formatversion="2", maxlag="5")
     full = url + "?" + urllib.parse.urlencode(query)
     waited, failures, attempt = 0.0, 0, 0
     while True:
         wait = PAUSE - (time.monotonic() - _last[0])
         if wait > 0:
-            time.sleep(wait)
+            _sleep(wait)
         req = urllib.request.Request(full, headers={"User-Agent": USER_AGENT})
-        lagged, retry_after = False, None
+        lagged, retry_after, problem = False, None, None
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                body = json.loads(resp.read().decode("utf-8"))
+            with _urlopen(req, timeout=60) as resp:
                 retry_after = resp.headers.get("Retry-After")
+                body = json.loads(resp.read().decode("utf-8"))
+            if not isinstance(body, dict):
+                raise ValueError(f"a JSON {type(body).__name__}, not an object")
+        except urllib.error.HTTPError as e:  # before TRANSIENT: a URLError too
+            if e.code in (429, 503):
+                lagged, retry_after = True, e.headers.get("Retry-After")
+            elif e.code in (500, 502, 504):
+                problem = f"HTTP {e.code}"
+            else:
+                raise RuntimeError(f"{url}: HTTP {e.code} {e.reason}") from e
+        except TRANSIENT as e:
+            problem = f"{type(e).__name__}: {e}"
+        else:
             err = body.get("error")
             if not err:
                 _last[0] = time.monotonic()
@@ -97,25 +122,18 @@ def api_get(url, params, tries=TRIES, lag_budget=LAG_BUDGET):
             if err.get("code") not in RETRY_CODES:
                 raise RuntimeError(f"{url}: {err.get('code')}: {err.get('info')}")
             lagged = True
-        except urllib.error.HTTPError as e:
-            if e.code in (429, 503):
-                lagged, retry_after = True, e.headers.get("Retry-After")
-            elif e.code in (500, 502, 504) and failures + 1 < tries:
-                failures += 1
-            else:
-                raise
-        except (urllib.error.URLError, TimeoutError):
+        _last[0] = time.monotonic()
+        if problem:
             failures += 1
             if failures >= tries:
-                raise
-        _last[0] = time.monotonic()
+                raise RuntimeError(f"{url}: {problem} (gave up after {tries} tries)")
         delay = _delay(retry_after, attempt)
         attempt += 1
         if lagged:
             if waited + delay > lag_budget:
                 raise RuntimeError(f"{url}: still lagged or busy after {waited:.0f} s; try again later")
             waited += delay
-        time.sleep(delay)
+        _sleep(delay)
 
 
 def batches(items, n=BATCH):

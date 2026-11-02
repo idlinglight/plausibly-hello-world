@@ -372,7 +372,9 @@ the English Wikipedia article, a capital round's the capital's).
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
   and BuildKit bumps are proven before merge. Push to main also publishes.
 - **shared-sync.yml** (PRs and main, paths `shared/**`, `images/**`):
-  `python3 shared/sync.py --check`, the generator core's unittest, and the
+  `python3 shared/sync.py --check`, the generator core's unittest, the
+  Wikipedia title checker's offline unittest (`wikicheck_test.py`, canned
+  answers, network blocked; the live check stays by hand), and the
   node tests (`shared/map-quiz/tools/*.test.mjs`,
   `images/*/tools/*.test.mjs`) with the runner's own python3 and node (no
   setup actions; the tests need Node 22.12+, the step checks). The image

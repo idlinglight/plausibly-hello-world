@@ -71,15 +71,30 @@ check('data: 18 capitals differ from their prefecture\'s name (a flag), Tōkyō 
   for (const p of PREFECTURES) if (p.id !== 'tokyo') assert.equal(p.capitalDiffers, p.capital !== p.name, p.id);
 });
 
-// A Wikipedia article title as stored: the article's name with spaces; no
-// underscore, section, query or link syntax, no padding (tools/wiki_titles.py
-// checks the articles themselves, online, by hand).
-const TITLE = /^(?! )(?!.* $)[^_#?|[\]{}<>]+$/;
+// A Wikipedia article title as stored: the same rule as
+// mapgen.wiki_title_error (shared/map-quiz/tools/mapgen/output.py; the
+// class is checked against its WIKI_TITLE_BAD below): non-empty, no
+// underscore, nothing Wikipedia forbids in titles (# | [ ] { } < >, control
+// characters), no whitespace but the plain space, no leading, trailing or
+// double space, NFC. '?' is fine. tools/wiki_titles.py checks the articles
+// themselves, online, by hand.
+const WIKI_TITLE_BAD = /[_#|\[\]{}<>\x00-\x1f\x7f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+const titleOk = (t) => typeof t === 'string' && t !== '' && !WIKI_TITLE_BAD.test(t)
+  && !t.startsWith(' ') && !t.endsWith(' ') && !t.includes('  ') && t.normalize('NFC') === t;
+
+check('data: the title rule is mapgen.wiki_title_error\'s (same class, same cases as mapgen_test.py)', () => {
+  const py = readFileSync(new URL('../../../shared/map-quiz/tools/mapgen/output.py', import.meta.url), 'utf8');
+  assert.equal(py.match(/^WIKI_TITLE_BAD = re\.compile\(r"(.*)"\)$/m)?.[1], WIKI_TITLE_BAD.source);
+  for (const t of ['What? (film)', 'Georgia (country)', 'St. John\'s, Antigua and Barbuda', 'Kōchi Prefecture', 'Nukuʻalofa'])
+    assert.ok(titleOk(t), t);
+  for (const t of ['Kanto\u0304 region', 'a  b', 'a_b', 'a#b', ' a', 'a ', 'a|b', '[[a]]', 'a\u00a0b', 'a\tb', '', null])
+    assert.ok(!titleOk(t), JSON.stringify(t));
+});
 
 check('data: Wikipedia titles for every island, region and prefecture, and for the 18 asked capitals only', () => {
-  for (const e of [...ISLANDS, ...REGIONS, ...PREFECTURES]) assert.match(e.wiki ?? '', TITLE, `${e.id} wiki`);
+  for (const e of [...ISLANDS, ...REGIONS, ...PREFECTURES]) assert.ok(titleOk(e.wiki), `${e.id} wiki: ${JSON.stringify(e.wiki)}`);
   for (const p of PREFECTURES) {
-    if (p.capitalDiffers) assert.match(p.capitalWiki ?? '', TITLE, `${p.id} capitalWiki`);
+    if (p.capitalDiffers) assert.ok(titleOk(p.capitalWiki), `${p.id} capitalWiki: ${JSON.stringify(p.capitalWiki)}`);
     else assert.ok(!('capitalWiki' in p), `${p.id}: capital not asked, no capitalWiki`);
   }
   assert.equal(new Set(PREFECTURES.map((p) => p.wiki)).size, 47);

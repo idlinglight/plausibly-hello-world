@@ -68,14 +68,29 @@ check('data: names and capitals as chosen (tools/README.md, Names and capitals)'
       'Democratic Republic of the Congo', 'Congo', 'Vatican City', 'United States', 'São Tomé and Príncipe']);
 });
 
-// A Wikipedia article title as stored: the article's name with spaces; no
-// underscore, section, query or link syntax, no padding (tools/wiki_titles.py
-// checks the articles themselves, online, by hand).
-const TITLE = /^(?! )(?!.* $)[^_#?|[\]{}<>]+$/;
+// A Wikipedia article title as stored: the same rule as
+// mapgen.wiki_title_error (shared/map-quiz/tools/mapgen/output.py; the
+// class is checked against its WIKI_TITLE_BAD below): non-empty, no
+// underscore, nothing Wikipedia forbids in titles (# | [ ] { } < >, control
+// characters), no whitespace but the plain space, no leading, trailing or
+// double space, NFC. '?' is fine. tools/wiki_titles.py checks the articles
+// themselves, online, by hand.
+const WIKI_TITLE_BAD = /[_#|\[\]{}<>\x00-\x1f\x7f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+const titleOk = (t) => typeof t === 'string' && t !== '' && !WIKI_TITLE_BAD.test(t)
+  && !t.startsWith(' ') && !t.endsWith(' ') && !t.includes('  ') && t.normalize('NFC') === t;
+
+check('data: the title rule is mapgen.wiki_title_error\'s (same class, same cases as mapgen_test.py)', () => {
+  const py = readFileSync(new URL('../../../shared/map-quiz/tools/mapgen/output.py', import.meta.url), 'utf8');
+  assert.equal(py.match(/^WIKI_TITLE_BAD = re\.compile\(r"(.*)"\)$/m)?.[1], WIKI_TITLE_BAD.source);
+  for (const t of ['What? (film)', 'Georgia (country)', 'St. John\'s, Antigua and Barbuda', 'Kōchi Prefecture', 'Nukuʻalofa'])
+    assert.ok(titleOk(t), t);
+  for (const t of ['Kanto\u0304 region', 'a  b', 'a_b', 'a#b', ' a', 'a ', 'a|b', '[[a]]', 'a\u00a0b', 'a\tb', '', null])
+    assert.ok(!titleOk(t), JSON.stringify(t));
+});
 
 check('data: Wikipedia titles of every entry and of every capital (all asked), well-formed and unique', () => {
   for (const key of ['wiki', 'capitalWiki']) {
-    for (const c of COUNTRIES) assert.match(c[key] ?? '', TITLE, `${c.id} ${key}`);
+    for (const c of COUNTRIES) assert.ok(titleOk(c[key]), `${c.id} ${key}: ${JSON.stringify(c[key])}`);
     assert.equal(new Set(COUNTRIES.map((c) => c[key])).size, 197, `${key} unique`);
   }
   const of = (id) => [byId.get(id).wiki, byId.get(id).capitalWiki];

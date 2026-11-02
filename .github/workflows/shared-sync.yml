@@ -7,6 +7,9 @@ name: shared-sync
 #   - python3 shared/sync.py --check (copies, stale copies, the manifest,
 #     each rule's required files), and sync.py itself on scratch repos
 #   - the generator core on synthetic data (mapgen_test.py, stdlib unittest)
+#   - the Wikipedia title checker's offline logic on canned answers
+#     (wikicheck_test.py; the network is blocked there, the live check is
+#     run by hand)
 #   - node tests: shared/map-quiz/tools/*.test.mjs (quiz rules, config
 #     contract, wheel replay) and images/*/tools/*.test.mjs (each image's
 #     own data checks)
@@ -53,6 +56,9 @@ jobs:
 
       - name: Map generator core (synthetic data)
         run: python3 -I shared/map-quiz/tools/mapgen_test.py
+
+      - name: Wikipedia title checker (offline logic)
+        run: python3 -I shared/map-quiz/tools/wikicheck_test.py
 
       - name: Node tests (engine, per-image data)
         run: |
