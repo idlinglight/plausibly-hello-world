@@ -1,0 +1,43 @@
+/* World Quiz: additions to the shared engine's style.css (linked before
+   this file; token list in shared/map-quiz/README.md, "Styling"). Each
+   token block three times, as in style.css: light, dark by the OS, dark
+   by the toggle.
+
+   The map is Fuller's net, not a rectangle: outside it is the page
+   background (the engine's --sea, also the theme-color), inside it the
+   sea (--net-sea, the engine's usual sea colour), drawn by map.svg's
+   <path id="net">. Its folds (<path id="folds">, the triangle edges where
+   two faces meet) are faint lines over the sea, under the land; neither
+   is ever hit (a click on them is a click on the sea). */
+:root {
+  --sea: #eef1f3;
+  --net-sea: #bfd9e7;
+  --fold: rgba(40, 92, 122, 0.3);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --sea: #060b0f;
+    --net-sea: #0d1e2a;
+    --fold: rgba(150, 196, 220, 0.2);
+  }
+}
+
+:root[data-theme="dark"] {
+  --sea: #060b0f;
+  --net-sea: #0d1e2a;
+  --fold: rgba(150, 196, 220, 0.2);
+}
+
+#net {
+  fill: var(--net-sea);
+  pointer-events: none;
+}
+
+#folds {
+  fill: none;
+  stroke: var(--fold);
+  stroke-width: 0.75px;
+  stroke-linecap: round;
+  pointer-events: none;
+}

@@ -29,7 +29,7 @@ function checkMarker(m, size, where) {
 // Shapes and types.
 export function checkConfig(config) {
   if (!config || typeof config !== 'object') bad('no default export object');
-  const { map, items, rounds, text, view, attribution, blockingOverlays, carryColours } = config;
+  const { map, items, rounds, text, view, attribution, blockingOverlays, carryColours, roundPicker } = config;
   if (!map || !num(map.width) || !num(map.height) || !(map.width > 0 && map.height > 0)) bad('map: width and height, finite numbers > 0');
   const ex = map.extent;
   if (!Array.isArray(ex) || ex.length !== 4 || !ex.every(num) || !(ex[2] > 0 && ex[3] > 0)) bad('map: extent [x, y, w, h], finite numbers, w and h > 0');
@@ -82,9 +82,18 @@ export function checkConfig(config) {
   if (typeof text.theme !== 'function') bad('text.theme: a function');
   if (attribution !== undefined && !str(attribution)) bad('attribution: a string');
   if (carryColours !== undefined && typeof carryColours !== 'boolean') bad('carryColours: true or false');
+  // The round picker lists the rounds by label: each must say which one it is.
+  if (roundPicker !== undefined && typeof roundPicker !== 'boolean') bad('roundPicker: true or false');
+  if (text.roundPicker !== undefined && !str(text.roundPicker)) bad('text.roundPicker: a string');
+  if (roundPicker) {
+    if (text.roundPicker === undefined) bad('text.roundPicker: a string (the picker\'s accessible name), needed with roundPicker');
+    if (rounds.length < 2) bad('roundPicker: needs two or more rounds to pick from');
+    if (new Set(rounds.map((r) => r.label)).size !== rounds.length) bad('rounds: each label once with roundPicker (it lists them)');
+  }
   if (view !== undefined && !(view && typeof view === 'object' && (view.maxScale === undefined || (num(view.maxScale) && view.maxScale > 0)) &&
-      (view.besideHud === undefined || typeof view.besideHud === 'boolean')))
-    bad('view: { maxScale: CSS px per map unit, > 0; besideHud: boolean }');
+      (view.besideHud === undefined || typeof view.besideHud === 'boolean') &&
+      (view.panToCentre === undefined || typeof view.panToCentre === 'boolean')))
+    bad('view: { maxScale: CSS px per map unit, > 0; besideHud: boolean; panToCentre: boolean }');
   const blocking = new Set();
   if (blockingOverlays !== undefined) {
     // overlay ids in map.svg (main.js checks they are <path>s in #overlays)

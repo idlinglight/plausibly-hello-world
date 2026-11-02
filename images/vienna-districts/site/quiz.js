@@ -28,6 +28,17 @@
 // reset() starts game g + 1: colours and counters cleared, a fresh first
 // round.
 //
+// jumpTo(kind) (the round picker) leaves the current round for a fresh one
+// of that kind: round r' = the first index after r with r' % kinds = kind
+// (r + kinds for the current kind), so colour and shuffle are those of
+// round r' as always, and the cycle carries on from there. The map starts blank
+// (whatever carryColours says: with an even number of kinds the new round
+// may have the old one's colour, and carried colours would look found);
+// the game's counters run on, the round's misses start at 0. It never
+// opens with the answer found last (lastFound: in the round left, or the
+// one that closed the round before when none was found since; not saved,
+// so after a reload only answers found since count).
+//
 // A saved game records its round kinds (the rounds' keys), so restore()
 // turns it down once the image's rounds change: a saved round index would
 // otherwise continue as a different kind. Saves from before that field
@@ -35,7 +46,8 @@
 // Where a kind groups pieces or asks a subset, the save also records a
 // fingerprint of every kind's answers (their pieces) and asked answers,
 // and restore() turns it down when they changed; a save of kinds with one
-// piece per answer has no such field (its format predates grouping).
+// piece per answer has no such field (its format predates grouping). A
+// save after jumpTo() needs no field of its own: the round index says it.
 
 export const VERSION = 1; // of serialize()'s format
 
@@ -162,8 +174,10 @@ export class Quiz {
     this.start(0, null);
   }
 
-  // prev: the pieces of the answer that closed the round before (or null).
+  // prev: the pieces of the answer found last (the one that closed the
+  // round before, or the last one found in a round left by jumpTo), or null.
   start(round, prev) {
+    this.lastFound = prev ? prev.slice() : null;
     this.round = round;
     this.pos = 0;
     this.roundMisses = 0;
@@ -244,12 +258,22 @@ export class Quiz {
     }
     this.correct++;
     const pieces = k.piecesOf.get(id).slice();
+    this.lastFound = pieces.slice();
     for (const p of pieces) this.colours[p] = this.colour;
     this.pos++;
     if (this.pos < this.order.length) return { result: 'correct', id, pieces };
     const completed = { kind: this.kind, misses: this.roundMisses, total: this.order.length };
     this.start(this.round + 1, pieces);
     return { result: 'correct', id, pieces, completed };
+  }
+
+  // A fresh round of kind `kind` (0 … kinds - 1), see the header: the next
+  // round index of that kind, a blank map, counters kept.
+  jumpTo(kind) {
+    if (!Number.isSafeInteger(kind) || kind < 0 || kind >= this.kinds) throw new RangeError(`kind: an integer from 0 to ${this.kinds - 1}`);
+    const next = this.round + 1;
+    this.colours = {};
+    this.start(next + ((kind - (next % this.kinds) + this.kinds) % this.kinds), this.lastFound);
   }
 
   reset() {
@@ -295,6 +319,8 @@ export class Quiz {
     if (!colours || typeof colours !== 'object' || Array.isArray(colours)) return null;
     for (const [id, c] of Object.entries(colours)) if (!q.idSet.has(id) || (c !== 1 && c !== 2)) return null;
     Object.assign(q, { game, round, pos, order: order.slice(), colours: { ...colours }, correct, misses, roundMisses });
+    // not saved: the last answer found in this round, if any (one that closed the round before is forgotten)
+    q.lastFound = pos > 0 ? q.piecesOf(order[pos - 1]) : null;
     return q;
   }
 }
