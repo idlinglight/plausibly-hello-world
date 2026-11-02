@@ -337,11 +337,14 @@ def cut_cells(poly, xs=(), ys=()):
     polygon} for the cells it reaches, i counting the xs below x, j the ys
     below y. Rectangle clipping per cell (clip_ring), so the parts of two
     neighbouring cells share their cut vertices exactly and merge again in
-    a MapBuilder feature. Cells without a usable exterior are left out."""
+    a MapBuilder feature. Cells without a usable exterior are left out.
+    Where a ring crosses a cut line several times, each cell's edges along
+    the line are split at all the crossings there (as both neighbours have
+    them), so the edges cancel pairwise when the cells merge again."""
     inf = float("inf")
     bx = [-inf] + sorted(xs) + [inf]
     by = [-inf] + sorted(ys) + [inf]
-    out = {}
+    raw = {}
     for i in range(len(bx) - 1):
         for j in range(len(by) - 1):
             rings = []
@@ -357,9 +360,36 @@ def cut_cells(poly, xs=(), ys=()):
                     if ri == 0:
                         break
                     continue
-                rings.append(q + q[:1])
-            if rings and len(rings[0]) > 3:
-                out[(i, j)] = rings
+                rings.append(q)
+            if rings and len(rings[0]) > 2:
+                raw[(i, j)] = rings
+    # every point on a cut line, per line: (axis, value) -> sorted coordinates along it
+    on = {}
+    for rings in raw.values():
+        for r in rings:
+            for x, y in r:
+                if x in xs:
+                    on.setdefault((0, x), set()).add(y)
+                if y in ys:
+                    on.setdefault((1, y), set()).add(x)
+    on = {k: sorted(v) for k, v in on.items()}
+    out = {}
+    for cell, rings in raw.items():
+        noded = []
+        for r in rings:
+            q = []
+            for k, a in enumerate(r):
+                b = r[(k + 1) % len(r)]
+                q.append(a)
+                for axis in (0, 1):
+                    if a[axis] == b[axis] and (axis, a[axis]) in on:
+                        lo, hi = sorted((a[1 - axis], b[1 - axis]))
+                        mids = [t for t in on[(axis, a[axis])] if lo < t < hi]
+                        if a[1 - axis] > b[1 - axis]:
+                            mids.reverse()
+                        q.extend((a[0], t) if axis == 0 else (t, a[1]) for t in mids)
+            noded.append(q + q[:1])
+        out[cell] = noded
     return out
 
 

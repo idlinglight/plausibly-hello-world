@@ -383,9 +383,10 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   Simplification can make arcs cross; `res.stats["crossings"]` counts
   them (the report prints it; europe's 5 are all in context land) and an
   adapter that simplifies region arcs should require 0:
-  `repair_crossings=True` puts the arcs of every crossing back to their
-  unsimplified points until none is left (`stats["repaired"]`; crossings
-  the snapping itself made stay, a finer grid helps there;
+  `repair_crossings=True` simplifies the arcs of every crossing again
+  with half their tolerance, down to their own points, until none is
+  left (`stats["repaired"]`; crossings the snapping itself made stay, a
+  finer grid helps there;
   `mapgen.crossing_pairs(arcs)` lists them). `region_tols={rid: tol}`
   gives single regions their own tolerance (an arc takes the smallest of
   its regions'), e.g. finer outlines for small states people zoom in on.

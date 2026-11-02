@@ -406,6 +406,22 @@ class Repairs(unittest.TestCase):
         self.assertEqual(len(res.topo["B"]), 1)
         self.assertEqual(res.stats["crossings"], 0)
 
+    def test_cut_cells_nested_crossings(self):
+        # a U whose prongs cross the cut y = 0: four crossings, nested on the line
+        u = [(-3, -1), (3, -1), (3, 1), (1, 1), (1, -0.5), (-1, -0.5), (-1, 1), (-3, 1), (-3, -1)]
+        cells = mapgen.cut_cells([u], ys=[0])
+        self.assertEqual(sorted(cells), [(0, 0), (0, 1)])
+        below = cells[(0, 0)][0]
+        self.assertIn((-1, 0), below)  # the crossings of the other prong split the long edge
+        w = mapgen.Window([(-3, -1), (3, 1)], 0.0, 60.0, (0, 0))
+        mb = mapgen.MapBuilder(mapgen.Identity(), w, ["U"], grid=10, min_island=0)
+        for part in cells.values():
+            mb.add_region("U", part)
+        res = mb.build()
+        self.assertEqual(len(res.topo["U"]), 1)
+        ring = mapgen.ring_from_arcs(res.topo["U"][0], res.arcs)
+        self.assertAlmostEqual(abs(mapgen.area2(ring)) / 2 / 100, 9 * 100, places=6)  # 9 units^2, 10 map units each way
+
 
 # ------------------------------------------------------------------ polyhedral (Fuller's net)
 ph = mapgen.polyhedral

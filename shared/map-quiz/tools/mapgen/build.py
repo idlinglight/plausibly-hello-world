@@ -104,9 +104,10 @@ class MapBuilder:
     region_tols {region id: tol} a region's own (an arc takes the smallest of
     its regions'). Arcs are shared, so neighbours stay gap-free either way;
     Result.stats["crossings"] counts the crossings simplification made
-    (assert 0 in the adapter). repair_crossings: arcs in a crossing go back
-    to their unsimplified points until none is left (stats["repaired"]
-    counts them; crossings the snapping made itself stay)."""
+    (assert 0 in the adapter). repair_crossings: arcs in a crossing are
+    simplified again with half their tolerance, down to their own points,
+    until none is left (stats["repaired"] counts the arcs; crossings the
+    snapping made itself stay)."""
 
     def __init__(self, project, window, regions, *, grid=10, min_island=0.3, context_tol=0.2, far_tol=1.5,
                  far_min_island=4, far_gap=20, overlay_tol=0.2, region_tol=0, region_tols=None,
@@ -245,21 +246,26 @@ class MapBuilder:
                     arc_users[ref if ref >= 0 else ~ref].add(fid)
         n_before = sum(len(a) for a in arcs)
 
-        def simplify_region(a, users):
-            tol = min((self.region_tols.get(u, self.region_tol) for u in users if u != CONTEXT), default=self.region_tol)
-            return simplify_arc(a, tol * g) if tol else a
+        def region_tol(users):
+            return min((self.region_tols.get(u, self.region_tol) for u in users if u != CONTEXT),
+                       default=self.region_tol) * g
 
         raw = arcs
-        arcs = [simplify_context(a) if users == {CONTEXT} else simplify_region(a, users)
-                for a, users in zip(arcs, arc_users)]
-        repaired = 0
+        tols = [self.context_tol * g if users == {CONTEXT} else region_tol(users) for users in arc_users]
+        arcs = [simplify_context(a) if users == {CONTEXT} else simplify_arc(a, t) if t else a
+                for a, users, t in zip(arcs, arc_users, tols)]
+        repaired = set()
         while self.repair_crossings:
+            # arcs in a crossing: simplified again with half their tolerance,
+            # below one grid step their own points
             bad = sorted({i for pair in crossing_pairs(arcs) for i in pair if arcs[i] is not raw[i]})
             if not bad:
                 break
             for i in bad:
-                arcs[i] = raw[i]
-            repaired += len(bad)
+                tols[i] /= 2
+                arcs[i] = simplify_arc(raw[i], tols[i]) if tols[i] >= 1 else raw[i]
+            repaired.update(bad)
+        repaired = len(repaired)
         n_after = sum(len(a) for a in arcs)
         crossings = count_crossings(arcs)
 
