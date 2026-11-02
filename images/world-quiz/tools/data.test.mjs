@@ -30,8 +30,8 @@ const RINGED_ALWAYS = ['BRN', 'KOS', 'LUX', 'MNE', 'QAT'];
 check('data: 197 entries, countries.js matches countries.json, ids, names and capitals unique', () => {
   assert.equal(COUNTRIES.length, 197);
   assert.deepEqual(COUNTRIES.map(({ marker, size, ...rest }) => rest),
-    SOURCE.map(({ marker, ...c }) => ({ id: c.id, name: c.name, capital: c.capital, ...(c.of ? { of: c.of } : {}),
-      ...(c.small ? { small: true } : {}) })));
+    SOURCE.map(({ marker, ...c }) => ({ id: c.id, name: c.name, capital: c.capital, wiki: c.wiki, capitalWiki: c.capital_wiki,
+      ...(c.of ? { of: c.of } : {}), ...(c.small ? { small: true } : {}) })));
   for (const key of ['id', 'name']) assert.equal(new Set(COUNTRIES.map((c) => c[key])).size, 197, key);
   const caps = COUNTRIES.map((c) => c.capital).filter((v) => v !== null);
   assert.equal(new Set(caps).size, caps.length);
@@ -66,6 +66,26 @@ check('data: names and capitals as chosen (tools/README.md, Names and capitals)'
   assert.deepEqual(['TUR', 'CZE', 'CIV', 'CPV', 'SWZ', 'MKD', 'TLS', 'MMR', 'COD', 'COG', 'VAT', 'USA', 'STP'].map((id) => byId.get(id).name),
     ['Türkiye', 'Czechia', 'Côte d\'Ivoire', 'Cabo Verde', 'Eswatini', 'North Macedonia', 'Timor-Leste', 'Myanmar',
       'Democratic Republic of the Congo', 'Congo', 'Vatican City', 'United States', 'São Tomé and Príncipe']);
+});
+
+// A Wikipedia article title as stored: the article's name with spaces; no
+// underscore, section, query or link syntax, no padding (tools/wiki_titles.py
+// checks the articles themselves, online, by hand).
+const TITLE = /^(?! )(?!.* $)[^_#?|[\]{}<>]+$/;
+
+check('data: Wikipedia titles of every entry and of every capital (all asked), well-formed and unique', () => {
+  for (const key of ['wiki', 'capitalWiki']) {
+    for (const c of COUNTRIES) assert.match(c[key] ?? '', TITLE, `${c.id} ${key}`);
+    assert.equal(new Set(COUNTRIES.map((c) => c[key])).size, 197, `${key} unique`);
+  }
+  const of = (id) => [byId.get(id).wiki, byId.get(id).capitalWiki];
+  // special cases (tools/README.md, Wikipedia titles)
+  assert.deepEqual(of('GEO'), ['Georgia (country)', 'Tbilisi']);
+  assert.deepEqual(of('IRL'), ['Republic of Ireland', 'Dublin']);
+  assert.deepEqual(of('BOL'), ['Bolivia', 'Sucre'], 'Sucre / La Paz: the first city named');
+  assert.deepEqual(of('ISR'), ['Israel', 'Jerusalem']);
+  assert.deepEqual(of('VAT'), ['Vatican City', 'Vatican City']);
+  assert.deepEqual(of('GRL'), ['Greenland', 'Nuuk']);
 });
 
 check('config: fits the engine contract, every round text renders, prompts unique per round', () => {

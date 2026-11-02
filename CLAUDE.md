@@ -281,9 +281,11 @@ a one-handed pinch about the centre; on in world-quiz).
   colours outside the net as the page. Data: Natural Earth 50m admin-0
   v5.1.2 (public domain), the file europe-quiz pins; `tools/build_map.py`
   and `tools/countries.json` (the single source of truth: names,
-  capitals, flags, curated marker points) give `site/map.svg` and
-  `site/countries.js`. Checks: `node tools/data.test.mjs`. Favicon
-  rasters exported once from `favicon.svg` as for europe-quiz.
+  capitals, flags, curated marker points, English Wikipedia titles
+  `wiki` and `capital_wiki` on all 197, checked by hand online with
+  `tools/wiki_titles.py`) give `site/map.svg` and `site/countries.js`.
+  Checks: `node tools/data.test.mjs`. Favicon rasters exported once from
+  `favicon.svg` as for europe-quiz.
 - **south-america-quiz**: a map-quiz image (engine above), English UI,
   rounds like europe-quiz (`countries`, `capitals`). 13 quiz entries: the
   12 sovereign states plus French Guiana, shown as "French Guiana
