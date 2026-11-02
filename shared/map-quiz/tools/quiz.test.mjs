@@ -591,6 +591,37 @@ check('jumpTo: never opens with the answer found last in the round left', () => 
   }
 });
 
+check('jumpTo right after a round ended: never opens with the answer that closed it; reset and restore', () => {
+  for (let seed = 0; seed < 300; seed++) {
+    // singles: the closing piece must not open the picked round (here: the same kind again)
+    const q = new Quiz(ids, seed, ['a', 'b']);
+    const closing = q.order[q.total - 1];
+    finishRound(q);
+    assert.equal(q.done, 0, 'auto-advanced');
+    q.jumpTo(1); // round 1 -> round 3
+    assert.equal(q.round, 3);
+    assert.notEqual(q.order[0], closing, `seed ${seed}`);
+    // grouped: the picked round's first answer shares no piece with the closing one
+    const g = new Quiz(P, seed, KINDS);
+    const closed = new Set(GROUPS.answers.find((a) => a.id === g.order[g.total - 1]).pieces);
+    finishRound(g); // groups done, now singles (round 1)
+    g.jumpTo(1); // singles again: round 4
+    assert.ok(!closed.has(g.order[0]), `seed ${seed}: ${g.order[0]} after ${[...closed]}`);
+  }
+  // reset forgets it; restore mid-round knows the last one found there, at a round's start nothing
+  const q = new Quiz(ids, 5, ['a', 'b']);
+  q.answer(q.target);
+  assert.deepEqual(q.lastFound, [q.order[0]]);
+  const mid = Quiz.restore(JSON.parse(JSON.stringify(q.serialize())), ids, ['a', 'b']);
+  assert.deepEqual(mid.lastFound, [q.order[0]]);
+  finishRound(q);
+  assert.equal(Quiz.restore(JSON.parse(JSON.stringify(q.serialize())), ids, ['a', 'b']).lastFound, null, 'not saved');
+  assert.ok(q.lastFound);
+  q.reset();
+  assert.equal(q.lastFound, null);
+  assert.ok(!('lastFound' in q.serialize()), 'the save format is unchanged');
+});
+
 check('jumpTo: grouped and subset kinds; RangeError for a kind that is none', () => {
   const q = new Quiz(P, 7, KINDS);
   q.jumpTo(2);

@@ -35,7 +35,9 @@
 // (whatever carryColours says: with an even number of kinds the new round
 // may have the old one's colour, and carried colours would look found);
 // the game's counters run on, the round's misses start at 0. It never
-// opens with the answer found last in the round left.
+// opens with the answer found last (lastFound: in the round left, or the
+// one that closed the round before when none was found since; not saved,
+// so after a reload only answers found since count).
 //
 // A saved game records its round kinds (the rounds' keys), so restore()
 // turns it down once the image's rounds change: a saved round index would
@@ -172,8 +174,10 @@ export class Quiz {
     this.start(0, null);
   }
 
-  // prev: the pieces of the answer that closed the round before (or null).
+  // prev: the pieces of the answer found last (the one that closed the
+  // round before, or the last one found in a round left by jumpTo), or null.
   start(round, prev) {
+    this.lastFound = prev ? prev.slice() : null;
     this.round = round;
     this.pos = 0;
     this.roundMisses = 0;
@@ -254,6 +258,7 @@ export class Quiz {
     }
     this.correct++;
     const pieces = k.piecesOf.get(id).slice();
+    this.lastFound = pieces.slice();
     for (const p of pieces) this.colours[p] = this.colour;
     this.pos++;
     if (this.pos < this.order.length) return { result: 'correct', id, pieces };
@@ -267,9 +272,8 @@ export class Quiz {
   jumpTo(kind) {
     if (!Number.isSafeInteger(kind) || kind < 0 || kind >= this.kinds) throw new RangeError(`kind: an integer from 0 to ${this.kinds - 1}`);
     const next = this.round + 1;
-    const prev = this.pos > 0 ? this.piecesOf(this.order[this.pos - 1]) : null;
     this.colours = {};
-    this.start(next + ((kind - (next % this.kinds) + this.kinds) % this.kinds), prev);
+    this.start(next + ((kind - (next % this.kinds) + this.kinds) % this.kinds), this.lastFound);
   }
 
   reset() {
@@ -315,6 +319,8 @@ export class Quiz {
     if (!colours || typeof colours !== 'object' || Array.isArray(colours)) return null;
     for (const [id, c] of Object.entries(colours)) if (!q.idSet.has(id) || (c !== 1 && c !== 2)) return null;
     Object.assign(q, { game, round, pos, order: order.slice(), colours: { ...colours }, correct, misses, roundMisses });
+    // not saved: the last answer found in this round, if any (one that closed the round before is forgotten)
+    q.lastFound = pos > 0 ? q.piecesOf(order[pos - 1]) : null;
     return q;
   }
 }
