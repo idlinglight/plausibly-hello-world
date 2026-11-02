@@ -234,11 +234,18 @@ TRANSFORMS = {t.name: t for t in (GNOMONIC, FULLER, SNYDER)}
 
 
 # ------------------------------------------------------------------ helpers for adapters
-def stitch_antimeridian(polys):
+def stitch_antimeridian(polys, tol=1e-4):
     """A feature's lon/lat polygons (GeoJSON order) with every segment that
     runs along lon +-180 split at all the feature's latitudes there, so the
     two sides of a polygon cut at the antimeridian (Natural Earth: Russia's
-    Chukotka, Fiji, Antarctica) have the same vertices and merge."""
+    Chukotka and Wrangel Island, Fiji, Antarctica) have the same vertices
+    and merge. Longitudes within tol degrees of +-180 count as on it
+    (Natural Earth has some at -179.999951, 5 m off)."""
+    def on_seam(c):
+        if 180 - abs(c[0]) <= tol:
+            return (180.0 if c[0] > 0 else -180.0, c[1])
+        return c
+    polys = [[[on_seam(c) for c in r] for r in p] for p in polys]
     lats = sorted({c[1] for p in polys for r in p for c in r if abs(c[0]) == 180})
     if not lats:
         return polys

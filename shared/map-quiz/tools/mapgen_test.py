@@ -613,7 +613,7 @@ class Polyhedral(unittest.TestCase):
         net = ph.Polyhedral()
         # Chukotka's latitudes (piece 3 on both sides); the two halves have different vertices on the seam
         east = [[[175, 64], [180, 64], [180, 65.5], [180, 67], [175, 67], [175, 64]]]
-        west = [[[-180, 64], [-176, 64], [-176, 67], [-180, 67], [-180, 65], [-180, 64]]]
+        west = [[[-180, 64], [-176, 64], [-176, 67], [-179.99995, 67], [-180, 65], [-180, 64]]]  # 5 m off, as NE
         seam = [net(180, 65.5), net(-180, 65)]
 
         def ring_points(polys):
