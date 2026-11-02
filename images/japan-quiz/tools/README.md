@@ -12,15 +12,16 @@ copies `site/` only); its outputs are committed:
   engine's `style.css` (and the image's `japan.css`) does that.
 - `site/japan.js`: the map's window/extent (`MAP`), the pieces (`PIECES`)
   and the answers of the rounds with the pieces each covers and their
-  texts: `ISLANDS` (4), `REGIONS` (8), `PREFECTURES` (47).
+  texts and Wikipedia titles: `ISLANDS` (4), `REGIONS` (8), `PREFECTURES`
+  (47).
   `site/config.js` (hand-written) hands them and the English texts to
   the shared map-quiz engine: the rounds' answers, which line overlays
   each round shows, the card's kanji · kana line.
 - `site/relief.png`: the shaded relief over the window (below, "Relief").
 
 The first two carry a "generated, don't edit" header. Edit `prefectures.json`
-(names, kanji, kana, capitals, regions, islands: the single source of
-truth) or `build_map.py`, then regenerate.
+(names, kanji, kana, capitals, regions, islands, Wikipedia titles: the
+single source of truth) or `build_map.py`, then regenerate.
 
 `build_map.py` is this image's adapter: Natural Earth, the fix-ups, the
 split into pieces, the window, the quiz data and the relief. The geometry (projection,
@@ -263,3 +264,59 @@ includes Mie) goes by its common name on purpose: Kansai (関西 ·
 its extent is Kinki's, Mie included. Tōkyō's capital is Shinjuku (seat
 of the metropolitan government), so `capital_differs` marks 18
 prefectures (17 + Tōkyō).
+
+## Wikipedia titles
+
+The card links the asked name to its English Wikipedia article (the
+links are built in `site/config.js`). `prefectures.json` holds the
+titles: `wiki` on every island, region and prefecture, `capital_wiki` on
+the 18 prefectures whose capital the capitals round asks
+(`capital_differs`), and only there. Stored exactly as the article is
+titled (spaces, no redirect); `build_map.py` passes them into `japan.js`
+(`wiki`; `capitalWiki` on those 18 only) and stops if one is missing,
+malformed (`mapgen.wiki_title_error`), duplicated within its group, or a
+`capital_wiki` sits on a capital that isn't asked; `data.test.mjs` checks
+the shape and the special cases below.
+
+Checked on 2026-11-02 against the live English Wikipedia and Wikidata
+with `wiki_titles.py`, by hand: it needs the network, so neither the
+build nor CI runs it (the shared part is
+`shared/map-quiz/tools/wikicheck.py`):
+
+```sh
+python3 -I images/japan-quiz/tools/wiki_titles.py /tmp/ne/ne_10m_admin_1_states_provinces.geojson            # check; exit 1 on a failure
+python3 -I images/japan-quiz/tools/wiki_titles.py /tmp/ne/ne_10m_admin_1_states_provinces.geojson --suggest  # propose titles from Wikidata
+```
+
+Each title must exist, be canonical (Wikipedia neither normalises nor
+redirects it), not be a disambiguation page, and belong to the expected
+Wikidata item: a prefecture's Natural Earth's `wikidataid` (admin-1,
+matched by `iso` as the build matches it; all 47 agree), an island's or
+region's the item checked by hand in `AREA_ITEMS` (`wiki_titles.py`), a
+capital's an item Wikidata records as a current capital of the
+prefecture (its P36 or the city's P1376). Result: 77 of 77 verified (12
+islands and regions, 47 prefectures, 18 capitals). Prefecture and
+capital titles came from Wikidata (the English sitelink; the current
+capital, matched by name); the islands and regions were looked up by
+name. Special cases:
+
+- **Romanisation**: Wikipedia's own titles, not the quiz's Hepburn:
+  without macrons Honshu, Hokkaido, Kyushu, Tokyo, Kyoto Prefecture,
+  Osaka Prefecture, Kobe; with them Tōhoku region, Kantō region, Chūbu
+  region, Chūgoku region, Hyōgo Prefecture, Kōchi Prefecture, Ōita
+  Prefecture, Kōfu, Ōtsu. Prefectures are "<Name> Prefecture" except
+  Tokyo and Hokkaido; Mito and Tsu are "Mito, Ibaraki" and "Tsu, Mie".
+- **Hokkaidō**: one article, "Hokkaido", for the island, the region
+  ("Hokkaido region" redirects there) and the prefecture ("Hokkaido
+  Prefecture" redirects there too). Its item, Q35581, is the island's,
+  and Natural Earth gives the same item for JP-01. Sapporo is checked
+  against Wikidata's prefecture item, Q1037393 (`CAPITAL_OF`; its P36 is
+  Sapporo), which has no article of its own.
+- **Shikoku and Kyūshū regions**: no articles of their own ("Shikoku
+  region" and "Kyushu region" redirect to the island articles, with no
+  section), so the regions link "Shikoku" and "Kyushu", as the islands
+  do.
+- **Kansai**: "Kansai region" (Q164256; "Kinki region" redirects there),
+  the common name the quiz uses.
+- **Tōkyō's capital**: "Shinjuku", the special ward's article (Q179645,
+  in Tokyo's P36).

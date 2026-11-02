@@ -17,7 +17,9 @@ map-quiz core, shared/map-quiz/tools/mapgen.
 
 Pipeline:
   1. tools/prefectures.json (47 prefectures, 4 islands, 8 regions; names,
-     kanji, kana): checked, every kana reading against its Hepburn name.
+     kanji, kana, Wikipedia titles): checked, every kana reading against
+     its Hepburn name, the titles present where the rounds link them
+     (their articles are checked online, by hand: tools/wiki_titles.py).
   2. Natural Earth admin-1 states/provinces, 10m, v5.1.2 (sha256-verified):
      the 47 JPN features, matched by ISO 3166-2 code, NE's name checked.
   3. Fix-ups (MOVES, DROPS): the Amami islands (filed under Okinawa) and
@@ -64,7 +66,7 @@ Pipeline:
  10. Write map.svg (one <path> per piece in <g id="pieces">, the relief,
      the lakes and the lines in <g id="overlays">), japan.js (MAP, PIECES,
      ISLANDS, REGIONS, PREFECTURES: the answers of the rounds with their
-     pieces and texts) and relief.png.
+     pieces, texts and Wikipedia titles) and relief.png.
 """
 import argparse
 import array
@@ -310,6 +312,29 @@ def load_data():
             fail(f"prefectures.json: {p['id']}: unknown region or island")
     if {p["region"] for p in pl} != reg_ids or {p["island"] for p in pl} - {None} != isl_ids:
         fail("prefectures.json: a region or island without prefectures")
+    # Wikipedia titles (tools/README.md, "Wikipedia titles"): wiki on every
+    # answer (each is asked by name), capital_wiki exactly on the prefectures
+    # the capitals round asks (capital_differs).
+    for e in islands + regions + pl:
+        bad = mapgen.wiki_title_error(e.get("wiki"))
+        if bad:
+            fail(f"prefectures.json: {e['id']}: wiki (an English Wikipedia article title) "
+                 f"{'missing' if 'wiki' not in e else bad}")
+    for p in pl:
+        if not p["capital_differs"]:
+            if "capital_wiki" in p:
+                fail(f"prefectures.json: {p['id']}: capital_wiki, but the capitals round doesn't ask its capital")
+            continue
+        bad = mapgen.wiki_title_error(p.get("capital_wiki"))
+        if bad:
+            fail(f"prefectures.json: {p['id']}: capital_wiki (an English Wikipedia article title) "
+                 f"{'missing' if 'capital_wiki' not in p else bad}")
+    # unique per group: one article may serve an island, a region and a
+    # prefecture (Hokkaido; Shikoku and Kyushu as island and region)
+    for group, key in ((islands, "wiki"), (regions, "wiki"), (pl, "wiki"), (pl, "capital_wiki")):
+        vals = [e[key] for e in group if key in e]
+        if len(set(vals)) != len(vals):
+            fail(f"prefectures.json: duplicate {key}")
     return islands, regions, pl
 
 
@@ -800,7 +825,8 @@ def build(adm1_path, adm0_path, lakes_path, etopo_path):
 
     def texts(e):
         return [f"id: {mapgen.js_string(e['id'])}", f"name: {mapgen.js_string(e['name'])}",
-                f"kanji: {mapgen.js_string(e['kanji'])}", f"kana: {mapgen.js_string(e['kana'])}"]
+                f"kanji: {mapgen.js_string(e['kanji'])}", f"kana: {mapgen.js_string(e['kana'])}",
+                f"wiki: {mapgen.js_string(e['wiki'])}"]
 
     js = [
         f"// {HEAD}",
@@ -813,7 +839,9 @@ def build(adm1_path, adm0_path, lakes_path, etopo_path):
         "// Okinawa is one piece. prefecture: whose piece it is.",
         "// ISLANDS, REGIONS, PREFECTURES: the answers, each with the pieces it",
         "// covers; name in Hepburn, kanji and kana its Japanese name and reading",
-        "// (prefectures.json). A piece in no island (the -isles pieces, Okinawa)",
+        "// (prefectures.json), wiki the English Wikipedia article's title;",
+        "// capitalWiki: the capital's article, only where the capitals round asks",
+        "// it (capitalDiffers). A piece in no island (the -isles pieces, Okinawa)",
         "// lies on none of the four main islands.",
         "",
         window.map_js(),
@@ -838,6 +866,7 @@ def build(adm1_path, adm0_path, lakes_path, etopo_path):
             f"capitalKanji: {mapgen.js_string(p['capital_kanji'])}",
             f"capitalKana: {mapgen.js_string(p['capital_kana'])}",
             f"capitalDiffers: {'true' if p['capital_differs'] else 'false'}",
+        ] + ([f"capitalWiki: {mapgen.js_string(p['capital_wiki'])}"] if p["capital_differs"] else []) + [
             f"region: {mapgen.js_string(p['region'])}",
             f"island: {'null' if p['island'] is None else mapgen.js_string(p['island'])}",
             f"pieces: {js_list(ps)}",
