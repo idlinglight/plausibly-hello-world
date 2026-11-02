@@ -1,13 +1,21 @@
 #!/usr/bin/env python3
-"""Offline checks of wikicheck's pure parts on canned API answers:
-python3 -I shared/map-quiz/tools/wikicheck_test.py   (stdlib unittest)
+"""Offline checks of wikicheck on canned API answers (CI runs them):
+python3 -I shared/map-quiz/tools/wikicheck_test.py   (stdlib unittest, well
+under a second)
 
-No network: api_get is replaced by a function that fails the test. The
-live check is each image's tools/wiki_titles.py, run by hand."""
+No network: opening a socket fails the test (blocked for the whole module),
+api_get's opener and sleep are fakes, and the other tests replace api_get by
+a function that fails. The live check is each image's tools/wiki_titles.py,
+run by hand."""
 import datetime
+import http.client
+import io
+import json
 import os
+import socket
 import sys
 import unittest
+import urllib.error
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import wikicheck  # noqa: E402
@@ -17,6 +25,40 @@ TODAY = datetime.date(2026, 11, 2)
 
 def no_network(*_args, **_kw):
     raise AssertionError("wikicheck_test must not touch the network")
+
+
+_saved_socket = (socket.socket.connect, socket.create_connection)
+
+
+def setUpModule():
+    socket.socket.connect = no_network
+    socket.create_connection = no_network
+
+
+def tearDownModule():
+    socket.socket.connect, socket.create_connection = _saved_socket
+
+
+class FakeResponse:
+    def __init__(self, body, headers=None):
+        self.body, self.headers = body, headers or {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def read(self):
+        return self.body
+
+
+def ok(data):
+    return FakeResponse(json.dumps(data).encode("utf-8"))
+
+
+def http_error(code, headers=None):
+    return urllib.error.HTTPError("https://example.org/w/api.php", code, "canned", headers or {}, io.BytesIO(b""))
 
 
 def statement(value, rank="normal", start=None, end=None, end_snak="value"):
@@ -151,6 +193,72 @@ class WikiCheckTest(unittest.TestCase):
         self.assertEqual(wikicheck.fold("Kōbe"), "kobe")
         self.assertEqual([len(b) for b in wikicheck.batches(range(120))], [50, 50, 20])
         self.assertEqual(wikicheck.batches(["a", "b", "a"]), [["a", "b"]])
+
+
+class ApiGetTest(unittest.TestCase):
+    """api_get's retries, on canned answers: outcomes are responses to
+    return or exceptions to raise, one per request."""
+
+    def run_api(self, outcomes, **kw):
+        self.requests, self.sleeps = [], []
+        queue = list(outcomes)
+
+        def fake_urlopen(req, timeout):
+            self.requests.append(req)
+            out = queue.pop(0)
+            if isinstance(out, BaseException):
+                raise out
+            return out
+        saved = (wikicheck._urlopen, wikicheck._sleep, wikicheck.PAUSE)
+        wikicheck._urlopen, wikicheck._sleep, wikicheck.PAUSE = fake_urlopen, self.sleeps.append, 0
+        try:
+            return wikicheck.api_get("https://example.org/w/api.php", {"action": "query"}, **kw)
+        finally:
+            wikicheck._urlopen, wikicheck._sleep, wikicheck.PAUSE = saved
+            self.assertEqual(queue, [], "every canned outcome used")
+
+    def test_transient_failures_are_retried(self):
+        body = self.run_api([
+            socket.timeout("timed out"),                       # a read timeout (3.9: not a TimeoutError)
+            TimeoutError("timed out"),
+            http.client.RemoteDisconnected("closed"),          # a dropped connection
+            ConnectionResetError(54, "reset"),
+            urllib.error.URLError("no route"),
+            FakeResponse(b"<html>502 Bad Gateway</html>"),     # not JSON (a proxy's page)
+            http_error(502),
+            ok({"query": {"pages": []}}),
+        ], tries=8)
+        self.assertEqual(body, {"query": {"pages": []}})
+        self.assertEqual(len(self.requests), 8)
+        self.assertEqual(self.sleeps, [5.0, 10.0, 20.0, 40.0, 60.0, 60.0, 60.0])  # bounded backoff
+        req = self.requests[0]
+        self.assertEqual(req.get_header("User-agent"), wikicheck.USER_AGENT)
+        self.assertIn("maxlag=5", req.full_url)
+        self.assertIn("formatversion=2", req.full_url)
+
+    def test_transient_failures_give_up(self):
+        with self.assertRaisesRegex(RuntimeError, r"(timeout|TimeoutError): timed out \(gave up after 3 tries\)"):
+            self.run_api([socket.timeout("timed out")] * 3, tries=3)
+        self.assertEqual(len(self.sleeps), 2)
+        with self.assertRaisesRegex(RuntimeError, "JSONDecodeError"):
+            self.run_api([FakeResponse(b"<html>")] * 2, tries=2)
+        with self.assertRaisesRegex(RuntimeError, "ValueError: a JSON list, not an object"):
+            self.run_api([ok([1])], tries=1)
+
+    def test_lag_waited_out_within_budget(self):
+        lagged = FakeResponse(json.dumps({"error": {"code": "maxlag", "info": "lagged"}}).encode(), {"Retry-After": "7"})
+        body = self.run_api([lagged, http_error(503, {"Retry-After": "2"}), http_error(429), ok({"ok": 1})])
+        self.assertEqual(body, {"ok": 1})
+        self.assertEqual(self.sleeps, [7.0, 5.0, 20.0])  # Retry-After, at least 5 s; then the backoff
+        with self.assertRaisesRegex(RuntimeError, "still lagged or busy after 5 s"):
+            self.run_api([http_error(503)] * 2, lag_budget=12)
+
+    def test_other_errors_are_not_retried(self):
+        with self.assertRaisesRegex(RuntimeError, "badvalue: no such action"):
+            self.run_api([ok({"error": {"code": "badvalue", "info": "no such action"}})])
+        with self.assertRaisesRegex(RuntimeError, "HTTP 404 canned"):
+            self.run_api([http_error(404)])
+        self.assertEqual(self.sleeps, [])
 
 
 if __name__ == "__main__":
