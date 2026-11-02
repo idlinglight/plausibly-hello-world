@@ -285,9 +285,21 @@ def count_crossings(arcs):
     segments that only touch, e.g. at a shared vertex, don't count). A
     shared-arc topology has none; simplification can make some, which
     would show as overlaps or slivers between neighbours."""
-    segs = [(p, q) for a in arcs for p, q in zip(a, a[1:]) if p != q]
+    return len(crossing_pairs(arcs))
+
+
+def crossing_pairs(arcs):
+    """The crossings count_crossings counts, as (arc index, arc index) per
+    crossing (the lower index first; an arc crossing itself appears as
+    (i, i)), sorted."""
+    segs, owner = [], []
+    for ai, a in enumerate(arcs):
+        for p, q in zip(a, a[1:]):
+            if p != q:
+                segs.append((p, q))
+                owner.append(ai)
     if not segs:
-        return 0
+        return []
     # Grid buckets about four average segments wide; a pair is tested only in
     # the cell holding the low corner of their bounding boxes' overlap.
     cell = max(1, 4 * sum(abs(q[0] - p[0]) + abs(q[1] - p[1]) for p, q in segs) // len(segs))
@@ -301,7 +313,7 @@ def count_crossings(arcs):
         v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
         return (v > 0) - (v < 0)
 
-    n = 0
+    found = []
     for (cx, cy), members in grid.items():
         for k, i in enumerate(members):
             p, q = segs[i]
@@ -315,8 +327,40 @@ def count_crossings(arcs):
                 if p in (r, s) or q in (r, s):
                     continue
                 if orient(p, q, r) * orient(p, q, s) < 0 and orient(r, s, p) * orient(r, s, q) < 0:
-                    n += 1
-    return n
+                    found.append(tuple(sorted((owner[i], owner[j]))))
+    return sorted(found)
+
+
+def cut_cells(poly, xs=(), ys=()):
+    """A polygon (exterior, holes; any planar or lon/lat coordinates) cut
+    along the vertical lines x = xs and horizontal lines y = ys: {(i, j):
+    polygon} for the cells it reaches, i counting the xs below x, j the ys
+    below y. Rectangle clipping per cell (clip_ring), so the parts of two
+    neighbouring cells share their cut vertices exactly and merge again in
+    a MapBuilder feature. Cells without a usable exterior are left out."""
+    inf = float("inf")
+    bx = [-inf] + sorted(xs) + [inf]
+    by = [-inf] + sorted(ys) + [inf]
+    out = {}
+    for i in range(len(bx) - 1):
+        for j in range(len(by) - 1):
+            rings = []
+            for ri, ring in enumerate(poly):
+                r = clip_ring([tuple(c[:2]) for c in open_ring(ring)], bx[i], by[j], bx[i + 1], by[j + 1])
+                q = []
+                for pt in r:
+                    if not q or q[-1] != pt:
+                        q.append(pt)
+                while len(q) > 1 and q[0] == q[-1]:
+                    q.pop()
+                if len(set(q)) < 3 or area2(q) == 0:
+                    if ri == 0:
+                        break
+                    continue
+                rings.append(q + q[:1])
+            if rings and len(rings[0]) > 3:
+                out[(i, j)] = rings
+    return out
 
 
 def ring_from_arcs(refs, arcs):

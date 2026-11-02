@@ -352,6 +352,61 @@ class Lines(unittest.TestCase):
         self.assertEqual(mapgen.lines_d([], 1), "")
 
 
+def dip_and_island(**kw):
+    """Region A's top edge dips between two tall bumps, island B sits in the
+    dip and reaches above the bumps: a strong Douglas-Peucker on A's ring
+    cuts straight through B."""
+    w = mapgen.Window([(0, 0), (20, 12)], 0.0, 200.0, (0, 0))
+    mb = mapgen.MapBuilder(mapgen.Identity(), w, ["A", "B"], grid=10, min_island=0, **kw)
+    mb.add_region("A", [[(0, 0), (20, 0), (20, 5), (15, 5), (14, 10), (13, 5), (7, 5), (6, 10), (5, 5), (0, 5), (0, 0)]])
+    mb.add_region("B", [[(9.5, 8), (10.5, 8), (10.5, 11), (9.5, 11), (9.5, 8)]])
+    return mb.build(keep_islands={"A", "B"})
+
+
+class Repairs(unittest.TestCase):
+    def test_crossing_pairs(self):
+        arcs = [[(0, 0), (10, 10)], [(0, 10), (10, 0)], [(20, 0), (30, 0)], [(20, 5), (30, 5), (30, 0), (20, 10)]]
+        self.assertEqual(mapgen.crossing_pairs(arcs), [(0, 1), (3, 3)])
+        self.assertEqual(mapgen.count_crossings(arcs), 2)
+        self.assertEqual(mapgen.crossing_pairs([]), [])
+
+    def test_repair_crossings(self):
+        self.assertEqual(dip_and_island().stats["crossings"], 0)
+        bad = dip_and_island(region_tol=60)
+        self.assertGreater(bad.stats["crossings"], 0)
+        self.assertEqual(bad.stats["repaired"], 0)
+        good = dip_and_island(region_tol=60, repair_crossings=True)
+        self.assertEqual(good.stats["crossings"], 0)
+        self.assertGreater(good.stats["repaired"], 0)
+        self.assertIn("repaired", good.report(["A", "B"])["arc crossings"])
+
+    def test_region_tols(self):
+        plain = dip_and_island()
+        fine = dip_and_island(region_tol=60, region_tols={"A": 0})
+        self.assertEqual(fine.stats["crossings"], 0)
+        self.assertEqual(fine.paths["A"], plain.paths["A"])  # A's arcs keep every vertex
+        with self.assertRaises(ValueError):
+            dip_and_island(region_tols={"Z": 1})
+
+    def test_cut_cells(self):
+        poly = [[(0, 0), (6, 0), (6, 6), (0, 6), (0, 0)], [(2.5, 0.5), (2.5, 1.5), (3.5, 1.5), (3.5, 0.5), (2.5, 0.5)]]
+        cells = mapgen.cut_cells(poly, xs=[2, 4], ys=[2, 4])
+        self.assertEqual(sorted(cells), [(i, j) for i in range(3) for j in range(3)])
+        self.assertEqual(len(cells[(1, 0)]), 2)  # the hole stays with its cell
+        self.assertAlmostEqual(sum(sum(mapgen.area2(r[:-1]) for r in c) for c in cells.values()) / 2, 35)
+        self.assertEqual(mapgen.cut_cells(poly, xs=[10]), {(0, 0): [list(map(tuple, poly[0][:-1])) + [(0, 0)],
+                                                                    list(map(tuple, poly[1][:-1])) + [(2.5, 0.5)]]})
+        w = mapgen.Window([(0, 0), (6, 6)], 0.0, 60.0, (0, 0))
+        mb = mapgen.MapBuilder(mapgen.Identity(), w, ["A", "B"], grid=10, min_island=0)
+        for cell, part in sorted(cells.items()):
+            mb.add_region("B" if cell == (1, 1) else "A", part)
+        res = mb.build()
+        a = [mapgen.ring_from_arcs(r, res.arcs) for r in res.topo["A"]]
+        self.assertEqual(sorted(mapgen.area2(r) > 0 for r in a), [False, False, True])  # the outline, B's hole, the hole
+        self.assertEqual(len(res.topo["B"]), 1)
+        self.assertEqual(res.stats["crossings"], 0)
+
+
 # ------------------------------------------------------------------ polyhedral (Fuller's net)
 ph = mapgen.polyhedral
 NET_AREA = 20 * math.sqrt(3) / 4  # the net's area (unit edges) for the sphere's 4 pi

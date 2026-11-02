@@ -382,8 +382,19 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   steps (vienna-districts) is not.
   Simplification can make arcs cross; `res.stats["crossings"]` counts
   them (the report prints it; europe's 5 are all in context land) and an
-  adapter that simplifies region arcs should require 0. A region lost to
-  the grid keeps its outline at 10× finer resolution.
+  adapter that simplifies region arcs should require 0:
+  `repair_crossings=True` puts the arcs of every crossing back to their
+  unsimplified points until none is left (`stats["repaired"]`; crossings
+  the snapping itself made stay, a finer grid helps there;
+  `mapgen.crossing_pairs(arcs)` lists them). `region_tols={rid: tol}`
+  gives single regions their own tolerance (an arc takes the smallest of
+  its regions'), e.g. finer outlines for small states people zoom in on.
+  A region lost to the grid keeps its outline at 10× finer resolution.
+- `mapgen.cut_cells(poly, xs, ys)` cuts a polygon (lon/lat or projected)
+  along vertical and horizontal lines into `{(i, j): polygon}` cells; the
+  cells share their cut vertices exactly, so an adapter can hand a part
+  of one feature to another (a border-view fix-up) and the rest still
+  merges.
 - Line overlays along the region edges (for `rounds[].lines`): the result
   keeps the shared topology it drew the paths from, `res.arcs`
   (simplified arcs, integer points in 1/`res.grid` units) and `res.topo`
