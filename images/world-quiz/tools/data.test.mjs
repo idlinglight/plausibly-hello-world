@@ -73,7 +73,7 @@ check('config: fits the engine contract, every round text renders, prompts uniqu
   assert.equal(config.items.length, 197);
   assert.equal(config.map, MAP);
   assert.equal(config.carryColours, false);
-  assert.deepEqual(config.view, { maxScale: 60, besideHud: true });
+  assert.deepEqual(config.view, { maxScale: 60, besideHud: true, panToCentre: true });
   assert.equal(config.roundPicker, true);
   assert.equal(config.text.roundPicker, 'Pick a round (starts it fresh)');
 });

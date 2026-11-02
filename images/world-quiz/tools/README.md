@@ -211,7 +211,9 @@ box of the polygon it sits on (the island, not the archipelago), so it
 stays until that island is about 28 px across. `view.maxScale` 60: at
 the closest zoom most small states are shapes to tap (Malta about
 30 px); Vatican City, Monaco, Nauru, Tuvalu and San Marino keep their
-rings even there.
+rings even there. `view.panToCentre`: any part of the net can be dragged
+to the middle, also at the full view (an edge region such as Australia
+before a pinch about the screen's centre).
 
 ## Far-flung parts
 

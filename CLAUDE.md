@@ -272,7 +272,8 @@ a one-handed pinch about the centre; default off).
   Brunei, Kosovo, Luxembourg, Montenegro and Qatar (largest drawn shape
   under 4 units) have rings in every round. Israel's capital: Jerusalem
   (owner). `carryColours: false`,
-  `roundPicker: true`, `view`: `maxScale` 60, `besideHud`. Far parts cut
+  `roundPicker: true`, `view`: `maxScale` 60, `besideHud`, `panToCentre` (any part of the net
+  can be dragged to the middle, also at the full view). Far parts cut
   off by the net and under 1 % of their state (NZ's Chathams and
   Tokelau, a Fiji islet) are dropped, asserted. map.svg starts with
   `<path id="net">` (the sea) and `<path id="folds">`; `world.css`

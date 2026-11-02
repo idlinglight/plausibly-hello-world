@@ -88,6 +88,8 @@ export default {
   // Malta, Andorra, Grenada and most other small states become shapes to
   // tap; the smallest (Vatican City, Monaco, Nauru, Tuvalu, San Marino)
   // keep their rings. besideHud: the net reaches the window's top-right
-  // corner (Antarctica's piece).
-  view: { maxScale: 60, besideHud: true },
+  // corner (Antarctica's piece). panToCentre: any part of the net can be
+  // dragged to the middle, also at the full view, e.g. Australia before a
+  // pinch about the screen's centre (owner, after testing on a phone).
+  view: { maxScale: 60, besideHud: true, panToCentre: true },
 };
