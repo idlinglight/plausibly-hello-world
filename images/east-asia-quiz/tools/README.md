@@ -50,14 +50,15 @@ it, gzip -9) and what it merged, dropped and checked.
 domain**; no attribution required (it's credited here anyway).
 
 1:50m has every quiz country, Singapore and Palau included; the whole
-map.svg is about 113 KB (46 KB as served, gzip -1). Singapore is one
+map.svg is about 121 KB (49 KB as served, gzip -1). Singapore is one
 coarse polygon (about 5.6 × 2.8 units), Palau one for Babeldaob and its
 neighbours. Small islands this scale does not have: Penghu and Matsu
 (Taiwan has its main island and Kinmen), the Senkaku islands, the
 Liancourt Rocks, Pratas, and every reef and islet of the South China Sea
 (the Paracel and Spratly islands, Scarborough Shoal). The build checks
-the last (`EMPTY`: no land at all in boxes around the Paracels, the
-Spratlys, Scarborough Shoal and Pratas), so a source that has them stops
+the last (`EMPTY`: no polygon meets the boxes around the Paracels, the
+Spratlys, Scarborough Shoal and Pratas, not even with an edge passing
+through without a vertex inside), so a source that has them stops
 the build until they are handled on purpose: as non-clickable context
 land, not assigned to a quiz country. Of the Ogasawara islands only
 Hahajima is in the file (a speck about 1,000 km south of Tokyo, inside
@@ -66,8 +67,10 @@ Hachijōjima.
 
 ## Fix-ups
 
-`build_map.py` (`MERGES`, `DROPS`) changes two things; point checks
-(`VIEW_CHECKS`) assert the result on every run:
+`build_map.py` (`MERGES`, `DROPS`) changes two things about what is
+whose (the antimeridian stitch, which only joins Natural Earth's cut
+parts, is under "Map geometry"); point checks (`VIEW_CHECKS`) assert the
+result on every run:
 
 - **Hong Kong and Macao → China**: Natural Earth has them as separate
   features (`HKG`, `MAC`); both merge into `CHN`, the shared borders
@@ -96,11 +99,12 @@ draws it, checked by points:
   (Kupang checked) Indonesia.
 - Hahajima (Ogasawara) is Japan; Tobi has no land left.
 
-Context land (one merged, non-interactive path): India, Bangladesh,
-Bhutan, Nepal, Sri Lanka, Pakistan, Afghanistan, Central Asia, Russia
-incl. the Kuril islands, Papua New Guinea, Australia incl. Christmas
-Island, Guam and the Northern Mariana Islands, Micronesia, and everything
-else that isn't one of the 18 quiz countries.
+Context land (one merged, non-interactive path): every other polygon
+that reaches the extent (below), from Sweden, the Baltic states and
+Moscow in the north-west, Türkiye and Arabia in the west, Russia incl.
+the Kuril islands and Chukotka across 180° to Alaska in the north-east,
+to India, Papua New Guinea, Australia and New Zealand; Guam, the
+Northern Mariana Islands and Micronesia in the Pacific.
 
 ## Names and capitals
 
@@ -155,18 +159,41 @@ countries keep every island.
   no remote parts (at 1:50m nothing is far enough out to need one; a
   source with, say, Minami-Torishima would widen the window: give it a
   `REMOTE` rule then, as europe-quiz has).
-- Extent (the viewBox): the window plus 45 % of its width and height per
-  side of context (Russia to the Arctic coast, India, Australia, the
-  Pacific islands), so wide and tall screens show map instead of an empty
-  band (the page fades it out at the edge).
+- Extent (the viewBox, `-450 -480.9 1900 2030.5`): the window plus 45 %
+  of its width and height per side of context, so wide and tall screens
+  show map instead of an empty band (the page fades it out at the edge).
+  Its corners lie about 100° (great circle) from the projection centre:
+  Sweden at the top left, Alaska at the top right, Arabia on the left,
+  New Zealand at the bottom right.
+- Context selection: a polygon is drawn when its projected bounding box
+  overlaps the extent (a lon/lat box can't describe this extent). A
+  polygon reaching more than 150° from the centre (`FAR_SIDE`: towards
+  the antipode in South America, where the projection wraps around) is
+  skipped; the build checks that its nearer vertices all lie outside the
+  extent. `CONTEXT_CHECKS` asserts drawn context land at 17 points all
+  around it (Sweden, Estonia, Latvia, Lithuania, Moscow, Türkiye, Saudi
+  Arabia, Delhi, Kamchatka, Chukotka on both sides of 180°, St. Lawrence
+  Island, Alaska, Papua New Guinea, the Northern Territory, Tasmania, New
+  Zealand), so a selection that loses land inside the extent fails.
+- Antimeridian: Natural Earth cuts Chukotka and Wrangel Island at 180°
+  into two polygons each, with different vertices along the cut (one long
+  edge on one side, a vertex every 0.24° on the other), which mapgen's
+  merge (cancelling identical segments) would leave as a drawn line. The
+  adapter moves vertices within 0.0001° of the cut onto it and gives
+  every edge along it the other side's vertices; `SEAMS` checks that no
+  drawn edge runs along 180° inside either land afterwards.
+- Window sides: after the build, the drawn quiz geometry (and the
+  markers) must still reach each side of the window where the margin puts
+  it (within 0.5 units), so a dropped island can't leave a side set by
+  nothing visible.
 - Shared borders: vertices snap to a 0.1-unit grid; parts of one country
   merge by cancelling shared segments; borders become shared arcs, so
   neighbours use identical vertices (no slivers or gaps).
 - Simplification: none for quiz countries. Context-only arcs get
   Douglas-Peucker 0.2 units near the window and 1.5 units outside it,
   where context is only ever seen small; small context islands outside
-  the window are dropped. The report's 9 arc crossings: 8 in context land
-  (from that simplification), 1 a kink in Natural Earth's own Taiwan
+  the window are dropped. The report's 19 arc crossings: 18 in context
+  land (from that simplification), 1 a kink in Natural Earth's own Taiwan
   outline near Kaohsiung (about 0.1 unit, below a pixel even at the
   closest zoom).
 

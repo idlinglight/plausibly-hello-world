@@ -21,14 +21,23 @@ Pipeline:
      main islands that would hide Palau's ring). Everything else as
      Natural Earth's default layer draws it. Point checks (VIEW_CHECKS)
      assert the result, EMPTY that the South China Sea's reefs and islets
-     aren't in the file at this scale (a source that has them must decide
-     about them here, not by accident).
+     aren't in the file at this scale (no polygon meets those boxes; a
+     source that has them must decide about them here, not by accident).
+     Natural Earth cuts land at 180° (Chukotka, Wrangel Island): every
+     edge along the cut gets the other side's vertices, so the parts merge
+     like any shared border (SEAMS checks no line is left there).
   3. Quiz countries (tools/countries.json) stay separate; every other
-     feature becomes one merged context-land path.
+     polygon whose projected bounding box reaches the extent becomes
+     context land, one merged path (polygons reaching towards the
+     antipode, FAR_SIDE, are checked to stay outside it). CONTEXT_CHECKS
+     assert that land is drawn all around the extent, from Sweden to
+     Alaska and New Zealand.
   4. Window (the full view): the bounding box of all quiz geometry plus a
      margin (no remote parts: at 1:50m nothing lies far enough out to need
-     one). Around it, EXTENT more context is drawn (so wide or tall
-     screens show map, not blank) and clipped.
+     one); after the build, each of its sides must still be set by drawn
+     quiz geometry or a marker, not by an island mapgen dropped. Around
+     it, EXTENT more context is drawn (so wide or tall screens show map,
+     not blank) and clipped.
   5. Projection: Lambert azimuthal equal-area centred on 20°N 110°E
      (GRS80), the middle of the set, scaled to a WIDTH-unit-wide viewBox,
      y down.
@@ -43,6 +52,7 @@ Pipeline:
 """
 import argparse
 import json
+import math
 import os
 import sys
 
@@ -69,6 +79,11 @@ CONTEXT_TOL = 0.2   # Douglas-Peucker tolerance (units) for arcs only context la
 FAR_TOL = 1.5       # … and for their runs of points outside the window (+ FAR_GAP): only seen small
 FAR_MIN_ISLAND = 4  # context islands entirely outside the window: dropped below this (units^2)
 FAR_GAP = 20        # units around the window that still count as near
+FAR_SIDE = 150.0    # degrees from the projection centre: polygons reaching farther (towards the antipode,
+                    # where the azimuthal projection wraps) are skipped; their nearer vertices must lie
+                    # outside the extent (the extent's corners are about 100 degrees out)
+EDGE_TOL = 0.5      # units: how far inside its expected place a window side may be drawn
+SEAM_EPS = 1e-4     # degrees: vertices this close to ±180 lie on Natural Earth's antimeridian cut
 
 LAT0, LON0 = 20.0, 110.0  # projection centre
 
@@ -114,17 +129,46 @@ VIEW_CHECKS = [
     (142.80, 47.00, "RUS", "Sakhalin (context land)"),
     (123.47, 25.74, None, "Uotsuri-jima (Senkaku: not in the file)"),
 ]
-# Boxes with no land at all in the file, checked on every run: the South
-# China Sea's reefs and islets are not in Natural Earth's 1:50m admin-0
-# file. Should a source ever have them, the build stops until they are
-# handled on purpose (as context land, not assigned to a quiz country).
+# Context land all around the extent, (lon, lat, label): each point must
+# lie in the extent and be drawn as land (in the merged context path), so a
+# selection that loses land inside the extent fails the build.
+CONTEXT_CHECKS = [
+    (15.0, 62.0, "Sweden"),
+    (25.5, 58.7, "Estonia"),
+    (25.5, 56.9, "Latvia"),
+    (24.0, 55.3, "Lithuania"),
+    (37.6, 55.75, "Moscow"),
+    (35.0, 39.0, "Türkiye"),
+    (45.0, 24.0, "Saudi Arabia"),
+    (77.2, 28.6, "Delhi"),
+    (159.0, 55.0, "Kamchatka"),
+    (172.0, 66.0, "Chukotka, west of 180°"),
+    (-176.58, 66.79, "Chukotka, east of 180°"),
+    (-169.65, 63.21, "St. Lawrence Island (Alaska)"),
+    (-150.0, 64.0, "Alaska"),
+    (145.0, -6.0, "Papua New Guinea"),
+    (133.0, -20.0, "Northern Territory (Australia)"),
+    (146.5, -42.0, "Tasmania"),
+    (172.0, -42.0, "New Zealand (South Island)"),
+]
+# Land Natural Earth cuts at 180°: (lat0, lat1, label), stretches of the
+# meridian inside the land; after the build no drawn edge may run within
+# 1 unit of it there (the cut merged away, no line through the land).
+SEAMS = [
+    (65.3, 68.7, "Chukotka"),
+    (71.1, 71.4, "Wrangel Island"),
+]
+# Boxes (lon0, lat0, lon1, lat1) with no land at all in the file, checked
+# on every run (no polygon may meet them): the South China Sea's reefs and
+# islets are not in Natural Earth's 1:50m admin-0 file. Should a source
+# ever have them, the build stops until they are handled on purpose (as
+# context land, not assigned to a quiz country).
 EMPTY = [
     ("Paracel Islands", (111.0, 15.5, 113.0, 17.5)),
     ("Spratly Islands", (111.5, 7.5, 116.0, 11.6)),
     ("Scarborough Shoal", (117.5, 14.9, 118.0, 15.4)),
     ("Pratas Island", (116.5, 20.5, 117.0, 21.0)),
 ]
-PREFILTER = ((30, 180), (-60, 85))  # lon/lat box: polygons entirely outside are skipped early
 
 
 def fail(msg):
@@ -159,18 +203,103 @@ def load_countries():
     return cl
 
 
+# Boxes are (x0, y0, x1, y1) throughout: lon/lat for the rules above.
 def in_box(poly, box):
+    """The polygon's bounding box lies inside box."""
     x0, y0, x1, y1 = mapgen.bbox(poly[0])
     b0, c0, b1, c1 = box
     return b0 <= x0 and x1 <= b1 and c0 <= y0 and y1 <= c1
 
 
+def boxes_overlap(a, b):
+    return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
+
+
+def segment_meets_box(p, q, box):
+    """Liang-Barsky: does the segment p-q touch the box?"""
+    x0, y0, x1, y1 = box
+    t0, t1 = 0.0, 1.0
+    dx, dy = q[0] - p[0], q[1] - p[1]
+    for pk, qk in ((-dx, p[0] - x0), (dx, x1 - p[0]), (-dy, p[1] - y0), (dy, y1 - p[1])):
+        if pk == 0:
+            if qk < 0:
+                return False
+        else:
+            t = qk / pk
+            if pk < 0:
+                t0 = max(t0, t)
+            else:
+                t1 = min(t1, t)
+            if t0 > t1:
+                return False
+    return True
+
+
+def poly_meets_box(poly, box):
+    """The polygon's outer ring and the box share a point: an edge crosses or
+    touches the box, or the box lies inside the ring."""
+    ring = poly[0]
+    if not boxes_overlap(mapgen.bbox(ring), box):
+        return False
+    if any(segment_meets_box(ring[i - 1], ring[i], box) for i in range(len(ring))):
+        return True
+    return mapgen.in_ring(box[0], box[1], ring)
+
+
+def self_test():
+    """poly_meets_box on cases the EMPTY guard relies on."""
+    box = (0, 0, 1, 1)
+    cases = [
+        ([[-1, 0.5], [2, 0.4], [2, 0.6], [-1, 0.6]], True),    # a sliver across the box, no vertex inside
+        ([[-2, -2], [3, -2], [3, 3], [-2, 3]], True),           # the box inside the polygon
+        ([[0.4, 0.4], [0.6, 0.4], [0.5, 0.6]], True),           # the polygon inside the box
+        ([[2, 2], [3, 2], [3, 3]], False),                      # apart
+        ([[1.5, -1], [3, 1], [1.5, 3]], False),                 # bounding boxes overlap, shapes don't
+    ]
+    for ring, want in cases:
+        if poly_meets_box([ring + [ring[0]]], box) != want:
+            raise ValueError(f"poly_meets_box self-test failed for {ring}")
+
+
+def stitch_antimeridian(geo, notes):
+    """Natural Earth cuts land at 180°: Chukotka's eastern end is its own
+    polygon with a vertex every 0.24° along -180, the main Russian polygon
+    has one long edge along +180 there (Wrangel Island likewise, its
+    eastern part at -179.99995). mapgen.dissolve cancels only identical
+    segments, so the cut would stay a drawn line through the context land.
+    Vertices within SEAM_EPS of the cut move onto it, and every edge along
+    it gets the cut's other vertices in between: both sides then share
+    their segments (after projection +180 and -180 coincide)."""
+    def on_cut(c):
+        return abs(abs(c[0]) - 180) < SEAM_EPS
+
+    lats = sorted({c[1] for polys in geo.values() for p in polys for ring in p for c in ring if on_cut(c)})
+    added = 0
+    for polys in geo.values():
+        for p in polys:
+            for k, ring in enumerate(p):
+                if not any(on_cut(c) for c in ring):
+                    continue
+                ring = [[180.0 if c[0] > 0 else -180.0, c[1]] if on_cut(c) else c for c in ring]
+                out = [ring[0]]
+                for a, b in zip(ring, ring[1:]):  # GeoJSON rings are closed
+                    if on_cut(a) and on_cut(b) and a[0] == b[0]:
+                        lo, hi = sorted((a[1], b[1]))
+                        mids = [la for la in lats if lo < la < hi]
+                        out.extend([a[0], la] for la in (mids if a[1] < b[1] else mids[::-1]))
+                        added += len(mids)
+                    out.append(b)
+                p[k] = out
+    notes.append(f"antimeridian cut: {added} vertices added along 180°")
+
+
 def apply_fixups(geo, notes):
-    for label, (b0, c0, b1, c1) in EMPTY:
+    stitch_antimeridian(geo, notes)
+    for label, box in EMPTY:
         for a3, polys in geo.items():
             for p in polys:
-                if any(b0 <= x <= b1 and c0 <= y <= c1 for ring in p for x, y in (c[:2] for c in ring)):
-                    fail(f"{label}: {a3} has land in {b0, c0, b1, c1}; decide how to draw it (EMPTY)")
+                if poly_meets_box(p, box):
+                    fail(f"{label}: {a3} has land in {box}; decide how to draw it (EMPTY)")
     notes.append(f"no land in {', '.join(label for label, _ in EMPTY)} (EMPTY)")
     for tgt, src, label in MERGES:
         if src not in geo or tgt not in geo:
@@ -190,14 +319,86 @@ def apply_fixups(geo, notes):
     notes.append(f"{len(VIEW_CHECKS)} point checks passed")
 
 
-def prefiltered(poly):
-    x0, y0, x1, y1 = mapgen.bbox(poly[0])
-    (lo0, lo1), (la0, la1) = PREFILTER
-    return x1 >= lo0 and x0 <= lo1 and y1 >= la0 and y0 <= la1
+def angle_from_centre(lon, lat):
+    """Great-circle distance (degrees, on the sphere) from the projection centre."""
+    p0, p1 = math.radians(LAT0), math.radians(lat)
+    c = math.sin(p0) * math.sin(p1) + math.cos(p0) * math.cos(p1) * math.cos(math.radians(lon - LON0))
+    return math.degrees(math.acos(max(-1.0, min(1.0, c))))
+
+
+def reaches_extent(mb, a3, poly):
+    """Whether a context polygon can show in the extent: its projected
+    bounding box overlaps it. None for a polygon reaching past FAR_SIDE
+    (towards the antipode, where the projection wraps and a bounding box
+    means nothing): skipped, after checking that its nearer vertices lie
+    outside the extent."""
+    ring = poly[0]
+    ex0, ey0, ex1, ey1 = mb.window.extent
+    if any(angle_from_centre(c[0], c[1]) > FAR_SIDE for c in ring):
+        for c in ring:
+            if angle_from_centre(c[0], c[1]) <= FAR_SIDE:
+                x, y = mb.view(c[0], c[1])
+                if ex0 <= x <= ex1 and ey0 <= y <= ey1:
+                    fail(f"{a3}: a polygon reaches past FAR_SIDE and into the extent at {c[:2]}")
+        return None
+    return boxes_overlap(mapgen.bbox([mb.view(c[0], c[1]) for c in ring]), mb.window.extent)
+
+
+def check_context(res, mb, notes):
+    """CONTEXT_CHECKS: each point inside the extent and on drawn context land."""
+    g = res.grid
+    rings = [mapgen.ring_from_arcs(r, res.arcs) for r in res.topo.get(mapgen.CONTEXT, [])]
+    ex0, ey0, ex1, ey1 = mb.window.extent
+    for lon, lat, label in CONTEXT_CHECKS:
+        x, y = mb.view(lon, lat)
+        if not (ex0 <= x <= ex1 and ey0 <= y <= ey1):
+            fail(f"context check {label} ({lon}, {lat}): outside the extent")
+        if sum(mapgen.in_ring(x * g, y * g, r) for r in rings) % 2 != 1:
+            fail(f"context check {label} ({lon}, {lat}): no context land drawn there")
+    notes.append(f"{len(CONTEXT_CHECKS)} context-land checks passed")
+    segs = [(r[i - 1], r[i]) for r in rings for i in range(len(r))]
+    for lat0, lat1, label in SEAMS:
+        n = int(round((lat1 - lat0) / 0.1))
+        for i in range(n + 1):
+            lat = lat0 + (lat1 - lat0) * i / n
+            x, y = mb.view(180.0, lat)
+            if not (ex0 <= x <= ex1 and ey0 <= y <= ey1):
+                fail(f"seam check {label} at {lat:.2f}°N: outside the extent")
+            if min(seg_distance(x * g, y * g, a, b) for a, b in segs) < g:
+                fail(f"seam check {label}: a drawn edge runs along 180° at {lat:.2f}°N (the cut wasn't merged)")
+    notes.append(f"{len(SEAMS)} antimeridian seams merged")
+
+
+def seg_distance(px, py, a, b):
+    """Distance from (px, py) to the segment a-b."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    ll = dx * dx + dy * dy
+    t = 0.0 if ll == 0 else max(0.0, min(1.0, ((px - a[0]) * dx + (py - a[1]) * dy) / ll))
+    return math.hypot(px - (a[0] + t * dx), py - (a[1] + t * dy))
+
+
+def check_window_edges(res, window, quiz, markers, notes):
+    """Each side of the window must be set by drawn quiz geometry (or a
+    marker), not by a part mapgen dropped: the drawn extremes sit where the
+    margin puts them, within EDGE_TOL."""
+    lost = [fid for fid in quiz if fid not in res.topo]
+    if lost:
+        fail(f"{lost}: drawn below the grid, outside the shared topology; check the window by hand")
+    g = res.grid
+    pts = [(x / g, y / g) for fid in quiz for r in res.topo[fid] for x, y in mapgen.ring_from_arcs(r, res.arcs)]
+    x0, y0, x1, y1 = mapgen.bbox(pts + list(markers.values()))
+    m = window.width * MARGIN / (1 + 2 * MARGIN)
+    for side, got, want in zip(("west", "north", "east", "south"), (x0, y0, x1, y1),
+                               (m, m, window.width - m, window.height - m)):
+        if abs(got - want) > EDGE_TOL:
+            fail(f"window {side} side: drawn quiz geometry reaches {got:.1f}, the window expects {want:.1f} "
+                 "(a part that set it was dropped)")
+    notes.append("window sides set by drawn geometry")
 
 
 def build(ne_path):
     notes = []
+    self_test()
     project = mapgen.LambertAzimuthalEqualArea(LAT0, LON0, ellipsoid=mapgen.GRS80, name=f"LAEA {LAT0:g}N {LON0:g}E")
     countries = load_countries()
     quiz = [c["id"] for c in countries]
@@ -212,21 +413,27 @@ def build(ne_path):
     window = mapgen.Window(core_pts, MARGIN, WIDTH, EXTENT)
 
     # Quiz countries are regions (all inside the window: add_region checks),
-    # everything else context land; in Natural Earth's order (the output
-    # depends on it).
+    # every other polygon that reaches the extent context land; in Natural
+    # Earth's order (the output depends on it).
     mb = mapgen.MapBuilder(project, window, quiz, grid=GRID, min_island=MIN_ISLAND, context_tol=CONTEXT_TOL,
                            far_tol=FAR_TOL, far_min_island=FAR_MIN_ISLAND, far_gap=FAR_GAP)
+    counts = {True: 0, False: 0, None: 0}
     for a3, polys in geo.items():
         for p in polys:
-            if not prefiltered(p):
-                continue
             if a3 in quiz:
                 mb.add_region(a3, p)
-            else:
+                continue
+            r = reaches_extent(mb, a3, p)
+            counts[r] += 1
+            if r:
                 mb.add_context(p)
+    notes.append(f"context polygons: {counts[True]} reach the extent, {counts[False]} outside, "
+                 f"{counts[None]} past FAR_SIDE (towards the antipode)")
     # Markered countries keep every island.
     res = mb.build(keep_islands={c["id"] for c in countries if c.get("marker")})
     markers = {c["id"]: mb.point(*c["marker"], f"{c['id']}: marker") for c in countries if c.get("marker")}
+    check_context(res, mb, notes)
+    check_window_edges(res, window, quiz, markers, notes)
 
     def r1(v):
         return round(v, 1)

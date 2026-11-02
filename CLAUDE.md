@@ -246,8 +246,11 @@ image" below (caller workflow, README row). Engine changes go to
 - **east-asia-quiz**: a map-quiz image (engine above), built like
   europe-quiz. 18 quiz countries: the UN geoscheme's Eastern and
   South-eastern Asia plus Palau; Taiwan its own country, Hong Kong and
-  Macao merged into China (owner's calls); all other land is muted,
-  non-interactive context, faded out around the window. Otherwise
+  Macao merged into China (owner's calls); all other land in the extent
+  is muted, non-interactive context (from Sweden to Alaska and New
+  Zealand; picked by projected bounding box, asserted by
+  `CONTEXT_CHECKS`; Natural Earth's cut at 180° stitched so no line shows
+  through Chukotka), faded out around the window. Otherwise
   Natural Earth's default layer (Aksai Chin with China, Arunachal Pradesh
   with India, the Kurils Russian context land); the South China Sea's
   reefs and islets aren't in the 50m file, and the build stops if a source
