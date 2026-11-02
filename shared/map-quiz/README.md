@@ -58,8 +58,8 @@ data.
   `round`, `progress`, `correct`, `misses`, `prompt`, `prompt-kind`,
   `prompt-text`, `toast`, `controls`, `reset` (with `.btn-text`), `theme`
   (with `.icon-moon`, `.icon-sun`), `zoom-out`, `zoom-fit`, `zoom-in`,
-  `label`, `safe` (main.js adds `attribution` and `prompt-sub` when the
-  config asks for them). Start from europe-quiz's `index.html` and translate its
+  `label`, `safe` (main.js adds `attribution`, `prompt-sub` and
+  `round-picker` when the config asks for them). Start from europe-quiz's `index.html` and translate its
   text: title, description, `aria-label`s, the `sr-only` help paragraph,
   `noscript`, "Reset?". The engine overwrites the round label, prompt and
   the reset/theme button labels from the config once it runs. Keep the
@@ -102,11 +102,13 @@ export default {
     // theme button: other = the theme a press switches to ('light' | 'dark'),
     // override = an override is stored (a press goes back to the system's)
     theme: (other, override) => ({ label: '…', title: '…' }),
+    roundPicker: 'Runde wählen (beginnt von vorn)', // with roundPicker: its name and tooltip
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
   view: { maxScale: 6, besideHud: true }, // optional, see below
   blockingOverlays: ['water'],           // optional, see below
   carryColours: true,                    // optional, see below
+  roundPicker: true,                     // optional, see below
 };
 ```
 
@@ -149,7 +151,8 @@ export default {
   the full view: a tap inside the drawn ring picks it, one in a wider zone
   only over sea, context land or that region itself; the ring hides once
   the region is 28 px across. Leave markers out for none (no ring layer).
-- **rounds**: any number of kinds; rounds cycle through them, each round
+- **rounds**: any number of kinds; rounds cycle through them (from a
+  picked one on, with `roundPicker`), each round
   asks every asked answer once in its own shuffled order. Colours: A in
   even rounds, B in odd ones, so the map recolours round by round. Prompts
   must be unique within a round (`checkTexts` tests it). A saved game
@@ -196,6 +199,14 @@ export default {
   blank, so coloured means found in this round (e.g. when a round leaves
   some clickable pieces unasked or inert, which would otherwise start the
   next round partly coloured).
+- **roundPicker** (default `false`): the card's round label opens a list
+  of the rounds (each by its `label`, the current one chosen); picking one
+  starts a fresh round of it (Behaviour below), so a player can go
+  straight to a later kind instead of finishing every round before it.
+  Needs `text.roundPicker` (the list's accessible name and tooltip, e.g.
+  'Pick a round (starts it fresh)'), two or more rounds and each `label`
+  once. Its chevron costs the card's top row about 9 px; where the row
+  then overflows, the card fits it as any other (Behaviour: top row).
 - **view.maxScale**: maps are 1000 units wide; at most this many CSS px
   per unit at the closest zoom (default 12, europe; a city map needs
   less), but always at least 4× the full view.
@@ -270,7 +281,8 @@ vienna-districts does), `--land`, `--land-line`, `--region`, `--region-hover`,
 colours; `--water` (overlay fill and outline, default `--sea`) and
 `--overlay-stroke` (overlay outline width in map units, e.g. `1.2px`,
 scales with the map; default 0); `--inert` / `--inert-line` (pieces in no
-answer of the round, default `--land` / `--land-line`). Classes on the
+answer of the round, default `--land` / `--land-line`). Classes on
+`#card`: `.row-tight`, `.row-wide`, `.row-wrap` (top row, Behaviour). Classes on the
 regions: `.inert` (that piece this round), `.seamless` on the group in a
 round with `lines`; line overlays: `#overlays .line`, hidden ones `.off`
 (e.g. heavier region lines in one round: `[data-round="…"] #borders-…`
@@ -296,6 +308,31 @@ theme-color meta.
   label for 1.5 s. A click on the sea, context land, an inert piece or a
   blocking overlay does nothing. Hover lights every piece of an answer.
   Reset takes two presses (the first arms it for 3 s).
+- Round picker (`roundPicker`): the round label is the face of a native
+  `<select>`, invisible over it and larger (a 38 px high target inside
+  the card, which keeps its size), with a chevron after the label; phones
+  show their own picker. Picking a kind starts a fresh round of it at
+  once, no confirmation (choosing in a list is deliberate; closing it
+  changes nothing, nor does picking the current kind): round r moves on to
+  the first round index after r of that kind (`quiz.jumpTo`), so the
+  round has that index's colour (A even, B odd) and `?seed` shuffle, and
+  the cycle carries on from it. The picked round starts on a blank map,
+  whatever `carryColours` says (with an even number of kinds it may have
+  the left round's colour, and carried colours would look found); the
+  counters (✓ ✗) run on, as from round to round (reset zeroes them); the
+  round's misclicks start at 0; it never opens with the answer found last
+  (also right after a round ended).
+  The misclick label, marks and toasts of the left round go. The save
+  format is unchanged (the round index says it all): older saves restore,
+  and a picked round survives a reload. Keyboard: Tab reaches it first;
+  Space, Enter, F4 or Alt + ↓ open the list, where the browser's own
+  popup takes the keys (arrows and Enter choose). On the closed picker
+  every other plain key is cancelled, map or no map, so no stray key
+  ever leaves a round (letters, Home / End, Page Up / Down and arrows
+  would change a closed select at once on Windows); the arrows and
+  `+ - 0` still pan and zoom the map. Screen
+  readers get a combo box named by `text.roundPicker` (the visible label
+  is hidden from them).
 - Rings (optional, per round's answers): a tap inside the drawn ring
   picks it, a tap in the wider zone around it only over sea, context
   land, an inert piece or that answer itself (never over a neighbour);
@@ -321,7 +358,24 @@ theme-color meta.
 - The full view fits the window around all regions, between the card and
   the controls in portrait; context drawn around the window fades out, so
   tall or wide screens show map. Two layouts (`min-aspect-ratio: 4/3` in
-  `style.css` and `main.js`).
+  `style.css` and `main.js`); in landscape under 390 px high (phones held
+  sideways; under 410 px while the card's top row takes two lines) the
+  controls' two groups stand side by side, three buttons high, so they
+  stay clear of the card.
+- The card's top row (round label, progress, counters) fits the card.
+  Where it would overflow (a 320 px phone, a long label, three- or
+  four-digit counters, the round picker's chevron), main.js (`fitRow`,
+  when the label or a number's length changes, and on a resize) keeps
+  the first of these on `#card` that
+  makes it fit: `.row-tight` (narrower letter-spacing on the label);
+  in landscape `.row-wide` (the card at least 260 px wide: 36vw is 204 px
+  on a 568 px screen), alone or with `.row-tight`; `.row-wrap` (the
+  counters on a line of their own: the card grows by 20 px, the toast
+  moves down with it and the full view is measured around it, after a
+  camera animation in flight has ended), with
+  `.row-tight` if still needed. Where the row fits, none applies and
+  nothing changes. Sized for a world map: a 14-character label,
+  `123 / 197` and `✓ 1234 ✗ 123` fit on a 320 px phone held either way.
 - Theme follows the OS; the toggle stores the other theme, pressing again
   clears it, and an override that matches the OS is dropped (`theme.js`,
   a classic script in `<head>`: no flash).

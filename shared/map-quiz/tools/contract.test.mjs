@@ -234,4 +234,32 @@ check('grouped texts: ask and sub for the asked answers only, miss and missSub f
   }
 });
 
+check('roundPicker: optional, with text.roundPicker, two or more rounds, labels unique', () => {
+  const on = (c) => ({ ...c, roundPicker: true, text: { ...c.text, roundPicker: 'Runde wählen' } });
+  checkTexts(on(good()));
+  checkTexts(on(grouped()));
+  checkConfig({ ...good(), roundPicker: false });
+  checkConfig({ ...good(), text: { ...good().text, roundPicker: 'Runde wählen' } }); // text without the picker: unused
+  const cases = [
+    [(c) => (c.roundPicker = 'yes'), /roundPicker: true or false/],
+    [(c) => (c.roundPicker = 1), /roundPicker: true or false/],
+    [(c) => delete c.text.roundPicker, /text\.roundPicker: a string .*needed with roundPicker/],
+    [(c) => (c.text.roundPicker = ''), /text\.roundPicker: a string/],
+    [(c) => (c.text.roundPicker = { label: 'x' }), /text\.roundPicker: a string/],
+    [(c) => (c.rounds = [c.rounds[0]]), /roundPicker: needs two or more rounds/],
+    [(c) => (c.rounds[1].label = c.rounds[0].label), /rounds: each label once with roundPicker/],
+  ];
+  for (const [breakIt, re] of cases) {
+    const c = on(good());
+    breakIt(c);
+    throwsWith(() => checkConfig(c), re);
+  }
+  // off: one round and repeated labels stay fine, a stray text must still be a string
+  const off = good();
+  off.rounds[1].label = off.rounds[0].label;
+  checkConfig(off);
+  checkConfig({ ...good(), rounds: [good().rounds[0]] });
+  throwsWith(() => checkConfig({ ...good(), text: { ...good().text, roundPicker: 7 } }), /text\.roundPicker: a string/);
+});
+
 console.log(`${checks} checks passed`);
