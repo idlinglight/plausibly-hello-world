@@ -468,6 +468,63 @@ p {
   background: var(--b);
 }
 
+/* Round picker (config.roundPicker): main.js wraps #round in .picker and
+   lays a native <select> over it, invisible and larger than the label
+   (about 38 px high, inside the card), so the label keeps its look, the
+   platform draws the list, and the card keeps its size. The chevron after
+   the label says it opens; it costs the row about 9 px, and where the row
+   overflows (a 320 px phone, a long label, big counters) main.js sets
+   .tight, whose narrower letter-spacing gives most of that back. */
+.picker {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 4px;
+}
+
+.picker::after {
+  content: "";
+  width: 4px;
+  height: 4px;
+  margin-top: -3px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.picker.tight {
+  letter-spacing: 0.03em;
+}
+
+#round-picker {
+  position: absolute;
+  top: -10px;
+  left: -8px;
+  width: calc(100% + 16px);
+  height: calc(100% + 22px);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px; /* iOS zooms in on focus into smaller form fields */
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+@media (hover: hover) {
+  .picker:hover {
+    color: var(--fg);
+  }
+}
+
+.picker:has(#round-picker:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
 #progress {
   color: var(--fg);
   letter-spacing: 0.02em;

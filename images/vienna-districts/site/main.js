@@ -44,6 +44,9 @@
 // round's answers (rebuilt when a round's set differs) and shrink at low
 // zoom (MARKER_R_UNITS), so they don't cover their neighbours on a phone.
 //
+// Round picker (optional, config.roundPicker): the card's round label
+// opens a list of the round kinds; picking one starts a fresh round of it.
+//
 // State on <html>: data-round (the round's config key, e.g. countries |
 // capitals), data-progress ("12/46"), data-zoom (s / fitScale), data-ready
 // (1 once the map is in; "error" if it failed), data-wheel (how the last
@@ -466,6 +469,7 @@ function relayout() {
   const { x, y } = freeCentre();
   setCam({ s, tx: x - mx * s, ty: y - my * s });
   fitPrompt();
+  fitRow();
 }
 
 // ── Hit testing and hover ───────────────────────────────────────────────
@@ -811,6 +815,7 @@ function updateHud() {
   const round = ROUNDS[quiz.kind];
   const a = SPECS[quiz.kind].byId.get(quiz.target);
   roundEl.textContent = round.label;
+  if (picker) picker.value = String(quiz.kind);
   progressEl.textContent = `${quiz.done} / ${quiz.total}`;
   correctEl.textContent = String(quiz.correct);
   missesEl.textContent = String(quiz.misses);
@@ -830,6 +835,17 @@ function updateHud() {
   root.dataset.round = round.key;
   root.dataset.progress = `${quiz.done}/${quiz.total}`;
   fitPrompt();
+  fitRow();
+}
+
+// The round picker's chevron widens the card's top row a little: where the
+// row overflows, .tight narrows the label's letter-spacing to give that
+// back (style.css). Without the picker nothing changes.
+function fitRow() {
+  const row = pickerFace && pickerFace.closest('.card-row');
+  if (!row) return;
+  pickerFace.classList.remove('tight');
+  if (row.scrollWidth > row.clientWidth) pickerFace.classList.add('tight');
 }
 
 // Long names shrink to fit the card instead of being cut off.
@@ -894,6 +910,39 @@ if (ROUNDS.some((r) => r.sub)) {
   promptSubSr.className = 'sr-only';
   promptEl.append(promptSubSr);
   root.classList.add('has-sub');
+}
+
+// Optional round picker (config.roundPicker): the round label becomes the
+// face of a native <select> listing every round kind by its label,
+// invisible and laid over the label, a little larger for touch
+// (style.css), so the card keeps its look and size, phones show their own
+// picker and screen readers a labelled list. Picking a kind starts a fresh
+// round of it (quiz.jumpTo: blank map, counters kept). The arrow keys keep
+// panning the map even while the picker has focus (the keydown handler
+// below cancels what they would do to it), so a stray arrow never leaves
+// a round; Space or Alt + ↓ opens the list.
+let picker = null;
+let pickerFace = null; // its .picker: the label + chevron (fitRow)
+if (config.roundPicker) {
+  pickerFace = document.createElement('span');
+  pickerFace.className = 'picker';
+  roundEl.replaceWith(pickerFace);
+  roundEl.setAttribute('aria-hidden', 'true'); // the select says it
+  picker = document.createElement('select');
+  picker.id = 'round-picker';
+  picker.setAttribute('aria-label', TEXT.roundPicker);
+  picker.title = TEXT.roundPicker;
+  ROUNDS.forEach((r, i) => picker.add(new Option(r.label, String(i))));
+  pickerFace.append(roundEl, picker);
+  picker.addEventListener('change', () => {
+    quiz.jumpTo(Number(picker.value));
+    clearMarks();
+    hideLabel();
+    hideToast(); // e.g. the last round's "now the …": no longer what comes
+    enterRound();
+    updateHud();
+    save();
+  });
 }
 
 // Optional data credit (e.g. CC BY): a line under the controls (portrait)

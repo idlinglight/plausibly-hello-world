@@ -58,8 +58,8 @@ data.
   `round`, `progress`, `correct`, `misses`, `prompt`, `prompt-kind`,
   `prompt-text`, `toast`, `controls`, `reset` (with `.btn-text`), `theme`
   (with `.icon-moon`, `.icon-sun`), `zoom-out`, `zoom-fit`, `zoom-in`,
-  `label`, `safe` (main.js adds `attribution` and `prompt-sub` when the
-  config asks for them). Start from europe-quiz's `index.html` and translate its
+  `label`, `safe` (main.js adds `attribution`, `prompt-sub` and
+  `round-picker` when the config asks for them). Start from europe-quiz's `index.html` and translate its
   text: title, description, `aria-label`s, the `sr-only` help paragraph,
   `noscript`, "Reset?". The engine overwrites the round label, prompt and
   the reset/theme button labels from the config once it runs. Keep the
@@ -102,11 +102,13 @@ export default {
     // theme button: other = the theme a press switches to ('light' | 'dark'),
     // override = an override is stored (a press goes back to the system's)
     theme: (other, override) => ({ label: '…', title: '…' }),
+    roundPicker: 'Runde wählen (beginnt von vorn)', // with roundPicker: its name and tooltip
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
   view: { maxScale: 6, besideHud: true }, // optional, see below
   blockingOverlays: ['water'],           // optional, see below
   carryColours: true,                    // optional, see below
+  roundPicker: true,                     // optional, see below
 };
 ```
 
@@ -149,7 +151,8 @@ export default {
   the full view: a tap inside the drawn ring picks it, one in a wider zone
   only over sea, context land or that region itself; the ring hides once
   the region is 28 px across. Leave markers out for none (no ring layer).
-- **rounds**: any number of kinds; rounds cycle through them, each round
+- **rounds**: any number of kinds; rounds cycle through them (from a
+  picked one on, with `roundPicker`), each round
   asks every asked answer once in its own shuffled order. Colours: A in
   even rounds, B in odd ones, so the map recolours round by round. Prompts
   must be unique within a round (`checkTexts` tests it). A saved game
@@ -196,6 +199,16 @@ export default {
   blank, so coloured means found in this round (e.g. when a round leaves
   some clickable pieces unasked or inert, which would otherwise start the
   next round partly coloured).
+- **roundPicker** (default `false`): the card's round label opens a list
+  of the rounds (each by its `label`, the current one chosen); picking one
+  starts a fresh round of it (Behaviour below), so a player can go
+  straight to a later kind instead of finishing every round before it.
+  Needs `text.roundPicker` (the list's accessible name and tooltip, e.g.
+  'Pick a round (starts it fresh)'), two or more rounds and each `label`
+  once. Its chevron costs the card's top row about 9 px, and only 2 to
+  5 px where the row is full (main.js then narrows the label's
+  letter-spacing): check the longest label with three-digit counters on
+  a 320 px phone.
 - **view.maxScale**: maps are 1000 units wide; at most this many CSS px
   per unit at the closest zoom (default 12, europe; a city map needs
   less), but always at least 4× the full view.
@@ -296,6 +309,27 @@ theme-color meta.
   label for 1.5 s. A click on the sea, context land, an inert piece or a
   blocking overlay does nothing. Hover lights every piece of an answer.
   Reset takes two presses (the first arms it for 3 s).
+- Round picker (`roundPicker`): the round label is the face of a native
+  `<select>`, invisible over it and larger (a 38 px high target inside
+  the card, which keeps its size), with a chevron after the label; phones
+  show their own picker. Picking a kind starts a fresh round of it at
+  once, no confirmation (choosing in a list is deliberate; closing it
+  changes nothing, nor does picking the current kind): round r moves on to
+  the first round index after r of that kind (`quiz.jumpTo`), so the
+  round has that index's colour (A even, B odd) and `?seed` shuffle, and
+  the cycle carries on from it. The picked round starts on a blank map,
+  whatever `carryColours` says (with an even number of kinds it may have
+  the left round's colour, and carried colours would look found); the
+  counters (✓ ✗) run on, as from round to round (reset zeroes them); the
+  round's misclicks start at 0; it never opens with the answer found last.
+  The misclick label, marks and toasts of the left round go. The save
+  format is unchanged (the round index says it all): older saves restore,
+  and a picked round survives a reload. Keyboard: Tab reaches it first,
+  Space or Alt + ↓ opens the list, a typed letter picks the round it
+  starts (as in any select); the arrow keys keep panning the map, also
+  while it has focus, so a stray arrow never leaves a round. Screen
+  readers get a combo box named by `text.roundPicker` (the visible label
+  is hidden from them).
 - Rings (optional, per round's answers): a tap inside the drawn ring
   picks it, a tap in the wider zone around it only over sea, context
   land, an inert piece or that answer itself (never over a neighbour);
