@@ -18,7 +18,8 @@
    Two layouts (LANDSCAPE in main.js is the same media query):
    - default (portrait, square-ish): card across the top, controls across
      the bottom; main.js fits the map into the band between them.
-   - landscape: card top right, controls in a column bottom right; the map
+   - landscape: card top right, controls in a column bottom right (under
+     390 px high: its two groups side by side, clear of the card); the map
      uses the full height (at the full view the card covers a corner of it:
      keep that corner to context land, as Russia in europe-quiz).
 
@@ -820,6 +821,16 @@ p {
 
   :root.has-attribution #controls {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  }
+}
+
+/* Short landscape (phones held sideways, under 390 px high): one column of
+   five buttons (258 px with touch-sized ones) would reach up into the card
+   (up to 110 px from the top with a sub-line), so the two groups stand side
+   by side, three buttons high. */
+@media (min-aspect-ratio: 4/3) and (max-height: 389px) {
+  #controls {
+    flex-direction: row;
   }
 }
 

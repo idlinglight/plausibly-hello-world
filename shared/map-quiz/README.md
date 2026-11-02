@@ -355,7 +355,9 @@ theme-color meta.
 - The full view fits the window around all regions, between the card and
   the controls in portrait; context drawn around the window fades out, so
   tall or wide screens show map. Two layouts (`min-aspect-ratio: 4/3` in
-  `style.css` and `main.js`).
+  `style.css` and `main.js`); in landscape under 390 px high (phones held
+  sideways) the controls' two groups stand side by side, three buttons
+  high, so they stay clear of the card.
 - Theme follows the OS; the toggle stores the other theme, pressing again
   clears it, and an override that matches the OS is dropped (`theme.js`,
   a classic script in `<head>`: no flash).
