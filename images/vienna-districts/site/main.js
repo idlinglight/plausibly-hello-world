@@ -292,6 +292,7 @@ let free = { x0: 0, y0: 0, x1: 1, y1: 1 }; // where the full view goes, CSS px
 let fitScale = 1;
 let renderQueued = false;
 let anim = 0; // rAF id of a camera animation
+let refitPending = false; // the card changed size during an animation: refitSoon()
 let animTarget = null;
 
 const maxScale = () => Math.max(MAX_SCALE, fitScale * MIN_ZOOM_RANGE);
@@ -391,6 +392,7 @@ function stopAnim() {
   if (anim) cancelAnimationFrame(anim);
   anim = 0;
   animTarget = null;
+  if (refitPending) requestAnimationFrame(flushRefit); // unless another animation starts meanwhile
 }
 
 // Eases to a camera: the scale geometrically, the map point at the centre
@@ -421,6 +423,7 @@ function animateTo(c) {
       anim = requestAnimationFrame(step);
     }
     render();
+    flushRefit();
   };
   anim = requestAnimationFrame(step);
 }
@@ -456,10 +459,19 @@ function fitView(animated) {
   else setCam(c);
 }
 
-// Window resized: keep the zoom relative to the full view and the map point
-// at the centre of the free area.
+// Window resized: the card's top row fitted again first (the full view goes
+// around the card), then refit().
 function relayout() {
-  fitRow(); // the card's size first: the full view goes around it
+  refitPending = false;
+  fitRow(true);
+  refit();
+  fitPrompt();
+}
+
+// The free area measured again (the window or the card changed size),
+// keeping the zoom relative to the full view and the map point at the
+// centre of the free area.
+function refit() {
   const z = cam.s / fitScale;
   const c0 = freeCentre();
   const mx = (c0.x - cam.tx) / cam.s;
@@ -469,7 +481,20 @@ function relayout() {
   const s = fitScale * z;
   const { x, y } = freeCentre();
   setCam({ s, tx: x - mx * s, ty: y - my * s });
-  fitPrompt();
+}
+
+// The card changed size by a HUD update (its top row wrapped or unwrapped,
+// a round picked): refit at once, or, while a camera animation runs, once
+// it has ended or was stopped, so it runs on undisturbed (refitPending).
+function refitSoon() {
+  if (anim) refitPending = true;
+  else refit();
+}
+
+function flushRefit() {
+  if (!refitPending || anim) return;
+  refitPending = false;
+  refit();
 }
 
 // ── Hit testing and hover ───────────────────────────────────────────────
@@ -834,7 +859,7 @@ function updateHud() {
   if (swatch) swatch.classList.toggle('b', quiz.colour === 2);
   root.dataset.round = round.key;
   root.dataset.progress = `${quiz.done}/${quiz.total}`;
-  if (fitRow() && svg) relayout(); // the card changed size (new counters, round label)
+  if (fitRow() && svg) refitSoon(); // the card changed size
   fitPrompt();
 }
 
@@ -844,10 +869,16 @@ function updateHud() {
 // that makes it fit, else the last (style.css, "Top row"): a narrower
 // label, a wider card (landscape), both, then the counters on a line of
 // their own (the card grows by it). Where it fits: none, nothing changes.
-// True if the card changed size (the map's full view goes around it).
+// Runs again only when the label or the length of a number changes (the
+// digits are tabular), or with force (a resize). True if the card changed
+// size (the map's full view goes around it).
 const cardRow = card.querySelector('.card-row');
-function fitRow() {
+let rowKey = '';
+function fitRow(force = false) {
   if (!cardRow) return false;
+  const key = [roundEl.textContent, progressEl.textContent.length, correctEl.textContent.length, missesEl.textContent.length].join('|');
+  if (key === rowKey && !force) return false;
+  rowKey = key;
   const size = () => `${card.offsetWidth}x${card.offsetHeight}`;
   const before = size();
   const wide = landscape.matches ? ['row-wide'] : []; // only landscape has a card to widen
@@ -929,10 +960,14 @@ if (ROUNDS.some((r) => r.sub)) {
 // invisible and laid over the label, a little larger for touch
 // (style.css), so the card keeps its look and size, phones show their own
 // picker and screen readers a labelled list. Picking a kind starts a fresh
-// round of it (quiz.jumpTo: blank map, counters kept). The arrow keys keep
-// panning the map even while the picker has focus (the keydown handler
-// below cancels what they would do to it), so a stray arrow never leaves
-// a round; Space or Alt + ↓ opens the list.
+// round of it (quiz.jumpTo: blank map, counters kept). Only a deliberate
+// pick changes the round: on the focused, closed select only the keys that
+// open its list (Space, Enter, F4, Alt + ↓ / ↑) and Tab / Escape go
+// through; every other plain key (arrows, Home / End, Page Up / Down,
+// letters and digits, which on Windows change a closed select at once) is
+// cancelled here, map or no map, and still reaches the map's keys below
+// (arrows pan, + - 0 zoom). While the list is open the browser's own
+// popup takes the keys.
 let picker = null;
 if (config.roundPicker) {
   const face = document.createElement('span');
@@ -945,6 +980,10 @@ if (config.roundPicker) {
   picker.title = TEXT.roundPicker;
   ROUNDS.forEach((r, i) => picker.add(new Option(r.label, String(i))));
   face.append(roundEl, picker);
+  const passKeys = new Set(['Tab', 'Escape', ' ', 'Enter', 'F4']);
+  picker.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey || e.altKey || passKeys.has(e.key))) e.preventDefault();
+  });
   picker.addEventListener('change', () => {
     quiz.jumpTo(Number(picker.value));
     clearMarks();

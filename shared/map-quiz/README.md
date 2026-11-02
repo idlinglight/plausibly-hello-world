@@ -320,13 +320,17 @@ theme-color meta.
   whatever `carryColours` says (with an even number of kinds it may have
   the left round's colour, and carried colours would look found); the
   counters (✓ ✗) run on, as from round to round (reset zeroes them); the
-  round's misclicks start at 0; it never opens with the answer found last.
+  round's misclicks start at 0; it never opens with the answer found last
+  (also right after a round ended).
   The misclick label, marks and toasts of the left round go. The save
   format is unchanged (the round index says it all): older saves restore,
-  and a picked round survives a reload. Keyboard: Tab reaches it first,
-  Space or Alt + ↓ opens the list, a typed letter picks the round it
-  starts (as in any select); the arrow keys keep panning the map, also
-  while it has focus, so a stray arrow never leaves a round. Screen
+  and a picked round survives a reload. Keyboard: Tab reaches it first;
+  Space, Enter, F4 or Alt + ↓ open the list, where the browser's own
+  popup takes the keys (arrows and Enter choose). On the closed picker
+  every other plain key is cancelled, map or no map, so no stray key
+  ever leaves a round (letters, Home / End, Page Up / Down and arrows
+  would change a closed select at once on Windows); the arrows and
+  `+ - 0` still pan and zoom the map. Screen
   readers get a combo box named by `text.roundPicker` (the visible label
   is hidden from them).
 - Rings (optional, per round's answers): a tap inside the drawn ring
@@ -360,13 +364,15 @@ theme-color meta.
   stay clear of the card.
 - The card's top row (round label, progress, counters) fits the card.
   Where it would overflow (a 320 px phone, a long label, three- or
-  four-digit counters, the round picker's chevron), main.js (`fitRow`, on
-  every HUD update and resize) keeps the first of these on `#card` that
+  four-digit counters, the round picker's chevron), main.js (`fitRow`,
+  when the label or a number's length changes, and on a resize) keeps
+  the first of these on `#card` that
   makes it fit: `.row-tight` (narrower letter-spacing on the label);
   in landscape `.row-wide` (the card at least 260 px wide: 36vw is 204 px
   on a 568 px screen), alone or with `.row-tight`; `.row-wrap` (the
   counters on a line of their own: the card grows by 20 px, the toast
-  moves down with it and the full view is measured around it), with
+  moves down with it and the full view is measured around it, after a
+  camera animation in flight has ended), with
   `.row-tight` if still needed. Where the row fits, none applies and
   nothing changes. Sized for a world map: a 14-character label,
   `123 / 197` and `✓ 1234 ✗ 123` fit on a 320 px phone held either way.
