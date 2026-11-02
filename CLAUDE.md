@@ -80,6 +80,9 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   also works behind a path prefix. Ship a favicon (`favicon.svg`,
   `favicon.ico`, `apple-touch-icon.png`) so logs stay free of 404s. Page
   title: `<Name> · phw` (e.g. `Snake · phw`): name first, as tabs truncate.
+  Links the player follows to other sites are fine (no request of the
+  page): `target="_blank"`, `rel="noopener noreferrer"`, nothing
+  prefetched or embedded from there.
 - The CSP sets `frame-ancestors 'none'` (+ `X-Frame-Options: DENY`): pages
   can't be iframed. Loosen per image if embedding is ever wanted.
 - `nginx.conf` is the same file in every image (JSON access log incl. the
@@ -137,7 +140,11 @@ card's round label into a native list of the rounds; picking one starts
 a fresh round of it (next round index of that kind, blank map, counters
 kept; on in world-quiz). `view.panToCentre: true` lets any point of
 the full view be panned to the centre of the free area at every zoom (for
-a one-handed pinch about the centre; on in world-quiz).
+a one-handed pinch about the centre; on in world-quiz). `rounds[].link`
+(+ `text.link`, the link's name) makes the asked name on the card a link
+to a page about it, opened in a new tab (https only, no prefetch, the
+live region moves to an sr-only copy; on in world-quiz and japan-quiz:
+the English Wikipedia article, a capital round's the capital's).
 
 ### Per-image notes
 
