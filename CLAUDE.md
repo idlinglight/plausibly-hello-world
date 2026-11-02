@@ -257,16 +257,19 @@ kept; no image has it on yet).
   dependency or territory are context land; overseas parts Natural Earth
   files under a state answer that state. Border view as europe-quiz (EU
   official view): Crimea, Northern Cyprus, Somaliland, Åland, Hong Kong,
-  Macao merged; the Golan Heights (→ Syria), Western Sahara (out of
-  Morocco) and Ceuta and Melilla (→ Spain) cut along lon/lat lines
-  (`mapgen.cut_cells`); 68 point checks, 9 empty boxes, the context list
-  asserted (tools/README.md). Rounds (`<html data-round>`): `countries`
-  and `capitals` without the 35 small states (inert there; `small: true`,
-  checked by the build against its rule: under 1,000 km², or no land
-  border and under 30,000 km²), then `all-countries` and `all-capitals`
-  with them, ringed; Brunei, Cyprus, Kosovo, Luxembourg, Montenegro and
-  Qatar (under 4 units) have rings in every round. Israel has no capital
-  (not asked in the capital rounds). `carryColours: false`,
+  Macao merged; the Golan Heights (→ Syria) and Western Sahara (out of
+  Morocco) cut along lon/lat lines (`mapgen.cut_cells`), Ceuta and
+  Melilla (→ Spain) clipped by small boxes (`mapgen.clip_box`); the cuts'
+  new vertices go into the neighbours, no T-junction anywhere
+  (`mapgen.t_junctions`, asserted); 68 point checks, 9 empty boxes, the
+  context list asserted (tools/README.md). Rounds (`<html data-round>`):
+  `countries` and `capitals` without the 36 small states (inert there;
+  `small: true`, checked by the build against its rule on the map as
+  drawn: under 1,000 km², or no land border and under 30,000 km²; Cyprus
+  is one), then `all-countries` and `all-capitals` with them, ringed;
+  Brunei, Kosovo, Luxembourg, Montenegro and Qatar (largest drawn shape
+  under 4 units) have rings in every round. Israel's capital: Jerusalem
+  (owner). `carryColours: false`,
   `roundPicker: true`, `view`: `maxScale` 60, `besideHud`. Far parts cut
   off by the net and under 1 % of their state (NZ's Chathams and
   Tokelau, a Fiji islet) are dropped, asserted. map.svg starts with

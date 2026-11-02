@@ -99,14 +99,24 @@ changes, and point checks (`VIEW_CHECKS`, 68) assert on every run:
   east of 35.64°E (the Jordan River and Sea of Galilee line, within
   about 2 km at this scale) moves to Syria; it includes the Shebaa Farms.
   Checked: Katzrin, Majdal Shams, Quneitra, the Shebaa Farms → Syria;
-  Tiberias, Kiryat Shmona, Beit She'an, Eilat → Israel.
+  Tiberias, Kiryat Shmona, Beit She'an, Eilat → Israel. A half-plane
+  rather than a box: the line crosses Israel's outline only twice, at its
+  borders with Lebanon and Jordan (a box would add crossings along the
+  Yarmouk), and those two vertices go into Lebanon's and Jordan's
+  outlines too.
 - **Western Sahara**: Natural Earth's Morocco outline reaches south into
   Western Sahara; the part south of 27.6564°N (the parallel at its
   northern border in the file) moves to Western Sahara, context land.
   Checked: Laayoune, Smara, Aousserd → context; Rabat, Tan-Tan, Tétouan,
   Nador → Morocco.
-- **Ceuta and Melilla → Spain**: inside Morocco's outline at 1:50m; cut
-  out along small lon/lat boxes (`CUTS`). Checked: Ceuta, Melilla.
+- **Ceuta and Melilla → Spain**: inside Morocco's outline at 1:50m; only
+  what lies inside a small lon/lat box moves (`BOXES`, `mapgen.clip_box`;
+  nothing beyond the box is touched). Checked: Ceuta, Melilla.
+- Every cut's new vertices lie on its own line or box (checked), and go
+  into each neighbour whose border they lie on; after the border view and
+  again after the antimeridian stitch, no vertex anywhere lies on another
+  feature's edge without being one of its vertices (`mapgen.t_junctions`,
+  asserted; Natural Earth's file has none).
 - **Kosovo** is its own feature and a quiz entry (checked: Pristina;
   Belgrade is Serbia); **Transnistria** is Moldova (Tiraspol, Bender);
   **Abkhazia** and **South Ossetia** are Georgia (Sukhumi, Tskhinvali);
@@ -166,32 +176,36 @@ state has more than one capital, or none:
   **Taiwan: Taipei**, as east-asia-quiz (reasons there).
 - **Switzerland: Bern**, **Montenegro: Podgorica**, **Kosovo: Pristina**,
   as europe-quiz. **Yemen: Sanaa**, **Kazakhstan: Astana**.
-- **Israel: no capital** (`capital: null`): not asked in the capital
-  rounds, still there as a misclick ("Israel").
+- **Israel: Jerusalem** (owner, 2026-11-02), asked like every other
+  capital.
 - Same-name capitals are asked as europe-quiz asks them (Luxembourg,
   Monaco, San Marino, Vatican City, Singapore, Djibouti).
 
 ## Small states and rings
 
-The 35 **small states** (`small: true`): land area under 1,000 km², or
-no land border and under 30,000 km², both measured on Natural Earth's
-geometry (areas on the sphere; a land border = a vertex shared with
-another of the file's own features, before the border-view fix-ups).
-`build_map.py` computes the rule and stops if a flag disagrees. They are
+The 36 **small states** (`small: true`): land area under 1,000 km², or
+no land border and under 30,000 km², measured on Natural Earth's
+geometry after the border view (areas on the sphere; a land border = an
+arc of the drawn map shared with another state or with context land).
+`build_map.py` computes the rule and stops if a flag disagrees. Cyprus,
+one island with Northern Cyprus merged and no Sovereign Base Areas at
+1:50m, has no land border: small (owner, 2026-11-02). They are
 inert in the countries and capitals rounds (drawn as context, never
 hit, no ring) and asked, with rings, in "All countries" and "All
 capitals": Andorra, Antigua and Barbuda, Bahamas, Bahrain, Barbados,
-Cabo Verde, Comoros, Dominica, Fiji, Grenada, Jamaica, Kiribati,
+Cabo Verde, Comoros, Cyprus, Dominica, Fiji, Grenada, Jamaica, Kiribati,
 Liechtenstein, Maldives, Malta, Marshall Islands, Mauritius, Micronesia,
 Monaco, Nauru, Palau, Saint Kitts and Nevis, Saint Lucia, Saint Vincent
 and the Grenadines, Samoa, San Marino, São Tomé and Príncipe,
 Seychelles, Singapore, Solomon Islands, Tonga, Trinidad and Tobago,
 Tuvalu, Vanuatu, Vatican City.
 
-**Rings**: every small state, and every state whose largest polygon is
-under 4 map units (`RING_SIZE`), so in every round: Brunei, Cyprus,
-Kosovo, Luxembourg, Montenegro, Qatar. The build checks that exactly
-these have a `marker`. Marker points are curated (on the main island or
+**Rings**: every small state, and every state whose largest drawn shape
+(an outer ring of the map as built, after merges, cuts and dissolve) is
+under 4 map units across (`RING_SIZE`), so in every round: Brunei
+(3.1), Kosovo (3.1), Luxembourg, Montenegro (3.9), Qatar (3.9); Eswatini
+(4.1) is the closest above. The build checks that exactly these have a
+`marker`. Marker points are curated (on the main island or
 near the capital); a ring's `size` is the larger side of the bounding
 box of the polygon it sits on (the island, not the archipelago), so it
 stays until that island is about 28 px across. `view.maxScale` 60: at
@@ -224,7 +238,7 @@ area: kept, as are all other states' parts.
   dropped except for ringed states. Arcs in a crossing are simplified
   again with half the tolerance until there are none (`repair_crossings`;
   the build requires 0).
-- Sizes: map.svg about 209 KB, 93 KB as served (gzip -1); countries.js
+- Sizes: map.svg about 208 KB, 93 KB as served (gzip -1); countries.js
   14 KB. The report prints the figures.
 - `<path id="net">` and `<path id="folds">` come first, so the folds show
   over the sea only; `world.css` colours the page outside the net

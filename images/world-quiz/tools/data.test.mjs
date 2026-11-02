@@ -18,14 +18,14 @@ function check(name, fn) {
 }
 
 const byId = new Map(COUNTRIES.map((c) => [c.id, c]));
-// The owner's 35 (2026-11-02): land area under 1,000 km2, or an island state
+// The 36 (owner, 2026-11-02): land area under 1,000 km2, or an island state
 // (no land border) under 30,000 km2; build_map.py checks the flags against
-// that rule on Natural Earth's geometry.
-const SMALL = ['AND', 'ATG', 'BHS', 'BHR', 'BRB', 'CPV', 'COM', 'DMA', 'FJI', 'GRD', 'JAM', 'KIR', 'LIE', 'MDV', 'MLT', 'MHL',
+// that rule on the map as drawn (Cyprus, whole, has no land border).
+const SMALL = ['AND', 'ATG', 'BHS', 'BHR', 'BRB', 'CPV', 'COM', 'CYP', 'DMA', 'FJI', 'GRD', 'JAM', 'KIR', 'LIE', 'MDV', 'MLT', 'MHL',
   'MUS', 'FSM', 'MCO', 'NRU', 'PLW', 'KNA', 'LCA', 'VCT', 'WSM', 'SMR', 'STP', 'SYC', 'SGP', 'SLB', 'TON', 'TTO', 'TUV',
   'VUT', 'VAT'];
-// Not small, but under 4 map units: a ring in every round.
-const RINGED_ALWAYS = ['BRN', 'CYP', 'KOS', 'LUX', 'MNE', 'QAT'];
+// Not small, but the largest drawn shape under 4 map units: a ring in every round.
+const RINGED_ALWAYS = ['BRN', 'KOS', 'LUX', 'MNE', 'QAT'];
 
 check('data: 197 entries, countries.js matches countries.json, ids, names and capitals unique', () => {
   assert.equal(COUNTRIES.length, 197);
@@ -35,7 +35,7 @@ check('data: 197 entries, countries.js matches countries.json, ids, names and ca
   for (const key of ['id', 'name']) assert.equal(new Set(COUNTRIES.map((c) => c[key])).size, 197, key);
   const caps = COUNTRIES.map((c) => c.capital).filter((v) => v !== null);
   assert.equal(new Set(caps).size, caps.length);
-  assert.deepEqual(COUNTRIES.filter((c) => c.capital === null).map((c) => c.id), ['ISR']);
+  for (const c of COUNTRIES) assert.ok(typeof c.capital === 'string' && c.capital, `${c.id} capital`);
   for (const c of COUNTRIES) assert.match(c.id, /^[A-Z]{3}$/);
 });
 
@@ -45,7 +45,7 @@ check('data: the set (UN members, Vatican City, Kosovo, Taiwan, Greenland); no P
   assert.deepEqual(COUNTRIES.filter((c) => c.of).map((c) => [c.id, c.name, c.of]), [['GRL', 'Greenland', 'Denmark']]);
 });
 
-check('data: the 35 small states (flag) and the rings', () => {
+check('data: the 36 small states (flag) and the rings', () => {
   assert.deepEqual(COUNTRIES.filter((c) => c.small).map((c) => c.id).sort(), [...SMALL].sort());
   assert.deepEqual(COUNTRIES.filter((c) => c.marker).map((c) => c.id).sort(), [...SMALL, ...RINGED_ALWAYS].sort());
   for (const c of COUNTRIES.filter((c) => c.marker)) {
@@ -59,10 +59,10 @@ check('data: the 35 small states (flag) and the rings', () => {
 check('data: names and capitals as chosen (tools/README.md, Names and capitals)', () => {
   const cap = (id) => byId.get(id).capital;
   assert.deepEqual(['BOL', 'ZAF', 'NLD', 'CIV', 'BEN', 'LKA', 'SWZ', 'TZA', 'BDI', 'MYS', 'NRU', 'KIR', 'GNQ', 'MMR', 'PLW',
-    'CHE', 'KAZ', 'IDN', 'YEM', 'TWN', 'KOS', 'GRL'].map(cap),
+    'CHE', 'KAZ', 'IDN', 'YEM', 'TWN', 'KOS', 'GRL', 'ISR'].map(cap),
   ['Sucre / La Paz', 'Pretoria', 'Amsterdam', 'Yamoussoukro', 'Porto-Novo', 'Sri Jayewardenepura Kotte', 'Mbabane', 'Dodoma',
     'Gitega', 'Kuala Lumpur', 'Yaren', 'South Tarawa', 'Ciudad de la Paz', 'Naypyidaw', 'Ngerulmud', 'Bern', 'Astana',
-    'Jakarta', 'Sanaa', 'Taipei', 'Pristina', 'Nuuk']);
+    'Jakarta', 'Sanaa', 'Taipei', 'Pristina', 'Nuuk', 'Jerusalem']);
   assert.deepEqual(['TUR', 'CZE', 'CIV', 'CPV', 'SWZ', 'MKD', 'TLS', 'MMR', 'COD', 'COG', 'VAT', 'USA', 'STP'].map((id) => byId.get(id).name),
     ['Türkiye', 'Czechia', 'Côte d\'Ivoire', 'Cabo Verde', 'Eswatini', 'North Macedonia', 'Timor-Leste', 'Myanmar',
       'Democratic Republic of the Congo', 'Congo', 'Vatican City', 'United States', 'São Tomé and Príncipe']);
@@ -91,10 +91,9 @@ check('config: rounds countries → capitals (without the small states) → all 
   assert.deepEqual(ids(1), main);
   assert.deepEqual(ids(2), COUNTRIES.map((c) => c.id));
   assert.deepEqual(ids(3), COUNTRIES.map((c) => c.id));
-  assert.equal(main.length, 162);
+  assert.equal(main.length, 161);
   for (const s of SMALL) assert.ok(!ids(0).includes(s) && !ids(1).includes(s), `${s} inert in rounds 1 and 2`);
-  assert.deepEqual(specs.map((s) => s.asked.length), [162, 161, 197, 196]);
-  for (const i of [1, 3]) assert.ok(!specs[i].asked.includes('ISR'));
+  assert.deepEqual(specs.map((s) => s.asked.length), [161, 161, 197, 197]);
   const rings = (i) => specs[i].answers.filter((a) => specs[i].byId.get(a.id).marker).map((a) => a.id).sort();
   assert.deepEqual(rings(0), [...RINGED_ALWAYS].sort());
   assert.deepEqual(rings(1), [...RINGED_ALWAYS].sort());
@@ -102,17 +101,18 @@ check('config: rounds countries → capitals (without the small states) → all 
   assert.deepEqual(rings(3), [...SMALL, ...RINGED_ALWAYS].sort());
 });
 
-check('config: texts (prompts, misclick labels, Greenland with its state, Israel without a capital)', () => {
+check('config: texts (prompts, misclick labels, Greenland with its state)', () => {
   const [countries, capitals, , allCapitals] = config.rounds;
   const grl = byId.get('GRL');
   assert.equal(countries.ask(grl), 'Greenland (Denmark)');
   assert.equal(capitals.ask(grl), 'Nuuk');
   assert.equal(capitals.miss(grl), 'Greenland (Denmark) · Nuuk');
-  assert.equal(capitals.miss(byId.get('ISR')), 'Israel');
+  assert.equal(capitals.miss(byId.get('ISR')), 'Israel · Jerusalem');
+  assert.equal(capitals.ask(byId.get('ISR')), 'Jerusalem');
   assert.equal(allCapitals.miss(byId.get('VAT')), 'Vatican City · Vatican City');
   assert.equal(capitals.prompt, 'Find the country or territory whose capital is');
-  assert.match(capitals.done({ total: 161, misses: 0 }), /35 small states/);
-  assert.match(countries.done({ total: 162, misses: 1 }), /^All 162 countries found · 1 misclick\./);
+  assert.match(capitals.done({ total: 161, misses: 0 }), /36 small states/);
+  assert.match(countries.done({ total: 161, misses: 1 }), /^All 161 countries found · 1 misclick\./);
 });
 
 check('index.html: English, data-quiz names this image, own stylesheet after the engine\'s, ids clear of the map\'s', () => {
@@ -124,7 +124,7 @@ check('index.html: English, data-quiz names this image, own stylesheet after the
   const pageIds = [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
   const mapIds = [...site('map.svg').matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
   for (const id of mapIds) assert.ok(!pageIds.includes(id), id);
-  assert.match(html, /<span id="progress" class="num">0 \/ 162<\/span>/);
+  assert.match(html, /<span id="progress" class="num">0 \/ 161<\/span>/);
 });
 
 check('map.svg: the net (sea) and its folds first, context land, then the 197 states; nothing else', () => {

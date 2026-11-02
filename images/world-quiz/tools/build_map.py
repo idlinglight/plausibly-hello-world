@@ -19,14 +19,18 @@ Pipeline:
   2. Border view (EU/Austrian official view where it differs from Natural
      Earth's de-facto layer; tools/README.md): Crimea -> Ukraine; Northern
      Cyprus, Somaliland, Aland, Hong Kong and Macao merge into Cyprus,
-     Somalia, Finland and China; the Golan Heights -> Syria, Western Sahara
-     out of Morocco (context land), Ceuta and Melilla -> Spain (cut along
-     lon/lat lines, CUTS). Point checks (VIEW_CHECKS) assert the result;
-     EMPTY that tiny disputed islands are not in the file at this scale.
+     Somalia, Finland and China; the Golan Heights -> Syria and Western
+     Sahara out of Morocco (context land) cut along lon/lat lines (CUTS),
+     Ceuta and Melilla -> Spain clipped by small boxes (BOXES). The cuts'
+     new vertices go into the neighbours too; no T-junction anywhere
+     (asserted, also after the antimeridian stitch). Point checks
+     (VIEW_CHECKS) assert the result; EMPTY that tiny disputed islands are
+     not in the file at this scale.
   3. Quiz states (tools/countries.json, 197) are regions; every other
      feature (CONTEXT: dependencies and territories, Palestine, Western
      Sahara, the Siachen Glacier, Antarctica) is one merged context path.
-     The small-state flags are checked against their rule (SMALL_*).
+     The small-state flags and the rings are checked against their rules
+     (SMALL_*, RING_SIZE) on the map as drawn (step 6).
   4. Natural Earth cuts land at 180 degrees: stitched so the halves merge.
   5. Projection: Fuller's icosahedron and net in Gray's exact transform
      (mapgen.Polyhedral("fuller")); each polygon is clipped per net piece
@@ -79,12 +83,19 @@ CRIMEA_POINT = (34.10, 44.95)            # Simferopol: picks the Crimea polygon 
 MERGES = [("CYP", "CYN", "Northern Cyprus"), ("SOM", "SOL", "Somaliland"), ("FIN", "ALD", "Åland"),
           ("CHN", "HKG", "Hong Kong"), ("CHN", "MAC", "Macao")]
 # (feature, xs, ys, {cell: feature it goes to}, label): mapgen.cut_cells along
-# lon/lat lines; the cells listed move, the rest stay with the feature.
+# lon/lat lines across the whole feature; the cells listed move, the rest
+# stay. Each line crosses the feature's outline only twice: the Golan's at
+# Israel's borders with Lebanon and Jordan, Western Sahara's at the coast
+# and Morocco's corner with Algeria.
 CUTS = [
     ("ISR", [35.64], [], {(1, 0): "SYR"}, "Golan Heights (east of 35.64E) -> Syria"),
     ("MAR", [], [27.6564], {(0, 0): "SAH"}, "Western Sahara (south of 27.6564N) -> context land"),
-    ("MAR", [-5.383, -5.27], [35.86, 35.93], {(1, 1): "ESP"}, "Ceuta -> Spain"),
-    ("MAR", [-2.97, -2.92], [35.265, 35.32], {(1, 1): "ESP"}, "Melilla -> Spain"),
+]
+# (feature, lon/lat box, feature it goes to, label): mapgen.clip_box, only
+# what lies inside the box moves; nothing beyond its outline is touched.
+BOXES = [
+    ("MAR", (-5.383, 35.86, -5.27, 35.93), "ESP", "Ceuta -> Spain"),
+    ("MAR", (-2.97, 35.265, -2.92, 35.32), "ESP", "Melilla -> Spain"),
 ]
 CTX = "context"  # expected owner in VIEW_CHECKS: a context feature (its id after the colon)
 # (lon, lat, expected owner after the fix-ups, label)
@@ -209,7 +220,7 @@ def load_countries():
     if len(set(ids)) != len(ids):
         fail("countries.json: duplicate ids")
     for key in ("name", "capital"):
-        vals = [c[key] for c in cl if c[key] is not None]
+        vals = [c.get(key) for c in cl]
         if any(not isinstance(v, str) or not v or v != v.strip() for v in vals):
             fail(f"countries.json: empty or padded {key}")
         if len(set(vals)) != len(vals):
@@ -221,6 +232,10 @@ def load_countries():
         extra = set(c) - {"id", "name", "capital", "of", "small", "marker"}
         if extra:
             fail(f"countries.json: {c['id']}: unknown fields {sorted(extra)}")
+        if "small" in c and c["small"] is not True:
+            fail(f"countries.json: {c['id']}: small is true or left out")
+        if "of" in c and not (isinstance(c["of"], str) and c["of"] and c["of"] == c["of"].strip()):
+            fail(f"countries.json: {c['id']}: of is a state's name")
     return cl
 
 
@@ -236,6 +251,24 @@ def apply_border_view(geo, notes):
             fail(f"merge {src} -> {tgt}: feature missing")
         geo[tgt].extend(geo.pop(src))
         notes.append(f"{label}: {src} -> {tgt}")
+    new_points = set()
+
+    def move(src, kept, moved, label, on_cut):
+        """Hands the moved parts on; the cut's new vertices (none off its own
+        lines or box) go to every feature whose edge they lie on."""
+        if not moved:
+            fail(f"{label}: nothing to move")
+        before = {tuple(c[:2]) for p in geo[src] for r in p for c in r}
+        added = {tuple(c[:2]) for p in kept + [q for ps in moved.values() for q in ps] for r in p for c in r} - before
+        stray = sorted(pt for pt in added if not on_cut(pt))
+        if stray:
+            fail(f"{label}: new vertices off the cut: {stray[:3]}")
+        new_points.update(added)
+        geo[src] = kept
+        for tgt, parts in moved.items():
+            geo.setdefault(tgt, []).extend(parts)
+        notes.append(f"{label} ({sum(len(p) for p in moved.values())} parts, {len(added)} new vertices)")
+
     for src, xs, ys, moves, label in CUTS:
         kept, moved = [], {}
         for poly in geo[src]:
@@ -244,12 +277,23 @@ def apply_border_view(geo, notes):
                     moved.setdefault(moves[cell], []).append(part)
                 else:
                     kept.append(part)
-        if not moved:
-            fail(f"cut {label}: nothing to move")
-        geo[src] = kept
-        for tgt, parts in moved.items():
-            geo.setdefault(tgt, []).extend(parts)
-        notes.append(f"{label} ({sum(len(p) for p in moved.values())} parts)")
+        move(src, kept, moved, label, lambda pt, xs=xs, ys=ys: pt[0] in xs or pt[1] in ys)
+    for src, box, tgt, label in BOXES:
+        kept, moved = [], {}
+        for poly in geo[src]:
+            inside, outside = mapgen.clip_box(poly, box)
+            kept.extend(outside)
+            if inside:
+                moved.setdefault(tgt, []).extend(inside)
+        move(src, kept, moved, label,
+             lambda pt, b=box: (pt[0] in (b[0], b[2]) and b[1] <= pt[1] <= b[3]) or (pt[1] in (b[1], b[3]) and b[0] <= pt[0] <= b[2]))
+    # Neighbours get the cuts' new border vertices; then no vertex anywhere
+    # may lie on another feature's edge without being one of its vertices.
+    for a3 in list(geo):
+        geo[a3] = mapgen.node_points(geo[a3], new_points)
+    tj = mapgen.t_junctions(geo)
+    if tj:
+        fail(f"{len(tj)} T-junctions after the border view, e.g. {tj[:3]}")
 
     def owner(lon, lat):
         return mapgen.owner_of(geo, lon, lat)
@@ -282,23 +326,6 @@ def sphere_area_km2(poly):
             s += 2 * math.atan2(dot(c, cross(a, b)), 1 + dot(c, a) + dot(a, b) + dot(b, c))
         return abs(s)
     return (ring_area(poly[0]) - sum(ring_area(h) for h in poly[1:])) * R_KM * R_KM
-
-
-def land_borders(raw):
-    """Natural Earth's own features (before the fix-ups) that share a border
-    vertex: {id: {neighbour ids}}."""
-    owners = {}
-    for a3, polys in raw.items():
-        for p in polys:
-            for r in p:
-                for c in r:
-                    owners.setdefault((round(c[0], 7), round(c[1], 7)), set()).add(a3)
-    nb = {a3: set() for a3 in raw}
-    for o in owners.values():
-        if len(o) > 1:
-            for a in o:
-                nb[a] |= o - {a}
-    return nb
 
 
 def far_parts(net, a3, polys, area):
@@ -351,7 +378,6 @@ def build(ne_path):
     countries = load_countries()
     quiz = [c["id"] for c in countries]
     geo = load_ne(ne_path)
-    raw = {a3: list(p) for a3, p in geo.items()}
     for a3 in quiz:
         if a3 not in geo:
             fail(f"{a3} not in {NE_FILE}")
@@ -360,21 +386,14 @@ def build(ne_path):
     if context != sorted(CONTEXT):
         fail(f"context features {context}, expected {sorted(CONTEXT)}: decide about "
              f"{sorted(set(context) ^ set(CONTEXT))}")
-
-    # Small states: the flag in countries.json must agree with the rule.
-    borders = land_borders(raw)
     area = {a3: sum(sphere_area_km2(p) for p in geo[a3]) for a3 in quiz}
-    for c in countries:
-        a3 = c["id"]
-        rule = area[a3] < SMALL_AREA or (not borders[a3] and area[a3] < SMALL_ISLAND_AREA)
-        if rule != bool(c.get("small")):
-            fail(f"{a3}: small is {bool(c.get('small'))} in countries.json, the rule says {rule} "
-                 f"({area[a3]:.0f} km2, land borders {sorted(borders[a3]) or 'none'})")
-    notes.append(f"small-state rule: {sum(1 for c in countries if c.get('small'))} small states, flags agree")
 
-    # Antimeridian, then far-flung parts.
+    # Antimeridian (still no T-junction anywhere), then far-flung parts.
     for a3 in geo:
         geo[a3] = mapgen.stitch_antimeridian(geo[a3])
+    tj = mapgen.t_junctions(geo)
+    if tj:
+        fail(f"{len(tj)} T-junctions after the antimeridian stitch, e.g. {tj[:3]}")
     dropped = {}
     for a3 in quiz:
         d = far_parts(net, a3, geo[a3], area[a3])
@@ -388,54 +407,65 @@ def build(ne_path):
     if {a3: len(v) for a3, v in dropped.items()} != FAR_EXPECTED:
         fail(f"far parts dropped {({a3: len(v) for a3, v in dropped.items()})}, expected {FAR_EXPECTED}")
 
-    # Window: the net, plus a margin.
+    # Window: the net, plus a margin. Every polygon is split onto the net once.
     outline = net.outline()
     window = mapgen.Window([p for _, tri in outline for p in tri], MARGIN, WIDTH, (0, 0))
-
-    def view(lon, lat):
-        return window.to_view(*net(lon, lat))
-
-    parts = {a3: [part for poly in geo[a3] for part in net.split(poly)] for a3 in geo}
-    # Rings: small states, and every state whose largest polygon is under RING_SIZE.
-    largest = {}
-    for a3 in quiz:
-        best = (-1, 0)
-        for poly in geo[a3]:
-            pp = net.split(poly)
-            pts = [window.to_view(*p) for part in pp for p in part[0]]
-            if not pts:
-                continue
-            bx = mapgen.bbox(pts)
-            a = sphere_area_km2(poly)
-            if a > best[0]:
-                best = (a, max(bx[2] - bx[0], bx[3] - bx[1]))
-        largest[a3] = best[1]
-    for c in countries:
-        want = bool(c.get("small")) or largest[c["id"]] < RING_SIZE
-        if want != ("marker" in c):
-            fail(f"{c['id']}: marker {'missing' if want else 'not wanted'} (small: {bool(c.get('small'))}, "
-                 f"largest polygon {largest[c['id']]:.2f} units)")
+    split = {a3: [net.split(poly) for poly in geo[a3]] for a3 in geo}
     ringed = {c["id"] for c in countries if "marker" in c}
 
     mb = mapgen.MapBuilder(mapgen.Identity(), window, quiz, grid=GRID, min_island=MIN_ISLAND,
                            context_tol=CONTEXT_TOL, region_tol=REGION_TOL,
                            region_tols={a3: RING_TOL for a3 in sorted(ringed)}, repair_crossings=True)
-    for a3, ps in parts.items():  # Natural Earth's order (the output depends on it)
-        for part in ps:
+    for a3, per_poly in split.items():  # Natural Earth's order (the output depends on it)
+        for part in (part for parts in per_poly for part in parts):
             if a3 in quiz:
                 mb.add_region(a3, part)
             else:
                 mb.add_context(part)
     res = mb.build(keep_islands=ringed)
+    users = [set() for _ in res.arcs]
+    for fid, refs in res.topo.items():
+        for ring in refs:
+            for ref in ring:
+                users[ref if ref >= 0 else ~ref].add(fid)
     if res.stats["crossings"]:
-        users = [set() for _ in res.arcs]
-        for fid, refs in res.topo.items():
-            for ring in refs:
-                for ref in ring:
-                    users[ref if ref >= 0 else ~ref].add(fid)
         where = [f"{'/'.join(sorted(users[i] | users[j]))} near {tuple(round(v / GRID, 1) for v in res.arcs[i][0])}"
                  for i, j in mapgen.crossing_pairs(res.arcs)]
         fail(f"{res.stats['crossings']} arc crossings left after the repair: " + "; ".join(where))
+
+    # The rules, on the map as drawn (after the merges, cuts and the dissolve).
+    # Small: land area under SMALL_AREA, or no land border (an arc shared with
+    # another state or with context land) and under SMALL_ISLAND_AREA.
+    borders = {a3: set() for a3 in quiz}
+    for u in users:
+        if len(u) > 1:
+            for a in u & set(quiz):
+                borders[a] |= u - {a}
+    for c in countries:
+        a3 = c["id"]
+        rule = area[a3] < SMALL_AREA or (not borders[a3] and area[a3] < SMALL_ISLAND_AREA)
+        if rule != bool(c.get("small")):
+            fail(f"{a3}: small is {bool(c.get('small'))} in countries.json, the rule says {rule} "
+                 f"({area[a3]:.0f} km2, land borders {sorted(borders[a3]) or 'none'})")
+    notes.append(f"small-state rule: {sum(1 for c in countries if c.get('small'))} small states, flags agree")
+    # Rings: the small states, and every state whose largest drawn shape (an
+    # outer ring) is under RING_SIZE across.
+    largest = {}
+    for a3 in quiz:
+        if a3 not in res.topo:  # drawn from its own finer outline
+            largest[a3] = res.sizes[a3]
+            continue
+        rings = [mapgen.ring_from_arcs(r, res.arcs) for r in res.topo[a3]]
+        outer = max((r for r in rings if mapgen.area2(r) > 0), key=mapgen.area2)
+        bx = mapgen.bbox(outer)
+        largest[a3] = max(bx[2] - bx[0], bx[3] - bx[1]) / GRID
+    for c in countries:
+        want = bool(c.get("small")) or largest[c["id"]] < RING_SIZE
+        if want != ("marker" in c):
+            fail(f"{c['id']}: marker {'missing' if want else 'not wanted'} (small: {bool(c.get('small'))}, "
+                 f"largest drawn shape {largest[c['id']]:.2f} units)")
+    notes.append("rings in every round: " + ", ".join(sorted(a3 for a3 in ringed if a3 not in
+                                                             {c["id"] for c in countries if c.get("small")})))
 
     # Markers: on the state's own geometry; size = the larger side of the
     # bounding box of the polygon the ring sits on (the island, not the
@@ -445,18 +475,20 @@ def build(ne_path):
         if "marker" not in c:
             continue
         a3 = c["id"]
-        mx, my = view(*c["marker"])
+        mx, my = window.to_view(*net(*c["marker"]))
         if not window.contains(mx, my):
             fail(f"{a3}: marker outside the window")
         best = None
-        for poly in geo[a3]:
-            pts = [window.to_view(*p) for part in net.split(poly) for p in part[0]]
+        for parts in split[a3]:
+            pts = [window.to_view(*p) for part in parts for p in part[0]]
             if not pts:
                 continue
             bx = mapgen.bbox(pts)
             d = math.hypot(max(bx[0] - mx, 0, mx - bx[2]), max(bx[1] - my, 0, my - bx[3]))
             if best is None or d < best[0]:
                 best = (d, max(bx[2] - bx[0], bx[3] - bx[1]))
+        if best is None:
+            fail(f"{a3}: no geometry left for its ring")
         if best[0] > 0.3:
             fail(f"{a3}: marker {best[0]:.2f} units from its nearest polygon")
         markers[a3] = (mx, my)
@@ -503,9 +535,9 @@ def data_module(countries, window, markers, sizes):
         "//",
         "// MAP: the window (full view) is 0 0 width height in map units (the net",
         "// plus a margin); extent [x, y, w, h] is map.svg's viewBox.",
-        "// COUNTRIES: the quiz set in countries.json order. capital null: not asked",
-        "// in the capital rounds. of: the state a territory belongs to. small: only",
-        "// in the 'all' rounds. marker: [x, y] in map units where a ring is drawn,",
+        "// COUNTRIES: the quiz set in countries.json order. of: the state a territory",
+        "// belongs to. small: only in the 'all' rounds. marker: [x, y] in map units",
+        "// where a ring is drawn,",
         "// size: the larger side of the bounding box of the polygon it sits on.",
         "",
         window.map_js(),
@@ -514,7 +546,7 @@ def data_module(countries, window, markers, sizes):
     ]
     for c in countries:
         parts = [f"id: {mapgen.js_string(c['id'])}", f"name: {mapgen.js_string(c['name'])}",
-                 f"capital: {'null' if c['capital'] is None else mapgen.js_string(c['capital'])}"]
+                 f"capital: {mapgen.js_string(c['capital'])}"]
         if c.get("of"):
             parts.append(f"of: {mapgen.js_string(c['of'])}")
         if c.get("small"):

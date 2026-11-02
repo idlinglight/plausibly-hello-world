@@ -3,10 +3,10 @@
     "The quiz set of images/world-quiz: the single source of truth for codes, names, capitals, the small-state flag and marker points.",
     "Set (owner, 2026-11-02): the 193 UN member states, Vatican City, Kosovo and Taiwan, plus Greenland as its own entry. Everything else Natural Earth draws (dependencies and territories, Palestine, Western Sahara, the Siachen Glacier, Antarctica) is context land.",
     "id: Natural Earth ADM0_A3 code (also the element id in site/map.svg). Border-view fix-ups (Crimea, Northern Cyprus, Somaliland, Aland, Hong Kong, Macao, the Golan Heights, Western Sahara, Ceuta and Melilla) are in tools/build_map.py and tools/README.md.",
-    "name, capital: English short forms in the style of the EU Interinstitutional Style Guide, diacritics kept, as europe-quiz, south-america-quiz and east-asia-quiz. Multi-capital and contested cases: tools/README.md. capital null: not asked in the capital rounds (still clickable there, as a misclick).",
+    "name, capital: English short forms in the style of the EU Interinstitutional Style Guide, diacritics kept, as europe-quiz, south-america-quiz and east-asia-quiz. Multi-capital and contested cases: tools/README.md.",
     "of: the state a territory belongs to; the page shows it after the name: 'Greenland (Denmark)'.",
-    "small: in neither the countries nor the capitals round (inert there: drawn as context land), only in the 'all' rounds, with a ring. The rule: land area under 1,000 km2, or no land border and under 30,000 km2 (Natural Earth geometry); build_map.py computes it and stops if a flag disagrees.",
-    "marker: [lon, lat] where a ring is drawn (the small states, and states too small to tap at the full view: under 4 map units); curated points on the main island or near the capital, not taken from the polygons."
+    "small: in neither the countries nor the capitals round (inert there: drawn as context land), only in the 'all' rounds, with a ring. The rule: land area under 1,000 km2, or no land border and under 30,000 km2 (Natural Earth geometry, borders as drawn after the border view); build_map.py computes it and stops if a flag disagrees.",
+    "marker: [lon, lat] where a ring is drawn (the small states, and states whose largest drawn shape is under 4 map units across); curated points on the main island or near the capital, not taken from the polygons."
   ],
   "countries": [
     { "id": "AFG", "name": "Afghanistan", "capital": "Kabul" },
@@ -52,7 +52,7 @@
     { "id": "CIV", "name": "Côte d'Ivoire", "capital": "Yamoussoukro" },
     { "id": "HRV", "name": "Croatia", "capital": "Zagreb" },
     { "id": "CUB", "name": "Cuba", "capital": "Havana" },
-    { "id": "CYP", "name": "Cyprus", "capital": "Nicosia", "marker": [33.20, 35.05] },
+    { "id": "CYP", "name": "Cyprus", "capital": "Nicosia", "small": true, "marker": [33.20, 35.05] },
     { "id": "CZE", "name": "Czechia", "capital": "Prague" },
     { "id": "COD", "name": "Democratic Republic of the Congo", "capital": "Kinshasa" },
     { "id": "DNK", "name": "Denmark", "capital": "Copenhagen" },
@@ -91,7 +91,7 @@
     { "id": "IRN", "name": "Iran", "capital": "Tehran" },
     { "id": "IRQ", "name": "Iraq", "capital": "Baghdad" },
     { "id": "IRL", "name": "Ireland", "capital": "Dublin" },
-    { "id": "ISR", "name": "Israel", "capital": null },
+    { "id": "ISR", "name": "Israel", "capital": "Jerusalem" },
     { "id": "ITA", "name": "Italy", "capital": "Rome" },
     { "id": "JAM", "name": "Jamaica", "capital": "Kingston", "small": true, "marker": [-77.30, 18.12] },
     { "id": "JPN", "name": "Japan", "capital": "Tokyo" },

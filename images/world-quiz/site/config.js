@@ -5,16 +5,16 @@
 // shared/map-quiz/README.md.
 //
 // Four rounds, cycling: the countries, then their capitals, both without
-// the 35 small states (small: true in countries.js; drawn as context land
+// the 36 small states (small: true in countries.js; drawn as context land
 // there, never hit); then all 197 by name and by capital, the small ones
-// with rings. Luxembourg, Brunei, Cyprus, Qatar, Montenegro and Kosovo
-// have rings in every round (smaller than 4 map units).
+// with rings. Brunei, Kosovo, Luxembourg, Montenegro and Qatar have rings
+// in every round (their largest drawn shape is under 4 map units across).
 import { MAP, COUNTRIES } from './countries.js';
 
 const misclicks = (n) => (n ? ` · ${n} misclick${n === 1 ? '' : 's'}` : ' · no misclicks');
 // A territory carries the state it belongs to: "Greenland (Denmark)".
 const named = (c) => (c.of ? `${c.name} (${c.of})` : c.name);
-const capitalOf = (c) => (c.capital ? `${named(c)} · ${c.capital}` : named(c));
+const capitalOf = (c) => `${named(c)} · ${c.capital}`;
 // Every entry is one map piece; a round's answers are the entries it plays.
 const answer = (c) => ({ ...c, pieces: [c.id] });
 const MAIN = COUNTRIES.filter((c) => !c.small).map(answer);
@@ -39,7 +39,6 @@ export default {
       label: 'Capitals',
       prompt: 'Find the country or territory whose capital is',
       answers: MAIN,
-      asked: (c) => c.capital !== null,
       ask: (c) => c.capital,
       miss: capitalOf,
       done: ({ total, misses }) => `All ${total} capitals found${misclicks(misses)}. Next: all countries, with the ${smalls} small states.`,
@@ -58,7 +57,6 @@ export default {
       label: 'All capitals',
       prompt: 'Find the country or territory whose capital is',
       answers: ALL,
-      asked: (c) => c.capital !== null,
       ask: (c) => c.capital,
       miss: capitalOf,
       done: ({ total, misses }) => `All ${total} capitals found${misclicks(misses)}. The countries again, without the small states.`,

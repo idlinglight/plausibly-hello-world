@@ -2,9 +2,9 @@
 //
 // MAP: the window (full view) is 0 0 width height in map units (the net
 // plus a margin); extent [x, y, w, h] is map.svg's viewBox.
-// COUNTRIES: the quiz set in countries.json order. capital null: not asked
-// in the capital rounds. of: the state a territory belongs to. small: only
-// in the 'all' rounds. marker: [x, y] in map units where a ring is drawn,
+// COUNTRIES: the quiz set in countries.json order. of: the state a territory
+// belongs to. small: only in the 'all' rounds. marker: [x, y] in map units
+// where a ring is drawn,
 // size: the larger side of the bounding box of the polygon it sits on.
 
 export const MAP = { width: 1000, height: 480.7, extent: [0, 0, 1000, 480.7] };
@@ -53,7 +53,7 @@ export const COUNTRIES = [
   { id: "CIV", name: "Côte d'Ivoire", capital: "Yamoussoukro" },
   { id: "HRV", name: "Croatia", capital: "Zagreb" },
   { id: "CUB", name: "Cuba", capital: "Havana" },
-  { id: "CYP", name: "Cyprus", capital: "Nicosia", marker: [366.94, 138.64], size: 3.08 },
+  { id: "CYP", name: "Cyprus", capital: "Nicosia", small: true, marker: [366.94, 138.64], size: 3.08 },
   { id: "CZE", name: "Czechia", capital: "Prague" },
   { id: "COD", name: "Democratic Republic of the Congo", capital: "Kinshasa" },
   { id: "DNK", name: "Denmark", capital: "Copenhagen" },
@@ -92,7 +92,7 @@ export const COUNTRIES = [
   { id: "IRN", name: "Iran", capital: "Tehran" },
   { id: "IRQ", name: "Iraq", capital: "Baghdad" },
   { id: "IRL", name: "Ireland", capital: "Dublin" },
-  { id: "ISR", name: "Israel", capital: null },
+  { id: "ISR", name: "Israel", capital: "Jerusalem" },
   { id: "ITA", name: "Italy", capital: "Rome" },
   { id: "JAM", name: "Jamaica", capital: "Kingston", small: true, marker: [650.84, 189.32], size: 5.15 },
   { id: "JPN", name: "Japan", capital: "Tokyo" },
