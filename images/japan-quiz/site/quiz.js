@@ -28,6 +28,15 @@
 // reset() starts game g + 1: colours and counters cleared, a fresh first
 // round.
 //
+// jumpTo(kind) (the round picker) leaves the current round for a fresh one
+// of that kind: round r' = the first index after r with r' % kinds = kind
+// (r + kinds for the current kind), so colour and shuffle are those of
+// round r' as always, and the cycle carries on from there. The map starts blank
+// (whatever carryColours says: with an even number of kinds the new round
+// may have the old one's colour, and carried colours would look found);
+// the game's counters run on, the round's misses start at 0. It never
+// opens with the answer found last in the round left.
+//
 // A saved game records its round kinds (the rounds' keys), so restore()
 // turns it down once the image's rounds change: a saved round index would
 // otherwise continue as a different kind. Saves from before that field
@@ -35,7 +44,8 @@
 // Where a kind groups pieces or asks a subset, the save also records a
 // fingerprint of every kind's answers (their pieces) and asked answers,
 // and restore() turns it down when they changed; a save of kinds with one
-// piece per answer has no such field (its format predates grouping).
+// piece per answer has no such field (its format predates grouping). A
+// save after jumpTo() needs no field of its own: the round index says it.
 
 export const VERSION = 1; // of serialize()'s format
 
@@ -250,6 +260,16 @@ export class Quiz {
     const completed = { kind: this.kind, misses: this.roundMisses, total: this.order.length };
     this.start(this.round + 1, pieces);
     return { result: 'correct', id, pieces, completed };
+  }
+
+  // A fresh round of kind `kind` (0 … kinds - 1), see the header: the next
+  // round index of that kind, a blank map, counters kept.
+  jumpTo(kind) {
+    if (!Number.isSafeInteger(kind) || kind < 0 || kind >= this.kinds) throw new RangeError(`kind: an integer from 0 to ${this.kinds - 1}`);
+    const next = this.round + 1;
+    const prev = this.pos > 0 ? this.piecesOf(this.order[this.pos - 1]) : null;
+    this.colours = {};
+    this.start(next + ((kind - (next % this.kinds) + this.kinds) % this.kinds), prev);
   }
 
   reset() {

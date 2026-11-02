@@ -494,6 +494,138 @@ check('carryColours false: each round starts blank; true (the default) carries t
   assert.deepEqual(d.colours, {});
 });
 
+// ── jumpTo: the round picker ────────────────────────────────────────────
+
+check('jumpTo: the next round index of the picked kind, its colour and its seeded shuffle', () => {
+  const keys = ['a', 'b', 'c', 'd'];
+  // from round 0 (kind 0) to each kind: rounds 4 (same kind: starts over), 1, 2, 3
+  for (const [kind, round] of [[0, 4], [1, 1], [2, 2], [3, 3]]) {
+    const q = new Quiz(ids, 21, keys);
+    q.jumpTo(kind);
+    assert.equal(q.round, round);
+    assert.equal(q.kind, kind);
+    assert.equal(q.colour, (round % 2) + 1);
+    assert.equal(q.done, 0);
+    assert.ok(isPerm(q.order));
+    // nothing found in the round left: the shuffle is round r's, from scratch
+    assert.deepEqual(q.order, shuffled(ids, makeRng(mix(21, 0, round))), `kind ${kind}`);
+  }
+  // from round 6 (kind 2): kind 1 -> 9, kind 2 -> 10, kind 3 -> 7, kind 0 -> 8
+  for (const [kind, round] of [[1, 9], [2, 10], [3, 7], [0, 8]]) {
+    const q = new Quiz(ids, 21, keys);
+    for (let r = 0; r < 6; r++) finishRound(q);
+    assert.equal(q.round, 6);
+    q.jumpTo(kind);
+    assert.equal(q.round, round, `kind ${kind}`);
+  }
+  // 3 kinds: the colour of a kind alternates, as with cycling
+  const q = new Quiz(ids, 2, 3);
+  q.jumpTo(2);
+  assert.deepEqual([q.round, q.colour], [2, 1]);
+  q.jumpTo(2);
+  assert.deepEqual([q.round, q.colour], [5, 2]);
+});
+
+check('jumpTo: reproducible under one seed, the cycle carries on from the picked kind', () => {
+  const play = (seed) => {
+    const q = new Quiz(ids, seed, ['a', 'b', 'c']);
+    for (let i = 0; i < 4; i++) q.answer(q.target);
+    q.jumpTo(2);
+    const at = q.order.slice();
+    finishRound(q);
+    return { at, q };
+  };
+  const one = play(13);
+  const two = play(13);
+  assert.deepEqual(one.at, two.at);
+  assert.equal(one.q.kind, 0, 'after kind 2 comes kind 0');
+  assert.equal(one.q.round, 3);
+  assert.deepEqual(one.q.order, two.q.order);
+  finishRound(one.q);
+  assert.equal(one.q.kind, 1);
+});
+
+check('jumpTo: blank map (also with carryColours), counters run on, round misses start at 0', () => {
+  for (const options of [{}, { carryColours: false }]) {
+    const q = new Quiz(ids, 3, ['a', 'b'], options);
+    finishRound(q);
+    for (let i = 0; i < 3; i++) q.answer(q.target);
+    q.answer(wrongFor(q));
+    q.answer(wrongFor(q));
+    assert.equal(q.roundMisses, 2);
+    assert.ok(ids.some((id) => q.colourOf(id)));
+    q.jumpTo(0);
+    assert.deepEqual(q.colours, {});
+    assert.equal(q.correct, N + 3);
+    assert.equal(q.misses, 2);
+    assert.equal(q.roundMisses, 0);
+    assert.equal(q.game, 0);
+    assert.deepEqual([q.round, q.kind, q.colour, q.done], [2, 0, 1, 0]);
+    // the picked round ends as any other: completed reports its own misses
+    q.answer(wrongFor(q));
+    assert.deepEqual(finishRound(q).completed, { kind: 0, misses: 1, total: N });
+    assert.equal(q.kind, 1);
+    if (options.carryColours === false) assert.deepEqual(q.colours, {});
+    else assert.ok(ids.every((id) => q.colourOf(id) === 1), 'carry: the map keeps the picked round\'s colours');
+  }
+});
+
+check('jumpTo: never opens with the answer found last in the round left', () => {
+  for (let seed = 0; seed < 300; seed++) {
+    for (const found of [1, 5]) {
+      const q = new Quiz(P, seed, KINDS);
+      finishRound(q); // now singles
+      for (let i = 0; i < found; i++) q.answer(q.target);
+      const last = q.order[found - 1];
+      q.jumpTo(1); // singles again: round 4
+      assert.equal(q.round, 4);
+      assert.notEqual(q.order[0], last, `seed ${seed}`);
+      // a grouped kind: its first answer shares no piece with the last one found
+      const g = new Quiz(P, seed, KINDS);
+      finishRound(g);
+      for (let i = 0; i < found; i++) g.answer(g.target);
+      const lastPiece = g.order[found - 1];
+      g.jumpTo(0);
+      if (g.piecesOf(g.order[0]).includes(lastPiece)) assert.ok(g.order.every((id) => g.piecesOf(id).includes(lastPiece)), `seed ${seed}`);
+    }
+  }
+});
+
+check('jumpTo: grouped and subset kinds; RangeError for a kind that is none', () => {
+  const q = new Quiz(P, 7, KINDS);
+  q.jumpTo(2);
+  assert.equal(q.total, 3);
+  assert.deepEqual([...q.order].sort(), ['p1', 'p3', 'p5']);
+  assert.equal(q.answerOf('p2'), 'p2');
+  q.jumpTo(0);
+  assert.equal(q.round, 3);
+  assert.equal(q.answerOf('p6'), null, 'inert again');
+  for (const bad of [-1, 3, 1.5, '1', null, undefined, NaN]) assert.throws(() => q.jumpTo(bad), RangeError, String(bad));
+  assert.equal(q.round, 3, 'a bad kind changes nothing');
+  assert.throws(() => new Quiz(ids, 1, 2).jumpTo(2), RangeError);
+});
+
+check('jumpTo: a save after a jump restores and plays on identically; the format is unchanged', () => {
+  for (const [set, kinds, options] of [[ids, ['a', 'b', 'c', 'd'], {}], [P, KINDS, {}], [P, KINDS, { carryColours: false }]]) {
+    const a = new Quiz(set, 31, kinds, options);
+    for (let i = 0; i < 2; i++) a.answer(a.target);
+    a.jumpTo(2);
+    const right = JSON.parse(JSON.stringify(a.serialize()));
+    assert.deepEqual(Object.keys(right), Object.keys(new Quiz(set, 31, kinds, options).serialize()), 'no new field');
+    assert.equal(right.v, 1);
+    const b = Quiz.restore(right, set, kinds, options);
+    assert.ok(b);
+    assert.deepEqual(b.serialize(), a.serialize());
+    assert.equal(b.kind, 2);
+    // mid-round after the jump, then on into the next rounds
+    a.answer(a.target);
+    const mid = Quiz.restore(JSON.parse(JSON.stringify(a.serialize())), set, kinds, options);
+    assert.deepEqual(mid.serialize(), a.serialize());
+    for (const q of [a, mid]) finishRound(q), finishRound(q);
+    assert.deepEqual(mid.serialize(), a.serialize());
+  }
+});
+
 check('constructor: RangeError for a piece in two answers, unknown pieces, a round asking nothing', () => {
   const bads = [
     [{ key: 'x', answers: [{ id: 'g', pieces: ['p1', 'p2'] }, { id: 'h', pieces: ['p2'] }] }],
