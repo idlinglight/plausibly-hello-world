@@ -248,8 +248,12 @@ a one-handed pinch about the centre; on in world-quiz).
   names, kanji, kana, capitals, regions, islands; every kana checked
   against its Hepburn name) give `site/map.svg`, `site/japan.js` and
   `site/relief.png`; fix-ups, pins and relief parameters in
-  `tools/README.md`. Checks: `node tools/data.test.mjs`. Favicon rasters
-  exported once from `favicon.svg` as for europe-quiz.
+  `tools/README.md`. English Wikipedia titles for the card's link
+  (`wiki` on every answer, `capital_wiki` on the 18 asked capitals) live
+  in `prefectures.json` too, checked by hand online with
+  `tools/wiki_titles.py` (shared `wikicheck.py`). Checks: `node
+  tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
+  as for europe-quiz.
 - **world-quiz**: a map-quiz image (engine above) of the world on
   Buckminster Fuller's Dymaxion (Airocean) projection (title "World Quiz";
   "Dymaxion" only descriptively): `mapgen.Polyhedral("fuller")`, Gray's
