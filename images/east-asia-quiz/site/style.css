@@ -1,0 +1,840 @@
+/* Map quiz. Layers, bottom to top: the map (#map: inline SVG, zoomed and
+   panned by main.js; the page background is its sea, and the context land
+   fades out at the edge of the drawn extent), the question card, the
+   controls, the optional attribution line, and the transient toast and
+   misclick label.
+   Shared map-quiz engine file: the source is shared/map-quiz/site/, images
+   get byte-identical copies (python3 shared/sync.py). Edit the source; an
+   image overrides tokens (colours) in a stylesheet of its own, linked after
+   this one.
+
+   Pieces and answers (main.js): a round's answers are pieces or groups
+   of them; a piece in no answer of the round is inert (.inert: drawn as
+   context land). A round with line overlays (rounds[].lines) sets
+   .seamless on the regions: each piece outlines itself in its own fill,
+   so no hairline shows inside a group; the lines (#overlays .line) draw
+   the outlines that count, and .off hides the ones another round shows.
+
+   Two layouts (LANDSCAPE in main.js is the same media query):
+   - default (portrait, square-ish): card across the top, controls across
+     the bottom; main.js fits the map into the band between them.
+   - landscape: card top right, controls in a column bottom right; the map
+     uses the full height (at the full view the card covers a corner of it:
+     keep that corner to context land, as Russia in europe-quiz).
+
+   Theme: light tokens on :root, dark tokens for prefers-color-scheme: dark
+   unless <html data-theme="light">, and for <html data-theme="dark"> (set
+   by theme.js, which also handles the toggle). Dark mode: the round
+   colours (A, B, their hovers, the misclick) are dark fills under a light
+   border line, so the line stays visible between two neighbours of the
+   same colour (contrast ≥ 2:1 against every fill). */
+
+:root {
+  color-scheme: light;
+  --sea: #bfd9e7;
+  --land: #e2ddd1;
+  --land-line: #b5ad9e;
+  --region: #fbf8f0;
+  --region-hover: #efe7d6;
+  --border: #7f8b91;
+  --a: #74bf8f;
+  --a-hover: #62b080;
+  --b: #f2b661;
+  --b-hover: #e7a74b;
+  --pulse: #ffffff;
+  --miss: #e35b4b;
+  --ring: #33434b;
+  --ring-halo: rgba(255, 255, 255, 0.85);
+  --fg: #1d2a30;
+  --muted: #5d6c73;
+  --ok: #2c8a57;
+  --bad: #c4473a;
+  --panel: rgba(255, 253, 248, 0.93);
+  --panel-line: rgba(60, 70, 80, 0.12);
+  --shadow: 0 2px 10px rgba(30, 45, 55, 0.16);
+  --btn-hover: rgba(255, 255, 255, 1);
+  --label-bg: rgba(29, 42, 48, 0.92);
+  --label-fg: #ffffff;
+  --focus: #2f7fae;
+  --water: var(--sea); /* overlays (rivers, lakes) … */
+  --overlay-stroke: 0; /* … and their outline, map units */
+  --inert: var(--land); /* pieces in no answer of the round … */
+  --inert-line: var(--land-line); /* … and their outline */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --sea: #0d1e2a;
+    --land: #1a2932;
+    --land-line: #2e414c;
+    --region: #2b3e48;
+    --region-hover: #375058;
+    --border: #9ab2bd;
+    --a: #20774f;
+    --a-hover: #278460;
+    --b: #a3530f;
+    --b-hover: #b8600f;
+    --pulse: #f0fff8;
+    --miss: #c44a3f;
+    --ring: #e4eef2;
+    --ring-halo: rgba(4, 11, 17, 0.8);
+    --fg: #e4eef2;
+    --muted: #8ea4ae;
+    --ok: #5fd39e;
+    --bad: #ff8c7a;
+    --panel: rgba(13, 27, 37, 0.9);
+    --panel-line: rgba(160, 200, 220, 0.12);
+    --shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+    --btn-hover: rgba(24, 46, 60, 1);
+    --label-bg: rgba(236, 244, 247, 0.95);
+    --label-fg: #0d1e2a;
+    --focus: #7cc4e8;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --sea: #0d1e2a;
+  --land: #1a2932;
+  --land-line: #2e414c;
+  --region: #2b3e48;
+  --region-hover: #375058;
+  --border: #9ab2bd;
+  --a: #20774f;
+  --a-hover: #278460;
+  --b: #a3530f;
+  --b-hover: #b8600f;
+  --pulse: #f0fff8;
+  --miss: #c44a3f;
+  --ring: #e4eef2;
+  --ring-halo: rgba(4, 11, 17, 0.8);
+  --fg: #e4eef2;
+  --muted: #8ea4ae;
+  --ok: #5fd39e;
+  --bad: #ff8c7a;
+  --panel: rgba(13, 27, 37, 0.9);
+  --panel-line: rgba(160, 200, 220, 0.12);
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  --btn-hover: rgba(24, 46, 60, 1);
+  --label-bg: rgba(236, 244, 247, 0.95);
+  --label-fg: #0d1e2a;
+  --focus: #7cc4e8;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--sea);
+  color: var(--fg);
+  font: 15px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Touches pan and zoom the map: no page scrolling, zooming, selection
+     or callouts. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+p {
+  margin: 0;
+}
+
+/* ── Map ─────────────────────────────────────────────────────────────── */
+
+#map {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+}
+
+#map svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#map svg.over {
+  cursor: pointer;
+}
+
+#map svg.panning {
+  cursor: grabbing;
+}
+
+/* Strokes keep their width in screen pixels at any zoom. */
+#map path,
+#map rect,
+#map circle {
+  vector-effect: non-scaling-stroke;
+}
+
+/* Fade at the edge of the drawn extent: land dissolves into the sea. */
+#fade {
+  pointer-events: none;
+}
+
+#fade stop {
+  stop-color: var(--sea);
+}
+
+.fade-1 {
+  stop-opacity: 0.84;
+}
+
+.fade-2 {
+  stop-opacity: 0.5;
+}
+
+.fade-3 {
+  stop-opacity: 0.16;
+}
+
+.fade-4 {
+  stop-opacity: 0;
+}
+
+#fade-t {
+  fill: url(#fade-gt);
+}
+
+#fade-b {
+  fill: url(#fade-gb);
+}
+
+#fade-l {
+  fill: url(#fade-gl);
+}
+
+#fade-r {
+  fill: url(#fade-gr);
+}
+
+/* Overlays (map.svg's #overlays, e.g. rivers): above the regions, never
+   hit: clicks and hover go to what lies beneath. Fill and an outline of
+   the same colour, its width in map units (it scales with the map, so it
+   closes the same gaps, e.g. under bridges, at any zoom): --water and
+   --overlay-stroke, both per image; style one overlay by its id. */
+#overlays {
+  pointer-events: none;
+}
+
+#overlays path {
+  fill: var(--water);
+  stroke: var(--water);
+  stroke-width: var(--overlay-stroke);
+  stroke-linejoin: round;
+  vector-effect: none;
+}
+
+/* Line overlays (rounds[].lines: coasts, borders between groups; open
+   lines along the region edges): a stroke only, the region outline's
+   hairline, shown in the rounds that list them. */
+#overlays path.line {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 0.75px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+#overlays path.off {
+  display: none;
+}
+
+#land {
+  fill: var(--land);
+  stroke: var(--land-line);
+  stroke-width: 0.6px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* Regions (main.js adds class "regions" to their group in map.svg).
+   --fill: the region's resting colour (the blink returns to it). */
+.regions path {
+  --fill: var(--region);
+  fill: var(--fill);
+  stroke: var(--border);
+  stroke-width: 0.75px;
+  stroke-linejoin: round;
+}
+
+.regions path.hover {
+  --fill: var(--region-hover);
+}
+
+.regions path.c1 {
+  --fill: var(--a);
+}
+
+.regions path.c1.hover {
+  --fill: var(--a-hover);
+}
+
+.regions path.c2 {
+  --fill: var(--b);
+}
+
+.regions path.c2.hover {
+  --fill: var(--b-hover);
+}
+
+/* A correct answer: the new colour fades in from a bright flash. */
+.regions path.pulse {
+  animation: pulse 0.7s ease-out;
+}
+
+/* A misclick: the picked region blinks twice. */
+.regions path.flash {
+  animation: flash 0.5s linear 2;
+}
+
+@keyframes pulse {
+  from {
+    fill: var(--pulse);
+  }
+}
+
+@keyframes flash {
+  0%,
+  55% {
+    fill: var(--miss);
+  }
+  65%,
+  100% {
+    fill: var(--fill);
+  }
+}
+
+/* A round with line overlays: each piece outlines itself in its own fill
+   (closing hairline seams between the pieces of a group); the line
+   overlays above draw the outlines. Pulse and blink animate the outline
+   with the fill. */
+.regions.seamless path {
+  stroke: var(--fill);
+  stroke-width: 0.6px;
+}
+
+.regions.seamless path.pulse {
+  animation-name: pulse-seamless;
+}
+
+.regions.seamless path.flash {
+  animation-name: flash-seamless;
+}
+
+@keyframes pulse-seamless {
+  from {
+    fill: var(--pulse);
+    stroke: var(--pulse);
+  }
+}
+
+@keyframes flash-seamless {
+  0%,
+  55% {
+    fill: var(--miss);
+    stroke: var(--miss);
+  }
+  65%,
+  100% {
+    fill: var(--fill);
+    stroke: var(--fill);
+  }
+}
+
+/* A piece in no answer of the round: context land for that round (never
+   hit, never hovered; its colour from earlier rounds comes back with it). */
+.regions path.inert {
+  --fill: var(--inert);
+  stroke: var(--inert-line);
+  stroke-width: 0.6px;
+}
+
+/* Rings for regions too small to tap at the full view (main.js hides a
+   ring once its region is big enough on screen). The hit area is larger
+   than the ring and handled in main.js. */
+#markers {
+  pointer-events: none;
+}
+
+#markers .off {
+  display: none;
+}
+
+.marker-halo {
+  fill: none;
+  stroke: var(--ring-halo);
+  stroke-width: 4px;
+}
+
+.marker {
+  fill: var(--region);
+  fill-opacity: 0;
+  stroke: var(--ring);
+  stroke-width: 1.5px;
+}
+
+.marker.c1 {
+  fill: var(--a);
+  fill-opacity: 1;
+}
+
+.marker.c2 {
+  fill: var(--b);
+  fill-opacity: 1;
+}
+
+.marker.hover {
+  stroke-width: 2.5px;
+}
+
+.marker.flash {
+  animation: flash-ring 0.5s linear 2;
+}
+
+@keyframes flash-ring {
+  0%,
+  55% {
+    fill: var(--miss);
+    fill-opacity: 1;
+    stroke: var(--miss);
+  }
+}
+
+/* ── Question card ───────────────────────────────────────────────────── */
+
+#card,
+#controls {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  box-sizing: border-box;
+}
+
+#card {
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding: 9px 16px 10px;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  box-shadow: var(--shadow);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 20px;
+}
+
+.round {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.swatch {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--a);
+  box-shadow: 0 0 0 1px var(--panel-line);
+}
+
+/* Odd rounds colour with B (main.js). */
+.swatch.b {
+  background: var(--b);
+}
+
+#progress {
+  color: var(--fg);
+  letter-spacing: 0.02em;
+}
+
+.score {
+  display: flex;
+  gap: 12px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.bad {
+  color: var(--bad);
+}
+
+.num {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+#prompt {
+  height: 36px;
+  margin-top: 3px;
+  font-size: clamp(21px, 5.8vw, 28px);
+  line-height: 36px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Optional second line (rounds[].sub; main.js adds it and :root.has-sub
+   when a round has one): the same height in every round, so the card
+   never changes size. */
+#prompt-sub {
+  height: 18px;
+  font-size: 13.5px;
+  line-height: 18px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Toast and misclick label ────────────────────────────────────────── */
+
+/* Just below the card: 82 px from its top, 100 px with the sub-line.
+   Centred as wide as its text needs, up to max-width of the whole window
+   (left: 50% with a translate would let it shrink into the right half). */
+#toast {
+  position: fixed;
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+  box-sizing: border-box;
+  top: calc(env(safe-area-inset-top, 0px) + 10px + 82px);
+  width: fit-content;
+  max-width: min(480px, calc(100% - 40px));
+  padding: 7px 14px;
+  border-radius: 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  box-shadow: var(--shadow);
+  font-size: 14px;
+  text-align: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.25s, visibility 0s 0.25s;
+}
+
+:root.has-sub #toast {
+  top: calc(env(safe-area-inset-top, 0px) + 10px + 100px);
+}
+
+#toast.show {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.25s;
+}
+
+#label {
+  position: fixed;
+  top: 0;
+  left: 0;
+  max-width: calc(100vw - 16px);
+  padding: 5px 11px;
+  border-radius: 8px;
+  background: var(--label-bg);
+  color: var(--label-fg);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s, visibility 0s 0.2s;
+}
+
+#label.show {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.12s;
+}
+
+/* ── Attribution (optional: config.attribution) ──────────────────────── */
+
+/* Portrait: a line under the controls, which move up to make room.
+   Landscape (below): the bottom-left corner, clear of the controls column. */
+#attribution {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5px);
+  transform: translateX(-50%);
+  max-width: calc(100% - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+:root.has-attribution #controls {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 28px);
+}
+
+/* ── Controls ────────────────────────────────────────────────────────── */
+
+#controls {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.group {
+  display: flex;
+  gap: 8px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--panel-line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  color: var(--fg);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.btn:hover {
+  background: var(--btn-hover);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Zoom limit reached (aria-disabled keeps the button focusable). */
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn[aria-disabled="true"]:hover {
+  background: var(--panel);
+}
+
+.icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-sun,
+:root[data-theme="dark"] .icon-moon {
+  display: none;
+}
+
+:root[data-theme="dark"] .icon-sun {
+  display: block;
+}
+
+.btn-text {
+  display: none;
+}
+
+/* Reset asks once: the first press arms it for a few seconds. */
+#reset.armed {
+  color: var(--bad);
+  border-color: currentColor;
+}
+
+#reset.armed .btn-text {
+  display: inline;
+}
+
+@media (pointer: fine) {
+  .btn {
+    min-width: 40px;
+    height: 40px;
+  }
+}
+
+/* ── Landscape ───────────────────────────────────────────────────────── */
+
+@media (min-aspect-ratio: 4/3) {
+  #card,
+  #toast {
+    left: auto;
+    right: calc(env(safe-area-inset-right, 0px) + 12px);
+    transform: none;
+    width: min(340px, 36vw);
+  }
+
+  #card {
+    top: calc(env(safe-area-inset-top, 0px) + 12px);
+  }
+
+  #prompt {
+    font-size: clamp(19px, 2.4vw, 26px);
+  }
+
+  #toast {
+    top: calc(env(safe-area-inset-top, 0px) + 12px + 82px);
+    margin: 0;
+    max-width: none;
+  }
+
+  :root.has-sub #toast {
+    top: calc(env(safe-area-inset-top, 0px) + 12px + 100px);
+  }
+
+  #controls {
+    left: auto;
+    right: calc(env(safe-area-inset-right, 0px) + 12px);
+    transform: none;
+    width: auto;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 14px;
+  }
+
+  .group {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .group:last-child {
+    flex-direction: column-reverse;
+  }
+
+  #attribution {
+    left: calc(env(safe-area-inset-left, 0px) + 12px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    transform: none;
+    /* the controls column: 12 px margin, up to 44 px buttons, a gap */
+    max-width: calc(100% - 88px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  }
+
+  :root.has-attribution #controls {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  }
+}
+
+/* ── Reduced motion: no transitions, no pulse; a misclick is a steady
+   highlight instead of a blink (main.js removes it with the label). ── */
+
+@media (prefers-reduced-motion: reduce) {
+  #toast,
+  #toast.show,
+  #label,
+  #label.show {
+    transition: none;
+  }
+
+  .regions path.pulse {
+    animation: none;
+  }
+
+  .regions path.flash {
+    animation: none;
+    fill: var(--miss);
+  }
+
+  .regions.seamless path.pulse {
+    animation: none;
+  }
+
+  .regions.seamless path.flash {
+    animation: none;
+    fill: var(--miss);
+    stroke: var(--miss);
+  }
+
+  .marker.flash {
+    animation: none;
+    fill: var(--miss);
+    fill-opacity: 1;
+    stroke: var(--miss);
+  }
+}
+
+/* ── Misc ────────────────────────────────────────────────────────────── */
+
+/* Safe-area insets (notches, home indicator), read by main.js. */
+#safe {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.noscript {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  right: 0;
+  text-align: center;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
