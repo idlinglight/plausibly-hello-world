@@ -91,8 +91,9 @@ export function checkConfig(config) {
     if (new Set(rounds.map((r) => r.label)).size !== rounds.length) bad('rounds: each label once with roundPicker (it lists them)');
   }
   if (view !== undefined && !(view && typeof view === 'object' && (view.maxScale === undefined || (num(view.maxScale) && view.maxScale > 0)) &&
-      (view.besideHud === undefined || typeof view.besideHud === 'boolean')))
-    bad('view: { maxScale: CSS px per map unit, > 0; besideHud: boolean }');
+      (view.besideHud === undefined || typeof view.besideHud === 'boolean') &&
+      (view.panToCentre === undefined || typeof view.panToCentre === 'boolean')))
+    bad('view: { maxScale: CSS px per map unit, > 0; besideHud: boolean; panToCentre: boolean }');
   const blocking = new Set();
   if (blockingOverlays !== undefined) {
     // overlay ids in map.svg (main.js checks they are <path>s in #overlays)
