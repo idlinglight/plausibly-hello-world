@@ -1,0 +1,31 @@
+{
+  "about": [
+    "The quiz set of images/east-asia-quiz: the single source of truth for codes, names, capitals and marker points.",
+    "Set: the UN geoscheme's Eastern Asia and South-eastern Asia, plus Palau; Taiwan is its own country, Hong Kong and Macao are part of China (tools/README.md).",
+    "id: Natural Earth ADM0_A3 code (also the element id in site/map.svg).",
+    "name, capital: English short forms per the EU Interinstitutional Style Guide (Myanmar for its Myanmar/Burma), plain ASCII; Taiwan by its common English names; choices in tools/README.md.",
+    "marker: [lon, lat] for countries too small to tap at the full view: a ring is drawn there with a generous hit area.",
+    "Marker points are curated (roughly the middle of the country's main land), not taken from the polygons.",
+    "Everything else in the map window (India, Bangladesh, Russia incl. the Kuril islands, Kazakhstan, Papua New Guinea, Australia, Guam, ...) is context land."
+  ],
+  "countries": [
+    { "id": "BRN", "name": "Brunei", "capital": "Bandar Seri Begawan", "marker": [114.70, 4.55] },
+    { "id": "KHM", "name": "Cambodia", "capital": "Phnom Penh" },
+    { "id": "CHN", "name": "China", "capital": "Beijing" },
+    { "id": "IDN", "name": "Indonesia", "capital": "Jakarta" },
+    { "id": "JPN", "name": "Japan", "capital": "Tokyo" },
+    { "id": "LAO", "name": "Laos", "capital": "Vientiane" },
+    { "id": "MYS", "name": "Malaysia", "capital": "Kuala Lumpur" },
+    { "id": "MNG", "name": "Mongolia", "capital": "Ulaanbaatar" },
+    { "id": "MMR", "name": "Myanmar", "capital": "Naypyidaw" },
+    { "id": "PRK", "name": "North Korea", "capital": "Pyongyang" },
+    { "id": "PLW", "name": "Palau", "capital": "Ngerulmud", "marker": [134.58, 7.52] },
+    { "id": "PHL", "name": "Philippines", "capital": "Manila" },
+    { "id": "SGP", "name": "Singapore", "capital": "Singapore", "marker": [103.82, 1.36] },
+    { "id": "KOR", "name": "South Korea", "capital": "Seoul" },
+    { "id": "TWN", "name": "Taiwan", "capital": "Taipei" },
+    { "id": "THA", "name": "Thailand", "capital": "Bangkok" },
+    { "id": "TLS", "name": "Timor-Leste", "capital": "Dili", "marker": [125.95, -8.8] },
+    { "id": "VNM", "name": "Vietnam", "capital": "Hanoi" }
+  ]
+}

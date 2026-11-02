@@ -111,7 +111,7 @@ synced (Dependabot bumps them per folder).
 
 `shared/map-quiz/`: a map quiz on an inline SVG map, shared by the map
 images (now `europe-quiz`, `vienna-districts`, `japan-quiz`, `world-quiz`,
-`south-america-quiz`). Its `README.md` has the contracts and the
+`south-america-quiz`, `east-asia-quiz`). Its `README.md` has the contracts and the
 behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
 layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
 (`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`)
@@ -307,6 +307,33 @@ a one-handed pinch about the centre; default off).
   `--check`) turns Natural Earth 50m v5.1.2 (the file europe-quiz pins) and
   `tools/countries.json` (the single source of truth) into `site/map.svg`
   and `site/countries.js`; details in `tools/README.md`. Checks: `node
+  tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
+  as for europe-quiz.
+- **east-asia-quiz**: a map-quiz image (engine above), built like
+  europe-quiz. 18 quiz countries: the UN geoscheme's Eastern and
+  South-eastern Asia plus Palau; Taiwan its own country, Hong Kong and
+  Macao merged into China (owner's calls); all other land in the extent
+  is muted, non-interactive context (from Sweden to Alaska and New
+  Zealand; picked by projected bounding box, asserted by
+  `CONTEXT_CHECKS`; Natural Earth's cut at 180° stitched so no line shows
+  through Chukotka), faded out around the window. Otherwise
+  Natural Earth's default layer (Aksai Chin with China, Arunachal Pradesh
+  with India, the Kurils Russian context land); the South China Sea's
+  reefs and islets aren't in the 50m file, and the build stops if a source
+  has them (`EMPTY`: handle them as context land on purpose). Names and
+  capitals in English per the EU Interinstitutional Style Guide, plain
+  ASCII (Myanmar for its Myanmar/Burma, Tokyo; Taiwan, Taipei by their
+  common names); Indonesia's capital is Jakarta until the presidential
+  decree moving it to Nusantara (source, re-check note in
+  `tools/README.md`). Rounds as europe-quiz (`countries`, `capitals`).
+  Rings for Singapore, Palau, Brunei and Timor-Leste (its ring shows on
+  phones only); Palau's Tobi is dropped (it would size Palau's ring to
+  hide). `config.view`: `besideHud` (Japan reaches the top-right corner),
+  default `maxScale`. LAEA 20°N 110°E, no remote parts. Data:
+  `tools/build_map.py` (adapter over mapgen) and `tools/countries.json`
+  (codes, names, capitals, marker points) turn the Natural Earth 50m
+  file europe-quiz pins into `site/map.svg` and `site/countries.js`;
+  fix-ups, point checks and choices in `tools/README.md`. Checks: `node
   tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
   as for europe-quiz.
 
