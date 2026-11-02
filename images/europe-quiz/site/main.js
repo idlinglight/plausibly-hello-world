@@ -44,6 +44,9 @@
 // round's answers (rebuilt when a round's set differs) and shrink at low
 // zoom (MARKER_R_UNITS), so they don't cover their neighbours on a phone.
 //
+// Round picker (optional, config.roundPicker): the card's round label
+// opens a list of the round kinds; picking one starts a fresh round of it.
+//
 // State on <html>: data-round (the round's config key, e.g. countries |
 // capitals), data-progress ("12/46"), data-zoom (s / fitScale), data-ready
 // (1 once the map is in; "error" if it failed), data-wheel (how the last
@@ -85,6 +88,7 @@ const LANDSCAPE = '(min-aspect-ratio: 4/3)'; // same query as in style.css
 const PAD = 12; // CSS px between the map (full view) and the edges / HUD bands
 const MAX_SCALE = (config.view && config.view.maxScale) || 12; // CSS px per map unit at the closest zoom (maps are 1000 units wide)
 const BESIDE_HUD = !!(config.view && config.view.besideHud); // landscape: full view left of the card + controls
+const PAN_TO_CENTRE = !!(config.view && config.view.panToCentre); // any point of the full view can be dragged to the centre
 const MIN_ZOOM_RANGE = 4; // … but at least this many times the full view
 const ZOOM_STEP = 1.75; // buttons and keys
 const ANIM_MS = 260;
@@ -289,6 +293,7 @@ let free = { x0: 0, y0: 0, x1: 1, y1: 1 }; // where the full view goes, CSS px
 let fitScale = 1;
 let renderQueued = false;
 let anim = 0; // rAF id of a camera animation
+let refitPending = false; // the card changed size during an animation: refitSoon()
 let animTarget = null;
 
 const maxScale = () => Math.max(MAX_SCALE, fitScale * MIN_ZOOM_RANGE);
@@ -327,12 +332,25 @@ function measure() {
 
 // Keeps the map covering the free area on each axis where it is larger,
 // and inside it where it is smaller (centre: fitView). So a zoom stays
-// exactly at the cursor, also before the map fills the screen.
+// exactly at the cursor, also before the map fills the screen. With
+// config.view.panToCentre the range per axis also takes in [centre - len,
+// centre]: the map may move as far as any of its points reaching the
+// centre of the free area, at every zoom, the full view too (both ranges
+// share their middle, so the union is one interval; fit still returns to
+// the full view). For a one-handed pinch about the screen's centre: first
+// drag the region there.
 function clamp(c) {
   const s = clampScale(c.s);
   const axis = (t, size, lo, hi) => {
     const len = size * s;
-    return len <= hi - lo ? Math.min(hi - len, Math.max(lo, t)) : Math.min(lo, Math.max(hi - len, t));
+    let a = len <= hi - lo ? lo : hi - len; // the default range [a, b]: inside the free area, or covering it
+    let b = len <= hi - lo ? hi - len : lo;
+    if (PAN_TO_CENTRE) {
+      const mid = (lo + hi) / 2;
+      a = Math.min(a, mid - len);
+      b = Math.max(b, mid);
+    }
+    return Math.min(b, Math.max(a, t));
   };
   return { s, tx: axis(c.tx, MAP.width, free.x0, free.x1), ty: axis(c.ty, MAP.height, free.y0, free.y1) };
 }
@@ -388,6 +406,7 @@ function stopAnim() {
   if (anim) cancelAnimationFrame(anim);
   anim = 0;
   animTarget = null;
+  if (refitPending) requestAnimationFrame(flushRefit); // unless another animation starts meanwhile
 }
 
 // Eases to a camera: the scale geometrically, the map point at the centre
@@ -418,6 +437,7 @@ function animateTo(c) {
       anim = requestAnimationFrame(step);
     }
     render();
+    flushRefit();
   };
   anim = requestAnimationFrame(step);
 }
@@ -453,9 +473,19 @@ function fitView(animated) {
   else setCam(c);
 }
 
-// Window resized: keep the zoom relative to the full view and the map point
-// at the centre of the free area.
+// Window resized: the card's top row fitted again first (the full view goes
+// around the card), then refit().
 function relayout() {
+  refitPending = false;
+  fitRow(true);
+  refit();
+  fitPrompt();
+}
+
+// The free area measured again (the window or the card changed size),
+// keeping the zoom relative to the full view and the map point at the
+// centre of the free area.
+function refit() {
   const z = cam.s / fitScale;
   const c0 = freeCentre();
   const mx = (c0.x - cam.tx) / cam.s;
@@ -465,7 +495,20 @@ function relayout() {
   const s = fitScale * z;
   const { x, y } = freeCentre();
   setCam({ s, tx: x - mx * s, ty: y - my * s });
-  fitPrompt();
+}
+
+// The card changed size by a HUD update (its top row wrapped or unwrapped,
+// a round picked): refit at once, or, while a camera animation runs, once
+// it has ended or was stopped, so it runs on undisturbed (refitPending).
+function refitSoon() {
+  if (anim) refitPending = true;
+  else refit();
+}
+
+function flushRefit() {
+  if (!refitPending || anim) return;
+  refitPending = false;
+  refit();
 }
 
 // ── Hit testing and hover ───────────────────────────────────────────────
@@ -811,6 +854,7 @@ function updateHud() {
   const round = ROUNDS[quiz.kind];
   const a = SPECS[quiz.kind].byId.get(quiz.target);
   roundEl.textContent = round.label;
+  if (picker) picker.value = String(quiz.kind);
   progressEl.textContent = `${quiz.done} / ${quiz.total}`;
   correctEl.textContent = String(quiz.correct);
   missesEl.textContent = String(quiz.misses);
@@ -829,7 +873,36 @@ function updateHud() {
   if (swatch) swatch.classList.toggle('b', quiz.colour === 2);
   root.dataset.round = round.key;
   root.dataset.progress = `${quiz.done}/${quiz.total}`;
+  if (fitRow() && svg) refitSoon(); // the card changed size
   fitPrompt();
+}
+
+// The card's top row (round label, progress, counters) must fit the card.
+// Where it overflows (a 320 px phone, a long label, three- or four-digit
+// counters, the round picker's chevron), the first of these steps on #card
+// that makes it fit, else the last (style.css, "Top row"): a narrower
+// label, a wider card (landscape), both, then the counters on a line of
+// their own (the card grows by it). Where it fits: none, nothing changes.
+// Runs again only when the label or the length of a number changes (the
+// digits are tabular), or with force (a resize). True if the card changed
+// size (the map's full view goes around it).
+const cardRow = card.querySelector('.card-row');
+let rowKey = '';
+function fitRow(force = false) {
+  if (!cardRow) return false;
+  const key = [roundEl.textContent, progressEl.textContent.length, correctEl.textContent.length, missesEl.textContent.length].join('|');
+  if (key === rowKey && !force) return false;
+  rowKey = key;
+  const size = () => `${card.offsetWidth}x${card.offsetHeight}`;
+  const before = size();
+  const wide = landscape.matches ? ['row-wide'] : []; // only landscape has a card to widen
+  const steps = [[], ['row-tight'], ...(wide.length ? [wide, [...wide, 'row-tight']] : []), [...wide, 'row-wrap'], [...wide, 'row-wrap', 'row-tight']];
+  for (const step of steps) {
+    card.classList.remove('row-tight', 'row-wide', 'row-wrap');
+    card.classList.add(...step);
+    if (cardRow.scrollWidth <= cardRow.clientWidth) break;
+  }
+  return size() !== before;
 }
 
 // Long names shrink to fit the card instead of being cut off.
@@ -894,6 +967,46 @@ if (ROUNDS.some((r) => r.sub)) {
   promptSubSr.className = 'sr-only';
   promptEl.append(promptSubSr);
   root.classList.add('has-sub');
+}
+
+// Optional round picker (config.roundPicker): the round label becomes the
+// face of a native <select> listing every round kind by its label,
+// invisible and laid over the label, a little larger for touch
+// (style.css), so the card keeps its look and size, phones show their own
+// picker and screen readers a labelled list. Picking a kind starts a fresh
+// round of it (quiz.jumpTo: blank map, counters kept). Only a deliberate
+// pick changes the round: on the focused, closed select only the keys that
+// open its list (Space, Enter, F4, Alt + ↓ / ↑) and Tab / Escape go
+// through; every other plain key (arrows, Home / End, Page Up / Down,
+// letters and digits, which on Windows change a closed select at once) is
+// cancelled here, map or no map, and still reaches the map's keys below
+// (arrows pan, + - 0 zoom). While the list is open the browser's own
+// popup takes the keys.
+let picker = null;
+if (config.roundPicker) {
+  const face = document.createElement('span');
+  face.className = 'picker';
+  roundEl.replaceWith(face);
+  roundEl.setAttribute('aria-hidden', 'true'); // the select says it
+  picker = document.createElement('select');
+  picker.id = 'round-picker';
+  picker.setAttribute('aria-label', TEXT.roundPicker);
+  picker.title = TEXT.roundPicker;
+  ROUNDS.forEach((r, i) => picker.add(new Option(r.label, String(i))));
+  face.append(roundEl, picker);
+  const passKeys = new Set(['Tab', 'Escape', ' ', 'Enter', 'F4']);
+  picker.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey || e.altKey || passKeys.has(e.key))) e.preventDefault();
+  });
+  picker.addEventListener('change', () => {
+    quiz.jumpTo(Number(picker.value));
+    clearMarks();
+    hideLabel();
+    hideToast(); // e.g. the last round's "now the …": no longer what comes
+    enterRound();
+    updateHud();
+    save();
+  });
 }
 
 // Optional data credit (e.g. CC BY): a line under the controls (portrait)
