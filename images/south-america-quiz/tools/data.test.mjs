@@ -37,12 +37,8 @@ check('data: 12 sovereign states + French Guiana (France), Falklands context lan
   assert.equal(new Set(COUNTRIES.map((c) => c.capital)).size, ids.length);
 });
 
-check('rings: none at this scale (markers only inside the window)', () => {
-  for (const c of COUNTRIES.filter((c) => c.marker)) {
-    const [x, y] = c.marker;
-    assert.ok(x >= 0 && x <= MAP.width && y >= 0 && y <= MAP.height, c.id);
-  }
-  assert.equal(COUNTRIES.filter((c) => c.marker).length, 0);
+check('rings: none at this scale (French Guiana, the smallest, is ~23 px on a portrait phone)', () => {
+  assert.deepEqual(COUNTRIES.filter((c) => c.marker).map((c) => c.id), []);
 });
 
 check('config: fits the engine contract, prompts unique per round', () => {

@@ -62,18 +62,24 @@ Venezuela) plus **French Guiana**, an overseas region of France: 13
 entries. The Falkland Islands are context land. Both are the owner's call
 (2026-11-02). Membership is a data switch: `"quiz": false` makes an entry
 context land (the Falklands' entry is there with it), `true` or no field
-makes it clickable; flip it and regenerate, then update the counts in
-`data.test.mjs` and `index.html`'s screen-reader paragraph ("twelve
-countries and French Guiana"). A clickable Falklands entry would get a
-ring (its `marker` is there already: 44 units across, about 16 px on a
-portrait phone).
+makes it clickable. A clickable Falklands entry would get a ring (its
+`marker` is there already: 44 units across, about 16 px on a portrait
+phone) and read "Falkland Islands (United Kingdom)". Flipping one means:
+
+1. the field in `countries.json`, then regenerate;
+2. `data.test.mjs`: the entry count, the sovereign/territory and
+   Falklands-context assertions, the rings check (no rings today; FLK
+   carries a marker) and the map.svg `FLK` check;
+3. `site/index.html`: the static `0 / 13`, the `<meta name="description">`
+   and the screen-reader paragraph ("twelve countries and French Guiana");
+4. the README's row and the count in `/CLAUDE.md`'s note on this image.
 
 - **French Guiana**: Natural Earth draws it as a polygon of France (`FRA`);
-  the generator moves the polygon containing Cayenne into its own feature,
-  `GUF` (its ISO 3166-1 code). `"of": "France"` puts the state after the
-  name wherever the page names it: "French Guiana (France)" on the card
-  and in misclick labels; the capital round asks "Cayenne". Martinique and
-  the rest of France stay context land.
+  the generator moves that polygon (picked by a point inland) into its own
+  feature, `GUF` (its ISO 3166-1 code). `"of": "France"` puts the state
+  after the name wherever the page names it: "French Guiana (France)" on
+  the card and in misclick labels; the capital round asks "Cayenne".
+  Martinique and the rest of France stay context land.
 - **Names and capitals**: English short forms per the EU Interinstitutional
   Style Guide, diacritics kept (Brasília, Bogotá, Asunción).
 - **Bolivia**: Sucre is the constitutional capital, La Paz the seat of
@@ -94,19 +100,25 @@ Natural Earth's default layer shows de-facto administration; here it is
 used as it is (no fix-ups besides the French Guiana split). Point checks
 (`VIEW_CHECKS`) assert on every run:
 
+Each point lies well inside the area it tests, at least 10 km from any
+border or coast in the file, so vertex noise in a re-pin can't flip it:
+
 - **Essequibo** (claimed by Venezuela) is part of Guyana, as administered:
-  Bartica and Lethem in `GUY`, Santa Elena de Uairén in `VEN`.
+  points in its north (Cuyuni-Mazaruni) and south (Rupununi) in `GUY`, one
+  in Bolívar west of it in `VEN`.
 - **New River Triangle** (claimed by Suriname) is part of Guyana, the
   **Litani–Marouini area** (claimed by Suriname) part of French Guiana,
-  both as administered.
+  both as administered (a point in each claim's interior).
 - **Southern Patagonian Ice Field**: the Argentina–Chile line as Natural
-  Earth draws it, not adjusted (El Chaltén in `ARG`, Caleta Tortel and
-  Puerto Natales in `CHL`). 1:50m is coarse along the Andes: a town right
-  at the border can land on the other side (Villa O'Higgins, Chile, falls
-  0.8 km inside `ARG`); not fixed, far below what the map shows.
+  Earth draws it, not adjusted: a point east of it and Lago Argentino in
+  `ARG`, one west of it and Torres del Paine in `CHL`. 1:50m is coarse
+  along the Andes: a town right at the border can land on the other side
+  (Villa O'Higgins, Chile, falls 0.8 km inside `ARG`); not fixed, far
+  below what the map shows.
 - **Falkland Islands**: their own feature (`FLK`), context land; South
   Georgia (`SGS`) and Trinidad (`TTO`) context land too.
-- The Galápagos (Santa Cruz) are part of Ecuador.
+- French Guiana's interior is `GUF`, Suriname's `SUR`, the Galápagos
+  (Santa Cruz) part of Ecuador.
 
 ## Map geometry
 
@@ -116,10 +128,11 @@ used as it is (no fix-ups besides the French Guiana split). Point checks
   reference point on every run.
 - Window (the full view, `0 0 1000 1422.3`): the bounding box of all quiz
   geometry except remote parts, plus 3 % margin. Remote parts (`REMOTE`):
-  the **Galápagos** (Ecuador) and **Easter Island** (Chile). The script
-  fails if any other quiz geometry would fall outside the window, if an
-  entry's largest polygon matches a remote rule, or if a rule matches
-  nothing. The Juan Fernández Islands lie inside the window anyway.
+  the **Galápagos** (Ecuador). The script fails if any other quiz geometry
+  would fall outside the window, if an entry's largest polygon matches a
+  remote rule, or if a rule matches nothing. The Juan Fernández Islands
+  (Robinson Crusoe; Alejandro Selkirk isn't in the file) lie inside the
+  window anyway.
 - Galápagos: counting them for the window would make it 22 % wider (6 298
   instead of 5 145 km) and the whole map 18 % smaller on phones in
   portrait, where the width decides the scale. So they lie beside the
@@ -127,16 +140,22 @@ used as it is (no fix-ups besides the French Guiana split). Point checks
   screen at the full view on desktops and in landscape (where the height
   decides the scale and the view shows context to the side), off screen on
   phones and tablets in portrait. Panning stops at the window, so they are
-  seen, and clickable, only while the zoom leaves room beside it. Easter
-  Island lies in the outer, faded part of the extent: a speck at most.
-  Making the Galápagos count: delete their `REMOTE` line and regenerate.
+  seen, and clickable, only while the zoom leaves room beside it. Making
+  the Galápagos count: delete their `REMOTE` line and regenerate.
+- **Easter Island** (Chile) is left out (`DROP`, same matching, every rule
+  must match): it would lie in the outer, faded band of the extent (about
+  x −394), a speck hardly seen that would still take clicks (the fade
+  doesn't catch them).
 - Not in Natural Earth at 1:50m, so nothing to place: Fernando de Noronha,
   Trindade and Martim Vaz, Sala y Gómez, San Félix and San Ambrosio, San
   Andrés y Providencia, Malpelo, Martín García.
 - Extent (the viewBox): the window plus 60 % / 20 % of its width / height
   per side of context: the continent is tall, so wide screens show a lot
   beside it (60 %: about the room beside it on a 16:9 desktop), tall ones
-  little above and below it. The page fades the outer half out.
+  little above and below it. The page fades the outer half out. LAEA's
+  corners reach far (about 31°N 118°W, 32°N 2°E, 46°S 154°W, 43°S 38°E),
+  so `PREFILTER`, the lon/lat box that skips polygons early, is
+  160°W–40°E, 90°S–36°N.
 - Shared borders: vertices snap to a 0.1-unit grid; parts of one entry
   merge by cancelling shared segments; borders become shared arcs, so
   neighbours use identical vertices (no slivers or gaps).

@@ -33,8 +33,8 @@ export default {
   ],
   text: {
     intro: {
-      mouse: 'Click the country with this name. Zoom: mouse wheel or pinch. Move: drag or two-finger scroll.',
-      touch: 'Tap the country with this name. Pinch to zoom, drag to move.',
+      mouse: 'Find it on the map and click it. Zoom: mouse wheel or pinch. Move: drag or two-finger scroll.',
+      touch: 'Find it on the map and tap it. Pinch to zoom, drag to move.',
     },
     newGame: 'New game: counters at zero, countries first.',
     reset: 'Reset the quiz',
@@ -45,7 +45,8 @@ export default {
       title: override ? `Back to the system setting (${other})` : `Switch to the ${other} theme`,
     }),
   },
-  // The continent is tall and its north-east (the Guianas) reaches the
-  // window's top-right corner, where the card sits in landscape.
+  // besideHud: without it, the landscape card sits over the Atlantic on
+  // desktops, tablets and most phones, but on small phones (568x320) over
+  // the tip of north-east Brazil; with it, no shape is ever under the HUD.
   view: { maxScale: 6, besideHud: true },
 };

@@ -15,7 +15,7 @@
     { "id": "CHL", "name": "Chile", "capital": "Santiago" },
     { "id": "COL", "name": "Colombia", "capital": "Bogotá" },
     { "id": "ECU", "name": "Ecuador", "capital": "Quito" },
-    { "id": "FLK", "name": "Falkland Islands", "capital": "Stanley", "of": "UK", "marker": [-59.30, -51.75], "quiz": false },
+    { "id": "FLK", "name": "Falkland Islands", "capital": "Stanley", "of": "United Kingdom", "marker": [-59.30, -51.75], "quiz": false },
     { "id": "GUF", "name": "French Guiana", "capital": "Cayenne", "of": "France", "quiz": true },
     { "id": "GUY", "name": "Guyana", "capital": "Georgetown" },
     { "id": "PRY", "name": "Paraguay", "capital": "Asunción" },
