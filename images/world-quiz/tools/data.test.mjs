@@ -74,7 +74,8 @@ check('config: fits the engine contract, every round text renders, prompts uniqu
   assert.equal(config.map, MAP);
   assert.equal(config.carryColours, false);
   assert.deepEqual(config.view, { maxScale: 60, besideHud: true });
-  assert.equal(config.roundPicker, undefined, 'roundPicker waits for the engine branch');
+  assert.equal(config.roundPicker, true);
+  assert.equal(config.text.roundPicker, 'Pick a round (starts it fresh)');
 });
 
 check('config: rounds countries → capitals (without the small states) → all countries → all capitals', () => {

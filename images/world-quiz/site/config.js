@@ -77,11 +77,15 @@ export default {
       label: `Switch to ${other} theme`,
       title: override ? `Back to the system setting (${other})` : `Switch to the ${other} theme`,
     }),
+    roundPicker: 'Pick a round (starts it fresh)',
   },
   // A fresh round shows only what it asks: rounds 1 and 2 leave the small
   // states out (inert), rounds 3 and 4 add them, so carried colours would
   // mix found and not yet found.
   carryColours: false,
+  // The round label is a picker: go straight to "All countries" (with the
+  // small states) or any other round, which starts fresh.
+  roundPicker: true,
   // maxScale 60: at the closest zoom 1 map unit (about 40 km) is 60 px, so
   // Malta, Andorra, Grenada and most other small states become shapes to
   // tap; the smallest (Vatican City, Monaco, Nauru, Tuvalu, San Marino)
