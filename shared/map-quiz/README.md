@@ -205,10 +205,8 @@ export default {
   straight to a later kind instead of finishing every round before it.
   Needs `text.roundPicker` (the list's accessible name and tooltip, e.g.
   'Pick a round (starts it fresh)'), two or more rounds and each `label`
-  once. Its chevron costs the card's top row about 9 px, and only 2 to
-  5 px where the row is full (main.js then narrows the label's
-  letter-spacing): check the longest label with three-digit counters on
-  a 320 px phone.
+  once. Its chevron costs the card's top row about 9 px; where the row
+  then overflows, the card fits it as any other (Behaviour: top row).
 - **view.maxScale**: maps are 1000 units wide; at most this many CSS px
   per unit at the closest zoom (default 12, europe; a city map needs
   less), but always at least 4× the full view.
@@ -283,7 +281,8 @@ vienna-districts does), `--land`, `--land-line`, `--region`, `--region-hover`,
 colours; `--water` (overlay fill and outline, default `--sea`) and
 `--overlay-stroke` (overlay outline width in map units, e.g. `1.2px`,
 scales with the map; default 0); `--inert` / `--inert-line` (pieces in no
-answer of the round, default `--land` / `--land-line`). Classes on the
+answer of the round, default `--land` / `--land-line`). Classes on
+`#card`: `.row-tight`, `.row-wide`, `.row-wrap` (top row, Behaviour). Classes on the
 regions: `.inert` (that piece this round), `.seamless` on the group in a
 round with `lines`; line overlays: `#overlays .line`, hidden ones `.off`
 (e.g. heavier region lines in one round: `[data-round="…"] #borders-…`
@@ -356,8 +355,21 @@ theme-color meta.
   the controls in portrait; context drawn around the window fades out, so
   tall or wide screens show map. Two layouts (`min-aspect-ratio: 4/3` in
   `style.css` and `main.js`); in landscape under 390 px high (phones held
-  sideways) the controls' two groups stand side by side, three buttons
-  high, so they stay clear of the card.
+  sideways; under 410 px while the card's top row takes two lines) the
+  controls' two groups stand side by side, three buttons high, so they
+  stay clear of the card.
+- The card's top row (round label, progress, counters) fits the card.
+  Where it would overflow (a 320 px phone, a long label, three- or
+  four-digit counters, the round picker's chevron), main.js (`fitRow`, on
+  every HUD update and resize) keeps the first of these on `#card` that
+  makes it fit: `.row-tight` (narrower letter-spacing on the label);
+  in landscape `.row-wide` (the card at least 260 px wide: 36vw is 204 px
+  on a 568 px screen), alone or with `.row-tight`; `.row-wrap` (the
+  counters on a line of their own: the card grows by 20 px, the toast
+  moves down with it and the full view is measured around it), with
+  `.row-tight` if still needed. Where the row fits, none applies and
+  nothing changes. Sized for a world map: a 14-character label,
+  `123 / 197` and `✓ 1234 ✗ 123` fit on a 320 px phone held either way.
 - Theme follows the OS; the toggle stores the other theme, pressing again
   clears it, and an override that matches the OS is dropped (`theme.js`,
   a classic script in `<head>`: no flash).

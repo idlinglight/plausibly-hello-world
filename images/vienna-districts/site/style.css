@@ -473,9 +473,8 @@ p {
    lays a native <select> over it, invisible and larger than the label
    (about 38 px high, inside the card), so the label keeps its look, the
    platform draws the list, and the card keeps its size. The chevron after
-   the label says it opens; it costs the row about 9 px, and where the row
-   overflows (a 320 px phone, a long label, big counters) main.js sets
-   .tight, whose narrower letter-spacing gives most of that back. */
+   the label says it opens; it costs the row about 9 px (where the row
+   overflows, the card fits it: "Top row" below). */
 .picker {
   position: relative;
   display: inline-flex;
@@ -492,10 +491,6 @@ p {
   border-right: 1.5px solid currentColor;
   border-bottom: 1.5px solid currentColor;
   transform: rotate(45deg);
-}
-
-.picker.tight {
-  letter-spacing: 0.03em;
 }
 
 #round-picker {
@@ -576,9 +571,43 @@ p {
   text-overflow: ellipsis;
 }
 
+/* Top row where it overflows (a 320 px phone, a long label, big counters,
+   the round picker's chevron): main.js fitRow tries these on #card in
+   turn and keeps the first that fits. .row-tight narrows the round
+   label's letter-spacing; .row-wide (landscape, below) gives the card at
+   least 260 px; .row-wrap puts the counters on a line of their own, so the
+   card grows by 20 px and the toast moves down with it. Where the row
+   fits, none applies. */
+#card.row-tight #round {
+  letter-spacing: 0.03em;
+}
+
+#card.row-wrap .card-row {
+  flex-wrap: wrap;
+  row-gap: 0;
+  height: auto;
+}
+
+#card.row-wrap .round,
+#card.row-wrap .score {
+  height: 20px;
+  align-items: center;
+}
+
+#card.row-wrap .score {
+  margin-left: auto;
+  position: relative; /* above the round picker's larger target */
+  z-index: 1;
+}
+
+#card.row-wrap ~ #toast {
+  --row-grow: 20px;
+}
+
 /* ── Toast and misclick label ────────────────────────────────────────── */
 
-/* Just below the card: 82 px from its top, 100 px with the sub-line.
+/* Just below the card: 82 px from its top, 100 px with the sub-line, 20 px
+   more when the card's top row takes two lines (--row-grow, .row-wrap).
    Centred as wide as its text needs, up to max-width of the whole window
    (left: 50% with a translate would let it shrink into the right half). */
 #toast {
@@ -587,7 +616,7 @@ p {
   right: 0;
   margin: 0 auto;
   box-sizing: border-box;
-  top: calc(env(safe-area-inset-top, 0px) + 10px + 82px);
+  top: calc(env(safe-area-inset-top, 0px) + 10px + 82px + var(--row-grow, 0px));
   width: fit-content;
   max-width: min(480px, calc(100% - 40px));
   padding: 7px 14px;
@@ -604,7 +633,7 @@ p {
 }
 
 :root.has-sub #toast {
-  top: calc(env(safe-area-inset-top, 0px) + 10px + 100px);
+  top: calc(env(safe-area-inset-top, 0px) + 10px + 100px + var(--row-grow, 0px));
 }
 
 #toast.show {
@@ -783,13 +812,13 @@ p {
   }
 
   #toast {
-    top: calc(env(safe-area-inset-top, 0px) + 12px + 82px);
+    top: calc(env(safe-area-inset-top, 0px) + 12px + 82px + var(--row-grow, 0px));
     margin: 0;
     max-width: none;
   }
 
   :root.has-sub #toast {
-    top: calc(env(safe-area-inset-top, 0px) + 12px + 100px);
+    top: calc(env(safe-area-inset-top, 0px) + 12px + 100px + var(--row-grow, 0px));
   }
 
   #controls {
@@ -824,12 +853,27 @@ p {
   }
 }
 
+@media (min-aspect-ratio: 4/3) {
+  #card.row-wide,
+  #card.row-wide ~ #toast {
+    width: max(260px, min(340px, 36vw));
+  }
+}
+
 /* Short landscape (phones held sideways, under 390 px high): one column of
    five buttons (258 px with touch-sized ones) would reach up into the card
    (up to 110 px from the top with a sub-line), so the two groups stand side
    by side, three buttons high. */
 @media (min-aspect-ratio: 4/3) and (max-height: 389px) {
   #controls {
+    flex-direction: row;
+  }
+}
+
+/* … and up to 409 px high while the card's top row takes two lines (a
+   20 px taller card). */
+@media (min-aspect-ratio: 4/3) and (max-height: 409px) {
+  #card.row-wrap ~ #controls {
     flex-direction: row;
   }
 }

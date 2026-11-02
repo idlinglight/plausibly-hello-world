@@ -459,6 +459,7 @@ function fitView(animated) {
 // Window resized: keep the zoom relative to the full view and the map point
 // at the centre of the free area.
 function relayout() {
+  fitRow(); // the card's size first: the full view goes around it
   const z = cam.s / fitScale;
   const c0 = freeCentre();
   const mx = (c0.x - cam.tx) / cam.s;
@@ -469,7 +470,6 @@ function relayout() {
   const { x, y } = freeCentre();
   setCam({ s, tx: x - mx * s, ty: y - my * s });
   fitPrompt();
-  fitRow();
 }
 
 // ── Hit testing and hover ───────────────────────────────────────────────
@@ -834,18 +834,30 @@ function updateHud() {
   if (swatch) swatch.classList.toggle('b', quiz.colour === 2);
   root.dataset.round = round.key;
   root.dataset.progress = `${quiz.done}/${quiz.total}`;
+  if (fitRow() && svg) relayout(); // the card changed size (new counters, round label)
   fitPrompt();
-  fitRow();
 }
 
-// The round picker's chevron widens the card's top row a little: where the
-// row overflows, .tight narrows the label's letter-spacing to give that
-// back (style.css). Without the picker nothing changes.
+// The card's top row (round label, progress, counters) must fit the card.
+// Where it overflows (a 320 px phone, a long label, three- or four-digit
+// counters, the round picker's chevron), the first of these steps on #card
+// that makes it fit, else the last (style.css, "Top row"): a narrower
+// label, a wider card (landscape), both, then the counters on a line of
+// their own (the card grows by it). Where it fits: none, nothing changes.
+// True if the card changed size (the map's full view goes around it).
+const cardRow = card.querySelector('.card-row');
 function fitRow() {
-  const row = pickerFace && pickerFace.closest('.card-row');
-  if (!row) return;
-  pickerFace.classList.remove('tight');
-  if (row.scrollWidth > row.clientWidth) pickerFace.classList.add('tight');
+  if (!cardRow) return false;
+  const size = () => `${card.offsetWidth}x${card.offsetHeight}`;
+  const before = size();
+  const wide = landscape.matches ? ['row-wide'] : []; // only landscape has a card to widen
+  const steps = [[], ['row-tight'], ...(wide.length ? [wide, [...wide, 'row-tight']] : []), [...wide, 'row-wrap'], [...wide, 'row-wrap', 'row-tight']];
+  for (const step of steps) {
+    card.classList.remove('row-tight', 'row-wide', 'row-wrap');
+    card.classList.add(...step);
+    if (cardRow.scrollWidth <= cardRow.clientWidth) break;
+  }
+  return size() !== before;
 }
 
 // Long names shrink to fit the card instead of being cut off.
@@ -922,18 +934,17 @@ if (ROUNDS.some((r) => r.sub)) {
 // below cancels what they would do to it), so a stray arrow never leaves
 // a round; Space or Alt + ↓ opens the list.
 let picker = null;
-let pickerFace = null; // its .picker: the label + chevron (fitRow)
 if (config.roundPicker) {
-  pickerFace = document.createElement('span');
-  pickerFace.className = 'picker';
-  roundEl.replaceWith(pickerFace);
+  const face = document.createElement('span');
+  face.className = 'picker';
+  roundEl.replaceWith(face);
   roundEl.setAttribute('aria-hidden', 'true'); // the select says it
   picker = document.createElement('select');
   picker.id = 'round-picker';
   picker.setAttribute('aria-label', TEXT.roundPicker);
   picker.title = TEXT.roundPicker;
   ROUNDS.forEach((r, i) => picker.add(new Option(r.label, String(i))));
-  pickerFace.append(roundEl, picker);
+  face.append(roundEl, picker);
   picker.addEventListener('change', () => {
     quiz.jumpTo(Number(picker.value));
     clearMarks();
