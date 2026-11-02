@@ -9,7 +9,10 @@
 // there, never hit); then all 197 by name and by capital, the small ones
 // with rings. Brunei, Kosovo, Luxembourg, Montenegro and Qatar have rings
 // in every round (their largest drawn shape is under 4 map units across).
+// The asked name links to its English Wikipedia article (the capital's in
+// the capitals rounds; titles from countries.js: wiki, capitalWiki).
 import { MAP, COUNTRIES } from './countries.js';
+import { wikipediaUrl } from './wiki.js';
 
 const misclicks = (n) => (n ? ` · ${n} misclick${n === 1 ? '' : 's'}` : ' · no misclicks');
 // A territory carries the state it belongs to: "Greenland (Denmark)".
@@ -20,6 +23,9 @@ const answer = (c) => ({ ...c, pieces: [c.id] });
 const MAIN = COUNTRIES.filter((c) => !c.small).map(answer);
 const ALL = COUNTRIES.map(answer);
 const smalls = ALL.length - MAIN.length;
+// An English Wikipedia article's URL from its title (wiki.js, the engine's
+// helper: spaces as _, ? # % & + stay part of the title).
+const wiki = (title) => wikipediaUrl('en', title);
 
 export default {
   map: MAP,
@@ -32,6 +38,7 @@ export default {
       answers: MAIN,
       ask: named,
       miss: named,
+      link: (c) => wiki(c.wiki),
       done: ({ total, misses }) => `All ${total} countries found${misclicks(misses)}. Now their capitals.`,
     },
     {
@@ -41,6 +48,7 @@ export default {
       answers: MAIN,
       ask: (c) => c.capital,
       miss: capitalOf,
+      link: (c) => wiki(c.capitalWiki),
       done: ({ total, misses }) => `All ${total} capitals found${misclicks(misses)}. Next: all countries, with the ${smalls} small states.`,
     },
     {
@@ -50,6 +58,7 @@ export default {
       answers: ALL,
       ask: named,
       miss: named,
+      link: (c) => wiki(c.wiki),
       done: ({ total, misses }) => `All ${total} countries found${misclicks(misses)}. Now all their capitals.`,
     },
     {
@@ -59,6 +68,7 @@ export default {
       answers: ALL,
       ask: (c) => c.capital,
       miss: capitalOf,
+      link: (c) => wiki(c.capitalWiki),
       done: ({ total, misses }) => `All ${total} capitals found${misclicks(misses)}. The countries again, without the small states.`,
     },
   ],
@@ -76,6 +86,7 @@ export default {
       title: override ? `Back to the system setting (${other})` : `Switch to the ${other} theme`,
     }),
     roundPicker: 'Pick a round (starts it fresh)',
+    link: (asked) => `${asked} on Wikipedia (opens a new tab)`,
   },
   // A fresh round shows only what it asks: rounds 1 and 2 leave the small
   // states out (inert), rounds 3 and 4 add them, so carried colours would

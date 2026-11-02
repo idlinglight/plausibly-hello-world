@@ -16,7 +16,7 @@ from .geometry import (area2, bbox, build_topology, clip_box, clip_ring, count_c
                        dissolve, douglas_peucker, in_polygon, in_ring, node_points, open_ring, owner_of, parse_wkt,
                        polys_of, ring_from_arcs, simplify_arc, t_junctions)
 from .lines import boundary_lines, chain_edges
-from .output import BuildError, emit, read_pinned
+from .output import BuildError, emit, read_pinned, wiki_title_error
 from . import polyhedral
 from .polyhedral import Polyhedral, stitch_antimeridian
 from .projection import (AIRY_1830, BESSEL_1841, GRS80, WGS84, Identity, LambertAzimuthalEqualArea, Projection,
@@ -30,7 +30,7 @@ __all__ = [
     "in_ring",
     "open_ring", "owner_of", "parse_wkt", "polys_of", "ring_from_arcs", "simplify_arc",
     "boundary_lines", "chain_edges",
-    "BuildError", "emit", "read_pinned",
+    "BuildError", "emit", "read_pinned", "wiki_title_error",
     "polyhedral", "Polyhedral", "stitch_antimeridian",
     "AIRY_1830", "BESSEL_1841", "GRS80", "WGS84", "Identity", "LambertAzimuthalEqualArea", "Projection",
     "TransverseMercator", "epsg3035", "osgb_example",

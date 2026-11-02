@@ -43,7 +43,9 @@ Pipeline:
      CONTEXT_TOL), arcs in a crossing restored until there is none.
   7. map.svg: the net's shape (<path id="net">, the sea) and its folds
      (<path id="folds">) first, then context land, the 197 states; and
-     countries.js (names, capitals, flags, projected marker points, sizes).
+     countries.js (names, capitals, Wikipedia titles, flags, projected marker
+     points, sizes). The titles are passed through; tools/wiki_titles.py checks
+     them against Wikipedia by hand (online), never this build.
 """
 import argparse
 import json
@@ -63,6 +65,7 @@ NE_SHA256 = "3e458fc036ad0a66411f2c1e6cac49c5d7bfb81cb1123bc513b22511a2b7fdeb"
 NE_BYTES = 3083490
 
 COUNTRIES_JSON = os.path.join(HERE, "countries.json")
+WIKI_KEYS = ("wiki", "capital_wiki")  # required on every entry; checked online by tools/wiki_titles.py
 
 # ------------------------------------------------------------------ output
 WIDTH = 1000.0      # viewBox width in map units
@@ -229,13 +232,24 @@ def load_countries():
         m = c.get("marker")
         if m is not None and not (len(m) == 2 and -180 <= m[0] <= 180 and -90 <= m[1] <= 90):
             fail(f"countries.json: bad marker for {c['id']}")
-        extra = set(c) - {"id", "name", "capital", "of", "small", "marker"}
+        extra = set(c) - {"id", "name", "capital", "wiki", "capital_wiki", "of", "small", "marker"}
         if extra:
             fail(f"countries.json: {c['id']}: unknown fields {sorted(extra)}")
         if "small" in c and c["small"] is not True:
             fail(f"countries.json: {c['id']}: small is true or left out")
         if "of" in c and not (isinstance(c["of"], str) and c["of"] and c["of"] == c["of"].strip()):
             fail(f"countries.json: {c['id']}: of is a state's name")
+        # Every entry is asked by name and, in "All capitals", by capital: both
+        # articles are linked (tools/README.md, "Wikipedia titles").
+        for key in WIKI_KEYS:
+            bad = mapgen.wiki_title_error(c.get(key))
+            if bad:
+                fail(f"countries.json: {c['id']}: {key} (an English Wikipedia article title) "
+                     f"{'missing' if key not in c else bad}")
+    for key in WIKI_KEYS:
+        vals = [c[key] for c in cl]
+        if len(set(vals)) != len(vals):
+            fail(f"countries.json: duplicate {key}")
     return cl
 
 
@@ -536,8 +550,9 @@ def data_module(countries, window, markers, sizes):
         "// MAP: the window (full view) is 0 0 width height in map units (the net",
         "// plus a margin); extent [x, y, w, h] is map.svg's viewBox.",
         "// COUNTRIES: the quiz set in countries.json order. of: the state a territory",
-        "// belongs to. small: only in the 'all' rounds. marker: [x, y] in map units",
-        "// where a ring is drawn,",
+        "// belongs to. small: only in the 'all' rounds. wiki, capitalWiki: the English",
+        "// Wikipedia article titles of the entry and of its capital (the first city",
+        "// named). marker: [x, y] in map units where a ring is drawn,",
         "// size: the larger side of the bounding box of the polygon it sits on.",
         "",
         window.map_js(),
@@ -546,7 +561,8 @@ def data_module(countries, window, markers, sizes):
     ]
     for c in countries:
         parts = [f"id: {mapgen.js_string(c['id'])}", f"name: {mapgen.js_string(c['name'])}",
-                 f"capital: {mapgen.js_string(c['capital'])}"]
+                 f"capital: {mapgen.js_string(c['capital'])}", f"wiki: {mapgen.js_string(c['wiki'])}",
+                 f"capitalWiki: {mapgen.js_string(c['capital_wiki'])}"]
         if c.get("of"):
             parts.append(f"of: {mapgen.js_string(c['of'])}")
         if c.get("small"):

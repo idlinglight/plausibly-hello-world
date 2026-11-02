@@ -579,6 +579,70 @@ p {
   text-overflow: ellipsis;
 }
 
+/* Optional prompt link (rounds[].link; main.js puts #prompt-text into
+   #prompt-link and sets :root.has-link): the name looks as without the
+   link; the small "opens a new tab" icon after it, in the text colour but
+   thin, says it is one. Underlined on hover (a mouse) and keyboard focus,
+   which also gets the focus ring. The name's own span cuts a long name
+   (ellipsis), so the icon stays; the line keeps its height. Without href
+   (a round without link) plain text, no icon. #prompt doesn't clip here
+   (the <a> is never wider than the line), so the focus ring shows. Where
+   the top row is one line, the round picker's larger target overlaps the
+   line's top 7 px and stays on top there: a near miss opens the list, not
+   a new tab. */
+:root.has-link #prompt {
+  overflow: visible;
+}
+
+#prompt-link {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  vertical-align: top;
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+#prompt-link #prompt-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-decoration-thickness: 1.5px; /* hover and focus below */
+  text-underline-offset: 0.14em;
+}
+
+.link-icon {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-left: 3px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4; /* 1.3 px: a thin line beside the bold name */
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#prompt-link:not([href]) .link-icon {
+  display: none;
+}
+
+@media (hover: hover) {
+  #prompt-link[href]:hover #prompt-text {
+    text-decoration-line: underline;
+  }
+}
+
+#prompt-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+#prompt-link:focus-visible #prompt-text {
+  text-decoration-line: underline;
+}
+
 /* Top row where it overflows (a 320 px phone, a long label, big counters,
    the round picker's chevron): main.js fitRow tries these on #card in
    turn and keeps the first that fits. .row-tight narrows the round

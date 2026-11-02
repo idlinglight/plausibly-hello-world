@@ -11,8 +11,10 @@ images/<name>/        one folder = one image, build context = this folder
   Dockerfile
   nginx.conf          → /etc/nginx/conf.d/default.conf (synced copy)
   site/               → /usr/share/nginx/html/ (static files, no build step)
-  tools/              optional: offline generators for data in site/ — not
-                      shipped, outputs committed (europe-quiz's map)
+  tools/              optional, not shipped: offline generators for data in
+                      site/ (outputs committed: europe-quiz's map), node
+                      tests (CI), hand-run online checkers (wiki_titles.py:
+                      never run by a build, a test or CI)
 shared/               files several images use: one source, synced copies
   sync.py             writes the copies into images/; --check (CI) fails on drift
   sync.json           which source goes to which images (+ files they must have)
@@ -20,7 +22,9 @@ shared/               files several images use: one source, synced copies
   nginx.conf          → every images/*/nginx.conf
   map-quiz/           the map-quiz engine (README.md: config contract)
     site/               → site/ of each map image (engine JS/CSS)
-    tools/              generator core (mapgen), engine tests; not synced
+    tools/              generator core (mapgen), engine tests; wikicheck.py
+                        (hand-run online title checker, never run by a
+                        build, a test or CI); not synced
 .github/
   dependabot.yml
   workflows/
@@ -80,6 +84,9 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
   also works behind a path prefix. Ship a favicon (`favicon.svg`,
   `favicon.ico`, `apple-touch-icon.png`) so logs stay free of 404s. Page
   title: `<Name> · phw` (e.g. `Snake · phw`): name first, as tabs truncate.
+  Links the player follows to other sites are fine (no request of the
+  page): `target="_blank"`, `rel="noopener noreferrer"`, nothing
+  prefetched or embedded from there.
 - The CSP sets `frame-ancestors 'none'` (+ `X-Frame-Options: DENY`): pages
   can't be iframed. Loosen per image if embedding is ever wanted.
 - `nginx.conf` is the same file in every image (JSON access log incl. the
@@ -114,7 +121,8 @@ images (now `europe-quiz`, `vienna-districts`, `japan-quiz`, `world-quiz`,
 `south-america-quiz`, `east-asia-quiz`). Its `README.md` has the contracts and the
 behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
 layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
-(`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`)
+(`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`,
+`wiki.js`: Wikipedia URLs for a config, loaded only where one imports it)
 are synced into each map image's `site/`; per image: `index.html` (static
 text, `lang`, `<html data-quiz="<name>">`, which namespaces localStorage),
 `config.js` (regions from the generated data module, rounds, every UI
@@ -137,7 +145,12 @@ card's round label into a native list of the rounds; picking one starts
 a fresh round of it (next round index of that kind, blank map, counters
 kept; on in world-quiz). `view.panToCentre: true` lets any point of
 the full view be panned to the centre of the free area at every zoom (for
-a one-handed pinch about the centre; on in world-quiz).
+a one-handed pinch about the centre; on in world-quiz). `rounds[].link`
+(+ `text.link`, the link's name) makes the asked name on the card a link
+to a page about it, opened in a new tab: marked by an icon after it,
+underlined only on hover and keyboard focus (https only, no prefetch, the
+live region moves to an sr-only copy; on in world-quiz and japan-quiz:
+the English Wikipedia article, a capital round's the capital's).
 
 ### Per-image notes
 
@@ -248,8 +261,12 @@ a one-handed pinch about the centre; on in world-quiz).
   names, kanji, kana, capitals, regions, islands; every kana checked
   against its Hepburn name) give `site/map.svg`, `site/japan.js` and
   `site/relief.png`; fix-ups, pins and relief parameters in
-  `tools/README.md`. Checks: `node tools/data.test.mjs`. Favicon rasters
-  exported once from `favicon.svg` as for europe-quiz.
+  `tools/README.md`. English Wikipedia titles for the card's link
+  (`wiki` on every answer, `capital_wiki` on the 18 asked capitals) live
+  in `prefectures.json` too, checked by hand online with
+  `tools/wiki_titles.py` (shared `wikicheck.py`). Checks: `node
+  tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
+  as for europe-quiz.
 - **world-quiz**: a map-quiz image (engine above) of the world on
   Buckminster Fuller's Dymaxion (Airocean) projection (title "World Quiz";
   "Dymaxion" only descriptively): `mapgen.Polyhedral("fuller")`, Gray's
@@ -281,9 +298,11 @@ a one-handed pinch about the centre; on in world-quiz).
   colours outside the net as the page. Data: Natural Earth 50m admin-0
   v5.1.2 (public domain), the file europe-quiz pins; `tools/build_map.py`
   and `tools/countries.json` (the single source of truth: names,
-  capitals, flags, curated marker points) give `site/map.svg` and
-  `site/countries.js`. Checks: `node tools/data.test.mjs`. Favicon
-  rasters exported once from `favicon.svg` as for europe-quiz.
+  capitals, flags, curated marker points, English Wikipedia titles
+  `wiki` and `capital_wiki` on all 197, checked by hand online with
+  `tools/wiki_titles.py`) give `site/map.svg` and `site/countries.js`.
+  Checks: `node tools/data.test.mjs`. Favicon rasters exported once from
+  `favicon.svg` as for europe-quiz.
 - **south-america-quiz**: a map-quiz image (engine above), English UI,
   rounds like europe-quiz (`countries`, `capitals`). 13 quiz entries: the
   12 sovereign states plus French Guiana, shown as "French Guiana
@@ -353,7 +372,9 @@ a one-handed pinch about the centre; on in world-quiz).
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
   and BuildKit bumps are proven before merge. Push to main also publishes.
 - **shared-sync.yml** (PRs and main, paths `shared/**`, `images/**`):
-  `python3 shared/sync.py --check`, the generator core's unittest, and the
+  `python3 shared/sync.py --check`, the generator core's unittest, the
+  Wikipedia title checker's offline unittest (`wikicheck_test.py`, canned
+  answers, network blocked; the live check stays by hand), and the
   node tests (`shared/map-quiz/tools/*.test.mjs`,
   `images/*/tools/*.test.mjs`) with the runner's own python3 and node (no
   setup actions; the tests need Node 22.12+, the step checks). The image

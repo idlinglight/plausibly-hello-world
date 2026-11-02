@@ -216,6 +216,17 @@ class Pipeline(unittest.TestCase):
         with self.assertRaises(mapgen.BuildError):
             mapgen.read_pinned(path, "0" * 64, len(raw), "https://example.org/x")
 
+    def test_wiki_title_shape(self):
+        # the same cases as the images' tools/data.test.mjs, whose JS rule uses
+        # WIKI_TITLE_BAD's class (checked there against output.py's source)
+        for ok in ("What? (film)", "Georgia (country)", "St. John's, Antigua and Barbuda", "K\u014dchi Prefecture",
+                   "Nuku\u02bbalofa"):
+            self.assertIsNone(mapgen.wiki_title_error(ok), ok)
+        for bad, why in (("Kanto\u0304 region", "NFC"), ("a  b", "space"), ("a_b", "_"), ("a#b", "#"), (" a", "space"),
+                         ("a ", "space"), ("a|b", "|"), ("[[a]]", "["), ("a\u00a0b", "U+00A0"), ("a\tb", "U+0009"),
+                         ("", "empty"), (None, "empty")):
+            self.assertIn(why, mapgen.wiki_title_error(bad) or "", repr(bad))
+
 
 def lines_of(d, grid):
     """Path data written by lines_d -> polylines of integer points."""

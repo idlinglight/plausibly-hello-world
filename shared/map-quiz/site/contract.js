@@ -47,7 +47,7 @@ export function checkConfig(config) {
   rounds.forEach((r, i) => {
     for (const k of ['key', 'label', 'prompt']) if (!r || !str(r[k])) bad(`rounds[${i}].${k}: a string`);
     for (const k of ['ask', 'miss', 'done']) if (typeof r[k] !== 'function') bad(`rounds[${i}].${k}: a function`);
-    for (const k of ['asked', 'sub', 'missSub']) if (r[k] !== undefined && typeof r[k] !== 'function') bad(`rounds[${i}].${k}: a function`);
+    for (const k of ['asked', 'sub', 'missSub', 'link']) if (r[k] !== undefined && typeof r[k] !== 'function') bad(`rounds[${i}].${k}: a function`);
     if (r.subLang !== undefined && !(typeof r.subLang === 'string' && LANG.test(r.subLang))) bad(`rounds[${i}].subLang: a language tag (e.g. 'ja')`);
     if (r.answers === undefined) {
       for (const id of seen) answered.add(id);
@@ -80,6 +80,9 @@ export function checkConfig(config) {
   for (const k of ['newGame', 'reset', 'resetArmed', 'mapError']) if (!str(text[k])) bad(`text.${k}: a string`);
   if (!text.intro || !str(text.intro.mouse) || !str(text.intro.touch)) bad('text.intro: { mouse, touch }');
   if (typeof text.theme !== 'function') bad('text.theme: a function');
+  // The prompt link (rounds[].link) is named by text.link(asked text).
+  if (text.link !== undefined && typeof text.link !== 'function') bad('text.link: a function');
+  if (text.link === undefined && rounds.some((r) => r.link)) bad('text.link: a function (asked text -> the link\'s accessible name and tooltip), needed with rounds[].link');
   if (attribution !== undefined && !str(attribution)) bad('attribution: a string');
   if (carryColours !== undefined && typeof carryColours !== 'boolean') bad('carryColours: true or false');
   // The round picker lists the rounds by label: each must say which one it is.
@@ -142,9 +145,39 @@ export function roundSpecs(config) {
   });
 }
 
+// What a prompt link (rounds[].link) may be: an absolute https URL
+// without whitespace. null if it is one, else why not. The one rule for
+// checkTexts (test time) and main.js (which links nothing else).
+export function linkError(u) {
+  if (typeof u !== 'string') return 'not a string';
+  if (/\s/.test(u)) return 'contains whitespace';
+  let url;
+  try {
+    url = new URL(u);
+  } catch {
+    return 'not an absolute URL';
+  }
+  return url.protocol === 'https:' ? null : `not https (${url.protocol})`;
+}
+
+// The prompt link of an asked answer, and the link's name for its asked
+// text.
+function checkLink(r, it, id, asked, text) {
+  let u;
+  try {
+    u = r.link(it);
+  } catch (err) {
+    bad(`rounds ${r.key}: link(${id}) throws: ${err.message}`);
+  }
+  const why = linkError(u);
+  if (why) bad(`rounds ${r.key}: link(${id}) gives ${JSON.stringify(u)}: ${why}`);
+  const name = text.link(asked);
+  if (!str(name)) bad(`text.link(${JSON.stringify(asked)}) gives ${JSON.stringify(name)}`);
+}
+
 // What the functions return, for every answer of every round: prompts
-// (and sub-lines) for the asked ones, misclick labels for all, non-empty;
-// prompts unique per round (else a question is ambiguous), the
+// (and sub-lines, links) for the asked ones, misclick labels for all,
+// non-empty; prompts unique per round (else a question is ambiguous), the
 // round-complete and theme texts strings.
 export function checkTexts(config) {
   checkConfig(config);
@@ -161,6 +194,7 @@ export function checkTexts(config) {
         if (!str(a) || a !== a.trim()) bad(`rounds ${r.key}: ask(${id}) gives ${JSON.stringify(a)}`);
         if (prompts.has(a)) bad(`rounds ${r.key}: ${id} and ${prompts.get(a)} are both asked as ${JSON.stringify(a)}`);
         prompts.set(a, id);
+        if (r.link) checkLink(r, it, id, a, text);
       }
       const m = r.miss(it);
       if (!str(m)) bad(`rounds ${r.key}: miss(${id}) gives ${JSON.stringify(m)}`);

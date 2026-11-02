@@ -1,8 +1,10 @@
 """Inputs and outputs: sha256-pinned reads, writing or checking the generated
-files, and the size report."""
+files, the size report, and the shape of Wikipedia titles in the data."""
 import gzip
 import hashlib
 import os
+import re
+import unicodedata
 
 
 class BuildError(Exception):
@@ -18,6 +20,33 @@ def read_pinned(path, sha256, size, url=None):
         hint = f"\n  (download: {url})" if url else ""
         raise BuildError(f"{path}: sha256 {digest} / {len(raw)} bytes, expected {sha256} / {size}{hint}")
     return raw
+
+
+# Characters a stored Wikipedia title must not contain: the underscore (titles
+# are stored with spaces), what Wikipedia forbids in titles (# | [ ] { } < >,
+# control characters), and every whitespace but the plain space (Wikipedia
+# turns those into spaces). The images' tools/data.test.mjs use the same
+# class, character for character, as a JS regex (WIKI_TITLE_BAD there).
+WIKI_TITLE_BAD = re.compile(r"[_#|\[\]{}<>\x00-\x1f\x7f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]")
+
+
+def wiki_title_error(title):
+    """Why a Wikipedia article title in an image's data is malformed, or None.
+    Titles are stored as the article is named: spaces (no underscores), none
+    of WIKI_TITLE_BAD, no leading, trailing or double space, NFC. ('?' is
+    fine: Wikipedia allows it, the page's link builder encodes it.) Whether
+    the article exists and is the right one is
+    shared/map-quiz/tools/wikicheck.py's job (by hand, online)."""
+    if not isinstance(title, str) or not title:
+        return "empty or not a string"
+    if title.startswith(" ") or title.endswith(" ") or "  " in title:
+        return "leading, trailing or double space"
+    bad = sorted(set(WIKI_TITLE_BAD.findall(title)))
+    if bad:
+        return "contains " + " ".join(c if c.isprintable() and not c.isspace() else f"U+{ord(c):04X}" for c in bad)
+    if unicodedata.normalize("NFC", title) != title:
+        return "not NFC"
+    return None
 
 
 def emit(files, out_dir, check, report=None):

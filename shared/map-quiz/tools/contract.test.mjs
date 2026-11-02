@@ -2,7 +2,7 @@
 // runs at start) on synthetic configs.
 // No packages: node shared/map-quiz/tools/contract.test.mjs
 import assert from 'node:assert/strict';
-import { checkConfig, checkTexts, roundSpecs } from '../site/contract.js';
+import { checkConfig, checkTexts, linkError, roundSpecs } from '../site/contract.js';
 
 let checks = 0;
 function check(name, fn) {
@@ -264,6 +264,73 @@ check('roundPicker: optional, with text.roundPicker, two or more rounds, labels 
   checkConfig(off);
   checkConfig({ ...good(), rounds: [good().rounds[0]] });
   throwsWith(() => checkConfig({ ...good(), text: { ...good().text, roundPicker: 7 } }), /text\.roundPicker: a string/);
+});
+
+check('prompt link: rounds[].link and text.link optional, functions; text.link needed with a link', () => {
+  const linked = (c) => {
+    c.rounds[0].link = (d) => `https://example.org/wiki/${encodeURIComponent(d.name)}`;
+    c.text.link = (asked) => `${asked} (opens a new tab)`;
+    return c;
+  };
+  checkTexts(linked(good()));
+  const g = grouped();
+  g.rounds[2].link = (p) => `https://example.org/${p.id}`;
+  g.text.link = (asked) => asked;
+  checkTexts(g);
+  checkConfig({ ...good(), text: { ...good().text, link: (a) => a } }); // text without a link: unused
+  const cases = [
+    [(c) => (c.rounds[1].link = 'https://example.org/'), /rounds\[1\]\.link: a function/],
+    [(c) => (c.rounds[0].link = null), /rounds\[0\]\.link: a function/],
+    [(c) => delete c.text.link, /text\.link: a function .*needed with rounds\[\]\.link/],
+    [(c) => (c.text.link = 'on Wikipedia'), /text\.link: a function/],
+  ];
+  for (const [breakIt, re] of cases) {
+    const c = linked(good());
+    breakIt(c);
+    throwsWith(() => checkConfig(c), re);
+  }
+  throwsWith(() => checkConfig({ ...good(), text: { ...good().text, link: 7 } }), /text\.link: a function/);
+});
+
+check('prompt link texts: an absolute https URL per asked answer, a name per asked text', () => {
+  const c = grouped();
+  const calls = { link: [], name: [] };
+  c.rounds[2].link = (p) => (calls.link.push(p.id), `https://example.org/${p.id}`);
+  c.text.link = (asked) => (calls.name.push(asked), `${asked} (opens a new tab)`);
+  checkTexts(c);
+  assert.deepEqual(calls.link, ['kagawa', 'ehime'], 'asked answers only');
+  assert.deepEqual(calls.name, ['Takamatsu', 'Matsuyama'], 'the asked text');
+  const cases = [
+    [(r) => () => 'http://example.org/x', /capitals: link\(kagawa\) gives "http:\/\/example\.org\/x": not https \(http:\)/],
+    [(r) => () => 'wiki/Kagawa', /link\(kagawa\) gives "wiki\/Kagawa": not an absolute URL/],
+    [(r) => () => '//example.org/x', /link\(kagawa\) gives "\/\/example\.org\/x": not an absolute URL/],
+    [(r) => () => 'javascript:alert(1)', /link\(kagawa\) gives "javascript:alert\(1\)": not https \(javascript:\)/],
+    [(r) => () => 'https://example.org/Kagawa Prefecture', /link\(kagawa\) gives .*: contains whitespace/],
+    [(r) => () => '', /link\(kagawa\) gives "": not an absolute URL/],
+    [(r) => () => undefined, /link\(kagawa\) gives undefined: not a string/],
+    [(r) => () => new URL('https://example.org/'), /link\(kagawa\) gives "https:\/\/example\.org\/": not a string/],
+    [(r) => (p) => (p.id === 'ehime' ? 'https://' : `https://example.org/${p.id}`), /link\(ehime\) gives "https:\/\/": not an absolute URL/],
+    [(r) => (p) => `https://example.org/${p.wiki.trim()}`, /capitals: link\(kagawa\) throws: .*trim/],
+  ];
+  for (const [make, re] of cases) {
+    const x = grouped();
+    x.rounds[2].link = make(x.rounds[2]);
+    x.text.link = (asked) => asked;
+    throwsWith(() => checkTexts(x), re);
+  }
+  const x = grouped();
+  x.rounds[2].link = (p) => `https://example.org/${p.id}`;
+  x.text.link = (asked) => (asked === 'Matsuyama' ? '' : asked);
+  throwsWith(() => checkTexts(x), /text\.link\("Matsuyama"\) gives ""/);
+});
+
+check('linkError: the one rule for checkTexts and main.js', () => {
+  for (const u of ['https://en.wikipedia.org/wiki/C%C3%B4te_d\'Ivoire', 'https://de.wikipedia.org/wiki/Innere_Stadt_(Wien)', 'HTTPS://example.org/'])
+    assert.equal(linkError(u), null, u);
+  for (const [u, why] of [[undefined, 'not a string'], [7, 'not a string'], ['https://example.org/a b', 'contains whitespace'],
+    ['https://example.org/\n', 'contains whitespace'], [' https://example.org/', 'contains whitespace'], ['example.org', 'not an absolute URL'],
+    ['', 'not an absolute URL'], ['http://example.org/', 'not https (http:)'], ['data:text/html,x', 'not https (data:)']])
+    assert.equal(linkError(u), why, String(u));
 });
 
 console.log(`${checks} checks passed`);

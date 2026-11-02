@@ -27,7 +27,8 @@ check('data: 47 prefectures in JIS order, japan.js matches prefectures.json', ()
   assert.equal(PREFECTURES.length, 47);
   assert.deepEqual(PREFECTURES.map((p) => p.iso), Array.from({ length: 47 }, (_, i) => `JP-${String(i + 1).padStart(2, '0')}`));
   const camel = (p) => ({ id: p.id, iso: p.iso, name: p.name, kanji: p.kanji, kana: p.kana, capital: p.capital,
-    capitalKanji: p.capital_kanji, capitalKana: p.capital_kana, capitalDiffers: p.capital_differs, region: p.region, island: p.island });
+    capitalKanji: p.capital_kanji, capitalKana: p.capital_kana, capitalDiffers: p.capital_differs, region: p.region, island: p.island,
+    wiki: p.wiki, ...(p.capital_wiki ? { capitalWiki: p.capital_wiki } : {}) });
   assert.deepEqual(PREFECTURES.map(({ pieces, ...rest }) => rest), SOURCE.prefectures.map(camel));
   for (const [list, src] of [[ISLANDS, SOURCE.islands], [REGIONS, SOURCE.regions]])
     assert.deepEqual(list.map(({ pieces, ...rest }) => rest), src);
@@ -68,6 +69,46 @@ check('data: 18 capitals differ from their prefecture\'s name (a flag), Tōkyō 
   assert.equal(pref.get('tokyo').capital, 'Shinjuku');
   assert.equal(`${pref.get('tokyo').capitalKanji} · ${pref.get('tokyo').capitalKana}`, '新宿 · しんじゅく');
   for (const p of PREFECTURES) if (p.id !== 'tokyo') assert.equal(p.capitalDiffers, p.capital !== p.name, p.id);
+});
+
+// A Wikipedia article title as stored: the same rule as
+// mapgen.wiki_title_error (shared/map-quiz/tools/mapgen/output.py; the
+// class is checked against its WIKI_TITLE_BAD below): non-empty, no
+// underscore, nothing Wikipedia forbids in titles (# | [ ] { } < >, control
+// characters), no whitespace but the plain space, no leading, trailing or
+// double space, NFC. '?' is fine. tools/wiki_titles.py checks the articles
+// themselves, online, by hand.
+const WIKI_TITLE_BAD = /[_#|\[\]{}<>\x00-\x1f\x7f\x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/;
+const titleOk = (t) => typeof t === 'string' && t !== '' && !WIKI_TITLE_BAD.test(t)
+  && !t.startsWith(' ') && !t.endsWith(' ') && !t.includes('  ') && t.normalize('NFC') === t;
+
+check('data: the title rule is mapgen.wiki_title_error\'s (same class, same cases as mapgen_test.py)', () => {
+  const py = readFileSync(new URL('../../../shared/map-quiz/tools/mapgen/output.py', import.meta.url), 'utf8');
+  assert.equal(py.match(/^WIKI_TITLE_BAD = re\.compile\(r"(.*)"\)$/m)?.[1], WIKI_TITLE_BAD.source);
+  for (const t of ['What? (film)', 'Georgia (country)', 'St. John\'s, Antigua and Barbuda', 'Kōchi Prefecture', 'Nukuʻalofa'])
+    assert.ok(titleOk(t), t);
+  for (const t of ['Kanto\u0304 region', 'a  b', 'a_b', 'a#b', ' a', 'a ', 'a|b', '[[a]]', 'a\u00a0b', 'a\tb', '', null])
+    assert.ok(!titleOk(t), JSON.stringify(t));
+});
+
+check('data: Wikipedia titles for every island, region and prefecture, and for the 18 asked capitals only', () => {
+  for (const e of [...ISLANDS, ...REGIONS, ...PREFECTURES]) assert.ok(titleOk(e.wiki), `${e.id} wiki: ${JSON.stringify(e.wiki)}`);
+  for (const p of PREFECTURES) {
+    if (p.capitalDiffers) assert.ok(titleOk(p.capitalWiki), `${p.id} capitalWiki: ${JSON.stringify(p.capitalWiki)}`);
+    else assert.ok(!('capitalWiki' in p), `${p.id}: capital not asked, no capitalWiki`);
+  }
+  assert.equal(new Set(PREFECTURES.map((p) => p.wiki)).size, 47);
+  assert.equal(new Set(PREFECTURES.filter((p) => p.capitalDiffers).map((p) => p.capitalWiki)).size, 18);
+  // special cases (tools/README.md, Wikipedia titles)
+  const by = (list, id) => list.find((e) => e.id === id).wiki;
+  assert.deepEqual(ISLANDS.map((i) => i.wiki), ['Honshu', 'Hokkaido', 'Kyushu', 'Shikoku']);
+  assert.deepEqual(REGIONS.map((r) => r.wiki), ['Hokkaido', 'Tōhoku region', 'Kantō region', 'Chūbu region', 'Kansai region',
+    'Chūgoku region', 'Shikoku', 'Kyushu'], 'no articles of their own for the Hokkaidō, Shikoku and Kyūshū regions');
+  assert.equal(by(PREFECTURES, 'hokkaido'), 'Hokkaido', 'one article for island and prefecture');
+  assert.deepEqual(['tokyo', 'kyoto', 'osaka', 'hyogo'].map((id) => by(PREFECTURES, id)),
+    ['Tokyo', 'Kyoto Prefecture', 'Osaka Prefecture', 'Hyōgo Prefecture']);
+  assert.deepEqual(['tokyo', 'hyogo', 'mie', 'shiga'].map((id) => pref.get(id).capitalWiki),
+    ['Shinjuku', 'Kobe', 'Tsu, Mie', 'Ōtsu'], 'the special ward Shinjuku; en Wikipedia\'s own romanisation');
 });
 
 check('pieces: each in exactly one prefecture and one region; main piece id = prefecture id, islands as <id>-isles', () => {

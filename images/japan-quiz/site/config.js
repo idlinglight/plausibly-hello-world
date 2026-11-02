@@ -9,12 +9,19 @@
 // round's answers are groups of pieces. A piece in no answer of a round is
 // inert there: in the islands round, everything off Honshū, Hokkaidō,
 // Kyūshū and Shikoku (the -isles pieces, Okinawa).
+//
+// The asked name links to its English Wikipedia article (the capital's in
+// the capitals round; titles from japan.js: wiki, capitalWiki).
 import { MAP, PIECES, ISLANDS, REGIONS, PREFECTURES } from './japan.js';
+import { wikipediaUrl } from './wiki.js';
 
 const misclicks = (n) => (n ? ` · ${n} misclick${n === 1 ? '' : 's'}` : ' · no misclicks');
 const CAPITALS = PREFECTURES.filter((p) => p.capitalDiffers).length; // 18: the capital's name isn't the prefecture's
 const COASTS = ['coast-main', 'coast-isles'];
 const ALL_LINES = [...COASTS, 'borders-prefectures', 'borders-regions'];
+// An English Wikipedia article's URL from its title (wiki.js, the engine's
+// helper: spaces as _, ? # % & + stay part of the title).
+const wiki = (title) => wikipediaUrl('en', title);
 
 // The islands, regions and prefectures rounds ask a name: the card shows
 // it, its kanji · kana under it; a misclick shows the picked one's name
@@ -25,6 +32,7 @@ const byName = {
   subLang: 'ja',
   miss: (e) => e.name,
   missSub: (e) => e.kanji,
+  link: (e) => wiki(e.wiki),
 };
 
 export default {
@@ -74,6 +82,7 @@ export default {
       subLang: 'ja',
       miss: (p) => (p.capitalDiffers ? `${p.name} · ${p.capital}` : p.name),
       missSub: (p) => (p.capitalDiffers ? `${p.kanji} · ${p.capitalKanji}` : p.kanji),
+      link: (p) => wiki(p.capitalWiki),
       done: ({ total, misses }) => `All ${total} capitals found${misclicks(misses)}. Islands again, in a new order.`,
     },
   ],
@@ -90,6 +99,7 @@ export default {
       label: `Switch to ${other} theme`,
       title: override ? `Back to the system setting (${other})` : `Switch to the ${other} theme`,
     }),
+    link: (asked) => `${asked} on Wikipedia (opens a new tab)`,
   },
   view: { maxScale: 6, besideHud: true },
   // Every round starts blank: rounds cover different pieces (the islands

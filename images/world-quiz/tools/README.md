@@ -8,13 +8,15 @@ copies `site/` only); its outputs are committed:
   id="land">`, merged), then one `<path id="<ADM0_A3>">` per quiz entry
   inside `<g id="countries">`. No styling in the file: the engine's
   `style.css` and this image's `world.css` do that.
-- `site/countries.js`: names, capitals, the small-state flag, projected
-  marker points and ring sizes, and the map's window (`MAP`).
+- `site/countries.js`: names, capitals, Wikipedia titles, the
+  small-state flag, projected marker points and ring sizes, and the map's
+  window (`MAP`).
   `site/config.js` (hand-written) hands them and the English texts to the
   shared map-quiz engine.
 
 Both carry a "generated, don't edit" header. Edit `countries.json` (codes,
-names, capitals, flags, marker points: the single source of truth) or
+names, capitals, Wikipedia titles, flags, marker points: the single source
+of truth) or
 `build_map.py`, then regenerate. `build_map.py` is this image's adapter;
 the geometry is the shared core in `shared/map-quiz/tools/mapgen`
 (`shared/map-quiz/README.md`, "Generator core: mapgen", and its
@@ -241,8 +243,76 @@ area: kept, as are all other states' parts.
   again with half the tolerance until there are none (`repair_crossings`;
   the build requires 0).
 - Sizes: map.svg about 208 KB, 93 KB as served (gzip -1); countries.js
-  14 KB. The report prints the figures.
+  23 KB (7 KB served). The report prints the figures.
 - `<path id="net">` and `<path id="folds">` come first, so the folds show
   over the sea only; `world.css` colours the page outside the net
   (`--sea`, also the theme colour) apart from the sea inside it
   (`--net-sea`).
+
+## Wikipedia titles
+
+The card links the asked name to its English Wikipedia article (the
+links are built in `site/config.js`). `countries.json` holds the titles:
+`wiki`, the entry's article, and `capital_wiki`, its capital city's (the
+capital rounds link the city that is asked; for "Sucre / La Paz" the
+first city named). Both on all 197 entries, as "All capitals" asks every
+capital. Stored exactly as the article is titled (spaces, no redirect);
+`build_map.py` passes them into `countries.js` (`wiki`, `capitalWiki`) and
+stops if one is missing, malformed (`mapgen.wiki_title_error`) or
+duplicated; `data.test.mjs` checks the shape and the special cases below.
+
+Checked on 2026-11-02 against the live English Wikipedia and Wikidata
+with `wiki_titles.py`, by hand: it needs the network, so neither the
+build nor CI runs it (the shared part is
+`shared/map-quiz/tools/wikicheck.py`):
+
+```sh
+python3 -I images/world-quiz/tools/wiki_titles.py /tmp/ne/ne_50m_admin_0_countries.geojson            # check; exit 1 on a failure
+python3 -I images/world-quiz/tools/wiki_titles.py /tmp/ne/ne_50m_admin_0_countries.geojson --suggest  # propose titles from Wikidata
+```
+
+Each title must exist, be canonical (Wikipedia neither normalises nor
+redirects it), not be a disambiguation page, and belong to the expected
+Wikidata item: for `wiki` Natural Earth's `WIKIDATAID` of the entry's
+feature (all 197 agree with the articles), for `capital_wiki` an item
+Wikidata records as a current capital of that entry (the entry's P36 or
+the city's P1376, not deprecated, no end date). Result: 394 of 394
+verified. The titles came from Wikidata (the English sitelink of Natural
+Earth's item; the entry's current capitals, matched by name) and agree
+with Wikipedia lookups of the quiz's own names. Special cases:
+
+- **Other names on Wikipedia**: Turkey (Türkiye), Czech Republic,
+  Cape Verde, Ivory Coast, The Bahamas, The Gambia, Republic of the
+  Congo (Congo), Federated States of Micronesia; Sri Jayawardenepura
+  Kotte (Wikipedia's spelling), Nukuʻalofa (with the ʻokina).
+- **Georgia** → "Georgia (country)" ("Georgia" is a disambiguation
+  page). **Ireland** → "Republic of Ireland", the state (Natural Earth's
+  Q27; "Ireland" is the island). **Denmark** and the **Netherlands** →
+  "Denmark", "Netherlands" (Q35, Q55: the countries, not the Danish
+  Realm or the Kingdom of the Netherlands). **Greenland** → "Greenland",
+  capital "Nuuk"; **Kosovo**, **Taiwan** → "Kosovo", "Taiwan", capitals
+  "Pristina", "Taipei".
+- **City-states**: Vatican City, Monaco and Singapore are their own
+  capitals on Wikidata (P36), so `capital_wiki` is the state's article.
+  Luxembourg, San Marino and Djibouti have city articles: "Luxembourg
+  City", "City of San Marino", "Djibouti City".
+- **Qualified capital titles**: Washington, D.C.; Kingston, Jamaica;
+  Victoria, Seychelles; Georgetown, Guyana; Nassau, Bahamas; St. John's,
+  Antigua and Barbuda; St. George's, Grenada; San José, Costa Rica;
+  Moroni, Comoros; Tripoli, Libya.
+- **More than one capital** (above, "Names and capitals"): Bolivia links
+  "Sucre"; Pretoria, Amsterdam, Yamoussoukro, Porto-Novo, Mbabane, Kuala
+  Lumpur, Sri Jayawardenepura Kotte and Sanaa are all in their state's
+  P36. **Israel**: "Jerusalem" (owner's call; Israel's P36).
+  **Equatorial Guinea**: "Ciudad de la Paz" (Wikidata has it as the
+  capital already). Kiribati "South Tarawa", Nauru "Yaren" (the
+  district's article), Palau "Ngerulmud".
+- **Belgium**: "City of Brussels" (Q239), the municipality the
+  constitution makes the capital, and Belgium's P36. "Brussels" is the
+  article on the Brussels-Capital Region (Q240), which Wikidata doesn't
+  record as Belgium's capital.
+- **Nicaragua**: "Managua" (Q3274), the one documented exception
+  (`CAPITAL_ITEMS` in `wiki_titles.py`): Wikidata's P36 is a newer city
+  item (Q131546626) without an English article; the article belongs to
+  the municipality item, described as "capital and largest city of
+  Nicaragua". The check notes when Wikidata catches up.

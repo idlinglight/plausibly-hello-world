@@ -17,13 +17,20 @@ shared/map-quiz/
     wheel.js          mouse wheel or trackpad? (no DOM)
     theme.js          light/dark, a classic script in <head>
     style.css         layout, theme tokens
+    wiki.js           Wikipedia article URLs for config.js (no DOM; a
+                      helper, main.js doesn't load it)
   tools/            not synced, not shipped
     mapgen/           generator core (Python 3.9+, stdlib), see below
     mapgen_test.py    python3 -I shared/map-quiz/tools/mapgen_test.py
+    wikicheck.py      checks the data's Wikipedia titles online, by hand
+                      only (never a build or CI), see below
+    wikicheck_test.py python3 -I shared/map-quiz/tools/wikicheck_test.py
+                      (offline: canned answers, network blocked; CI)
     quiz.test.mjs     node shared/map-quiz/tools/quiz.test.mjs (rules)
     contract.test.mjs node shared/map-quiz/tools/contract.test.mjs
     wheel.test.mjs    node shared/map-quiz/tools/wheel.test.mjs
                       (+ wheel-fixture.json: recorded wheel events)
+    wiki.test.mjs     node shared/map-quiz/tools/wiki.test.mjs
 ```
 
 The engine files reach an image as byte-identical copies
@@ -43,7 +50,7 @@ data.
 | `map.svg` | generated | the map, layout below |
 | favicons | image | `favicon.svg`, `favicon.ico`, `apple-touch-icon.png` |
 | own stylesheet (optional) | image | token overrides, linked after `style.css` |
-| `main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css` | synced | the engine: don't edit there |
+| `main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`, `wiki.js` | synced | the engine: don't edit there (`wiki.js` only loads where `config.js` imports it) |
 
 ### index.html
 
@@ -60,8 +67,9 @@ data.
   `round`, `progress`, `correct`, `misses`, `prompt`, `prompt-kind`,
   `prompt-text`, `toast`, `controls`, `reset` (with `.btn-text`), `theme`
   (with `.icon-moon`, `.icon-sun`), `zoom-out`, `zoom-fit`, `zoom-in`,
-  `label`, `safe` (main.js adds `attribution`, `prompt-sub` and
-  `round-picker` when the config asks for them). Start from europe-quiz's `index.html` and translate its
+  `label`, `safe` (main.js adds `attribution`, `prompt-sub`,
+  `round-picker`, and `prompt-link` with `prompt-live` when the config
+  asks for them). Start from europe-quiz's `index.html` and translate its
   text: title, description, `aria-label`s, the `sr-only` help paragraph,
   `noscript`, "Reset?". The engine overwrites the round label, prompt and
   the reset/theme button labels from the config once it runs. Keep the
@@ -75,6 +83,7 @@ An ES module beside the data module; its default export:
 
 ```js
 import { MAP, DISTRICTS } from './districts.js'; // generated
+import { wikipediaUrl } from './wiki.js';         // optional, for rounds[].link
 
 export default {
   map: MAP,           // { width, height, extent: [x, y, w, h] } (map units)
@@ -86,6 +95,7 @@ export default {
       prompt: 'Finde',              // screen-reader text before the asked one
       ask: (d) => d.name,           // the asked text (the card's big line)
       miss: (d) => d.name,          // label at a misclick on d
+      link: (d) => wikipediaUrl('de', d.wiki), // optional: the prompt links there
       done: ({ total, misses }) => `Alle ${total} Bezirke gefunden. Jetzt die Nummern.`,
     },
     {
@@ -105,6 +115,7 @@ export default {
     // override = an override is stored (a press goes back to the system's)
     theme: (other, override) => ({ label: '…', title: '…' }),
     roundPicker: 'Runde wählen (beginnt von vorn)', // with roundPicker: its name and tooltip
+    link: (asked) => `${asked} auf Wikipedia (neuer Tab)`, // with rounds[].link: its name and tooltip
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
   view: { maxScale: 6, besideHud: true, panToCentre: true }, // optional, see below
@@ -192,6 +203,23 @@ export default {
   `sub`, the line is reserved in every round (empty where a round has
   none), so the card keeps its height. System fonts only; an image
   stylesheet can add a `:lang(ja)` font list.
+- **rounds[].link** (optional): `(answer) => 'https://…'`, a page about
+  the asked answer (e.g. its Wikipedia article; in a capitals round the
+  capital's, whatever the round asks): the card's prompt text links there,
+  opened in a new tab (Behaviour below). Absolute `https:` URLs without
+  whitespace only (`contract.js` `linkError(url)`, the one rule for
+  `checkTexts`, which fails on a bad one, and main.js, which links
+  nothing else: a bad one, or a `link()` that throws, shows the prompt
+  without a link and a console warning, once per answer). For Wikipedia,
+  `wiki.js` (synced like the engine, no DOM, loaded only by a config that
+  imports it) has `wikipediaUrl(lang, title)`: the article's URL as
+  Wikipedia writes them (spaces as `_`, percent-encoded UTF-8 but for
+  letters, digits and `- _ . ! ~ * ' ( ) , / :`, so `? # % & +` stay part
+  of the title); it throws on a bad language code or no title, so
+  `checkTexts` names the answer without one. A round without `link` shows plain
+  text. Once any round has `link`, `text.link` is needed: `(asked text) =>
+  string`, the link's accessible name and tooltip, e.g. ``(asked) =>
+  `${asked} on Wikipedia (opens a new tab)` ``.
 - **attribution**: a credit line where it never meets the HUD: under the
   controls in portrait (they move up for it), the bottom-left corner in
   landscape. The full view stays clear of it in both. Fits about 50
@@ -235,9 +263,9 @@ export default {
 
 `contract.js`: `checkConfig(config)`, `roundSpecs(config)` (the rounds
 as the rules need them: answers, asked ids, the config object per
-answer) and `checkTexts(config)` (per round: ask and sub for every asked
-answer, miss and missSub for every answer, done; for an image's node
-test). At start main.js runs `checkConfig`, `roundSpecs` and checks
+answer) and `checkTexts(config)` (per round: ask, sub, link and
+`text.link` for every asked answer, miss and missSub for every answer,
+done; for an image's node test). At start main.js runs `checkConfig`, `roundSpecs` and checks
 `data-quiz`; on a failure the page shows
 `text.mapError` (or a built-in English line if that text is unusable) in
 the toast, sets `data-ready="error"`, and the error names the field in the
@@ -343,6 +371,29 @@ theme-color meta.
   `+ - 0` still pan and zoom the map. Screen
   readers get a combo box named by `text.roundPicker` (the visible label
   is hidden from them).
+- Prompt link (`rounds[].link`): the asked name on the card is a link,
+  `target="_blank"`, `rel="noopener noreferrer"` (the page sends no
+  referrer anyway), so a lookup opens a new tab and the game tab stays as
+  it was: no answer, no counter, nothing saved. Nothing is fetched or
+  prefetched from the linked site until the player follows the link (the
+  CSP is unchanged: a followed link is no request of the page). The name
+  looks as without the link (text colour, no underline at rest); a small
+  "opens a new tab" icon after it (a box and an arrow, 13 px, thin lines
+  in the text colour) says it is a link. Hover (a mouse) underlines the
+  name, keyboard focus too, with a focus ring. A long name shrinks and is
+  cut with an ellipsis before the icon, which stays; the card keeps its
+  size. Where
+  the top row is one line, the round picker's larger target overlaps the
+  top 7 px of the prompt line and stays on top there (a near miss opens
+  the list, not a tab). Keys:
+  Tab reaches the link after the round picker, before the controls;
+  Enter follows it; `+ - 0` and the arrows still zoom and pan from it.
+  Screen readers: the live region moves from `#prompt` to an sr-only copy
+  of the prompt (`#prompt-live`: prompt kind, asked text, the sub-line),
+  so each new question is announced as without the link; the link itself
+  is named by `text.link`. In a round without `link` the name is plain
+  text: no href (not focusable), no icon, hidden from screen readers
+  (`#prompt-live` says it).
 - Rings (optional, per round's answers): a tap inside the drawn ring
   picks it, a tap in the wider zone around it only over sea, context
   land, an inert piece or that answer itself (never over a neighbour);
@@ -527,6 +578,27 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   inputs in the same order give byte-identical files. `emit` writes, or
   with `check` compares and returns 1 on a difference, and prints sizes
   (raw, gzip -1 as nginx serves it, gzip -9).
+
+## Wikipedia titles: wikicheck
+
+An image may link the asked names to Wikipedia: its source-of-truth JSON
+holds the article titles (`wiki`, `capital_wiki`, …), `build_map.py`
+passes them into the data module and fails where one is missing or
+malformed (`mapgen.wiki_title_error`: spaces, no `_`, nothing Wikipedia
+forbids in titles such as `# | [ ]`, no other whitespace, no leading,
+trailing or double space, NFC; `?` is fine), and `tools/data.test.mjs`
+checks the same rule (its character class is compared with mapgen's), all
+offline.
+`wikicheck.py` (stdlib) checks the titles against the live Wikipedia and
+Wikidata APIs: the page exists, the title is canonical (no redirect), no
+disambiguation page, and its Wikidata item is the expected one, or, for
+a capital, a current capital of the expected item (P36 / P1376). It is
+run by hand (CI runs only `wikicheck_test.py`, its logic on canned
+answers) through a thin per-image entry point
+(`images/<name>/tools/wiki_titles.py <pinned input>`, `--suggest`
+proposes titles from Wikidata); world-quiz and japan-quiz have one, each
+`tools/README.md` ("Wikipedia titles") the method, date and special
+cases.
 
 ## Adding a map image
 
