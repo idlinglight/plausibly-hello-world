@@ -142,7 +142,8 @@ kept; on in world-quiz). `view.panToCentre: true` lets any point of
 the full view be panned to the centre of the free area at every zoom (for
 a one-handed pinch about the centre; on in world-quiz). `rounds[].link`
 (+ `text.link`, the link's name) makes the asked name on the card a link
-to a page about it, opened in a new tab (https only, no prefetch, the
+to a page about it, opened in a new tab: marked by an icon after it,
+underlined only on hover and keyboard focus (https only, no prefetch, the
 live region moves to an sr-only copy; on in world-quiz and japan-quiz:
 the English Wikipedia article, a capital round's the capital's).
 

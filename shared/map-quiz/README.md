@@ -304,8 +304,7 @@ vienna-districts does), `--land`, `--land-line`, `--region`, `--region-hover`,
 colours; `--water` (overlay fill and outline, default `--sea`) and
 `--overlay-stroke` (overlay outline width in map units, e.g. `1.2px`,
 scales with the map; default 0); `--inert` / `--inert-line` (pieces in no
-answer of the round, default `--land` / `--land-line`); `--link-line`
-(the prompt link's underline). Classes on
+answer of the round, default `--land` / `--land-line`). Classes on
 `#card`: `.row-tight`, `.row-wide`, `.row-wrap` (top row, Behaviour). Classes on the
 regions: `.inert` (that piece this round), `.seamless` on the group in a
 round with `lines`; line overlays: `#overlays .line`, hidden ones `.off`
@@ -363,10 +362,12 @@ theme-color meta.
   it was: no answer, no counter, nothing saved. Nothing is fetched or
   prefetched from the linked site until the player follows the link (the
   CSP is unchanged: a followed link is no request of the page). The name
-  keeps the text colour, underlined in `--link-line`, fully on hover and
-  keyboard focus (a focus ring too), with a small "opens a new tab" icon
-  after it (a box and an arrow); a long name shrinks and is cut with an
-  ellipsis before the icon, which stays; the card keeps its size. Where
+  looks as without the link (text colour, no underline at rest); a small
+  "opens a new tab" icon after it (a box and an arrow, 13 px, thin lines
+  in the text colour) says it is a link. Hover (a mouse) underlines the
+  name, keyboard focus too, with a focus ring. A long name shrinks and is
+  cut with an ellipsis before the icon, which stays; the card keeps its
+  size. Where
   the top row is one line, the round picker's larger target overlaps the
   top 7 px of the prompt line and stays on top there (a near miss opens
   the list, not a tab). Keys:
