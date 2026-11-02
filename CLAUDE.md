@@ -110,7 +110,8 @@ synced (Dependabot bumps them per folder).
 ### Map-quiz engine
 
 `shared/map-quiz/`: a map quiz on an inline SVG map, shared by the map
-images (now `europe-quiz`, `vienna-districts`, `japan-quiz`, `world-quiz`). Its `README.md` has the contracts and the
+images (now `europe-quiz`, `vienna-districts`, `japan-quiz`, `world-quiz`,
+`south-america-quiz`). Its `README.md` has the contracts and the
 behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
 layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
 (`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`)
@@ -283,6 +284,31 @@ a one-handed pinch about the centre; default off).
   capitals, flags, curated marker points) give `site/map.svg` and
   `site/countries.js`. Checks: `node tools/data.test.mjs`. Favicon
   rasters exported once from `favicon.svg` as for europe-quiz.
+- **south-america-quiz**: a map-quiz image (engine above), English UI,
+  rounds like europe-quiz (`countries`, `capitals`). 13 quiz entries: the
+  12 sovereign states plus French Guiana, shown as "French Guiana
+  (France)" (`of` in the data); the Falkland Islands are context land
+  (owner's call, 2026-11-02; membership is the `"quiz"` field in
+  `tools/countries.json`, the steps of a flip in `tools/README.md`).
+  Bolivia's capital is asked
+  as "Sucre / La Paz" (constitutional capital first). Border view:
+  Natural Earth's default (as administered: Essequibo and the New River
+  Triangle in Guyana, the Litani–Marouini area in French Guiana; the
+  Southern Patagonian Ice Field line as drawn), point-checked. No rings
+  (French Guiana is ~23 px on a phone); `config.view`: `maxScale` 6,
+  `besideHud` (else the landscape card covers the tip of north-east
+  Brazil on small phones). LAEA 20°S 60°W; the Galápagos are a remote
+  part: drawn at their real position beside the window as part of
+  Ecuador (seen on desktops and in landscape), not counted for it, which
+  would cost 18 % of the map's size on portrait phones; Easter Island is
+  left out (a speck in the faded band that would still take clicks);
+  extent 60 % / 20 % (a tall continent). Data: `tools/build_map.py`
+  (adapter over mapgen: French Guiana split out of `FRA`, deterministic,
+  `--check`) turns Natural Earth 50m v5.1.2 (the file europe-quiz pins) and
+  `tools/countries.json` (the single source of truth) into `site/map.svg`
+  and `site/countries.js`; details in `tools/README.md`. Checks: `node
+  tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
+  as for europe-quiz.
 
 ## CI
 
