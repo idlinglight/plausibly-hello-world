@@ -110,7 +110,7 @@ synced (Dependabot bumps them per folder).
 ### Map-quiz engine
 
 `shared/map-quiz/`: a map quiz on an inline SVG map, shared by the map
-images (now `europe-quiz`, `vienna-districts`, `japan-quiz`). Its `README.md` has the contracts and the
+images (now `europe-quiz`, `vienna-districts`, `japan-quiz`, `world-quiz`). Its `README.md` has the contracts and the
 behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
 layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
 (`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`)
@@ -124,7 +124,7 @@ show its own line overlays and a second card line), the generated data module
 and `map.svg`, favicons, optionally an own stylesheet for colours. The
 offline generator is `tools/build_map.py` per image, an adapter (inputs,
 fix-ups, selection) over the shared core `shared/map-quiz/tools/mapgen`
-(projections incl. already-projected input, clipping, shared borders,
+(projections incl. already-projected input and Fuller's icosahedral net, clipping, shared borders,
 simplification, optionally of the region borders too, boundary lines
 between groups of regions for line overlays, SVG, `--check`). Adding a map image: folder + `config.js`
 + data adapter (+ `tools/data.test.mjs`), its name in the map-quiz rule
@@ -249,6 +249,40 @@ a one-handed pinch about the centre; default off).
   `site/relief.png`; fix-ups, pins and relief parameters in
   `tools/README.md`. Checks: `node tools/data.test.mjs`. Favicon rasters
   exported once from `favicon.svg` as for europe-quiz.
+- **world-quiz**: a map-quiz image (engine above) of the world on
+  Buckminster Fuller's Dymaxion (Airocean) projection (title "World Quiz";
+  "Dymaxion" only descriptively): `mapgen.Polyhedral("fuller")`, Gray's
+  exact transform on Fuller's net, polygons clipped per net piece. 197
+  entries (owner, 2026-11-02): the 193 UN members, Vatican City, Kosovo,
+  Taiwan, and Greenland ("Greenland (Denmark)", `of`); Russia clickable;
+  Palestine, Western Sahara, the Siachen Glacier, Antarctica and every
+  dependency or territory are context land; overseas parts Natural Earth
+  files under a state answer that state. Border view as europe-quiz (EU
+  official view): Crimea, Northern Cyprus, Somaliland, Åland, Hong Kong,
+  Macao merged; the Golan Heights (→ Syria) and Western Sahara (out of
+  Morocco) cut along lon/lat lines (`mapgen.cut_cells`), Ceuta and
+  Melilla (→ Spain) clipped by small boxes (`mapgen.clip_box`); the cuts'
+  new vertices go into the neighbours, no T-junction anywhere
+  (`mapgen.t_junctions`, asserted); 68 point checks, 9 empty boxes, the
+  context list asserted (tools/README.md). Rounds (`<html data-round>`):
+  `countries` and `capitals` without the 36 small states (inert there;
+  `small: true`, checked by the build against its rule on the map as
+  drawn: under 1,000 km², or no land border and under 30,000 km²; Cyprus
+  is one), then `all-countries` and `all-capitals` with them, ringed;
+  Brunei, Kosovo, Luxembourg, Montenegro and Qatar (largest drawn shape
+  under 4 units) have rings in every round. Israel's capital: Jerusalem
+  (owner). `carryColours: false`,
+  `roundPicker: true`, `view`: `maxScale` 60, `besideHud`, `panToCentre` (any part of the net
+  can be dragged to the middle, also at the full view). Far parts cut
+  off by the net and under 1 % of their state (NZ's Chathams and
+  Tokelau, a Fiji islet) are dropped, asserted. map.svg starts with
+  `<path id="net">` (the sea) and `<path id="folds">`; `world.css`
+  colours outside the net as the page. Data: Natural Earth 50m admin-0
+  v5.1.2 (public domain), the file europe-quiz pins; `tools/build_map.py`
+  and `tools/countries.json` (the single source of truth: names,
+  capitals, flags, curated marker points) give `site/map.svg` and
+  `site/countries.js`. Checks: `node tools/data.test.mjs`. Favicon
+  rasters exported once from `favicon.svg` as for europe-quiz.
 
 ## CI
 

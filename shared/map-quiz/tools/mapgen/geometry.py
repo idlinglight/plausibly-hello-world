@@ -154,6 +154,12 @@ def dissolve(rings):
                 segs[(b, a)] -= 1
             else:
                 segs[(a, b)] = segs.get((a, b), 0) + 1
+    return _stitch(segs)
+
+
+def _stitch(segs):
+    """{(a, b): count} directed segments -> rings (closed walks), as dissolve
+    stitches them; degenerate ones (under 3 points, no area) left out."""
     nxt = {}
     for (a, b), c in segs.items():
         for _ in range(c):
@@ -285,9 +291,21 @@ def count_crossings(arcs):
     segments that only touch, e.g. at a shared vertex, don't count). A
     shared-arc topology has none; simplification can make some, which
     would show as overlaps or slivers between neighbours."""
-    segs = [(p, q) for a in arcs for p, q in zip(a, a[1:]) if p != q]
+    return len(crossing_pairs(arcs))
+
+
+def crossing_pairs(arcs):
+    """The crossings count_crossings counts, as (arc index, arc index) per
+    crossing (the lower index first; an arc crossing itself appears as
+    (i, i)), sorted."""
+    segs, owner = [], []
+    for ai, a in enumerate(arcs):
+        for p, q in zip(a, a[1:]):
+            if p != q:
+                segs.append((p, q))
+                owner.append(ai)
     if not segs:
-        return 0
+        return []
     # Grid buckets about four average segments wide; a pair is tested only in
     # the cell holding the low corner of their bounding boxes' overlap.
     cell = max(1, 4 * sum(abs(q[0] - p[0]) + abs(q[1] - p[1]) for p, q in segs) // len(segs))
@@ -301,7 +319,7 @@ def count_crossings(arcs):
         v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
         return (v > 0) - (v < 0)
 
-    n = 0
+    found = []
     for (cx, cy), members in grid.items():
         for k, i in enumerate(members):
             p, q = segs[i]
@@ -315,8 +333,70 @@ def count_crossings(arcs):
                 if p in (r, s) or q in (r, s):
                     continue
                 if orient(p, q, r) * orient(p, q, s) < 0 and orient(r, s, p) * orient(r, s, q) < 0:
-                    n += 1
-    return n
+                    found.append(tuple(sorted((owner[i], owner[j]))))
+    return sorted(found)
+
+
+def cut_cells(poly, xs=(), ys=()):
+    """A polygon (exterior, holes; any planar or lon/lat coordinates) cut
+    along the vertical lines x = xs and horizontal lines y = ys: {(i, j):
+    polygon} for the cells it reaches, i counting the xs below x, j the ys
+    below y. Rectangle clipping per cell (clip_ring), so the parts of two
+    neighbouring cells share their cut vertices exactly and merge again in
+    a MapBuilder feature. Cells without a usable exterior are left out.
+    Where a ring crosses a cut line several times, each cell's edges along
+    the line are split at all the crossings there (as both neighbours have
+    them), so the edges cancel pairwise when the cells merge again."""
+    inf = float("inf")
+    bx = [-inf] + sorted(xs) + [inf]
+    by = [-inf] + sorted(ys) + [inf]
+    raw = {}
+    for i in range(len(bx) - 1):
+        for j in range(len(by) - 1):
+            rings = []
+            for ri, ring in enumerate(poly):
+                r = clip_ring([tuple(c[:2]) for c in open_ring(ring)], bx[i], by[j], bx[i + 1], by[j + 1])
+                q = []
+                for pt in r:
+                    if not q or q[-1] != pt:
+                        q.append(pt)
+                while len(q) > 1 and q[0] == q[-1]:
+                    q.pop()
+                if len(set(q)) < 3 or area2(q) == 0:
+                    if ri == 0:
+                        break
+                    continue
+                rings.append(q)
+            if rings and len(rings[0]) > 2:
+                raw[(i, j)] = rings
+    # every point on a cut line, per line: (axis, value) -> sorted coordinates along it
+    on = {}
+    for rings in raw.values():
+        for r in rings:
+            for x, y in r:
+                if x in xs:
+                    on.setdefault((0, x), set()).add(y)
+                if y in ys:
+                    on.setdefault((1, y), set()).add(x)
+    on = {k: sorted(v) for k, v in on.items()}
+    out = {}
+    for cell, rings in raw.items():
+        noded = []
+        for r in rings:
+            q = []
+            for k, a in enumerate(r):
+                b = r[(k + 1) % len(r)]
+                q.append(a)
+                for axis in (0, 1):
+                    if a[axis] == b[axis] and (axis, a[axis]) in on:
+                        lo, hi = sorted((a[1 - axis], b[1 - axis]))
+                        mids = [t for t in on[(axis, a[axis])] if lo < t < hi]
+                        if a[1 - axis] > b[1 - axis]:
+                            mids.reverse()
+                        q.extend((a[0], t) if axis == 0 else (t, a[1]) for t in mids)
+            noded.append(q + q[:1])
+        out[cell] = noded
+    return out
 
 
 def ring_from_arcs(refs, arcs):
@@ -327,3 +407,165 @@ def ring_from_arcs(refs, arcs):
     if len(pts) > 1 and pts[0] == pts[-1]:
         pts.pop()
     return pts
+
+
+def clip_box(poly, box):
+    """A polygon (exterior, holes; planar or lon/lat coordinates) and a
+    rectangle box (x0, y0, x1, y1) -> (inside, outside): lists of polygons
+    (closed rings, exterior first, counterclockwise with y up) for the part
+    within the box and the rest. Only the box's own four edges cut, nothing
+    beyond them; each crossing is computed once and is a vertex of both
+    parts. ValueError if a vertex lies on the box's outline or an edge
+    passes through its corner (move the box a little)."""
+    x0, y0, x1, y1 = box
+    rings = []
+    for i, r in enumerate(poly):
+        q = [tuple(c[:2]) for c in open_ring(r)]
+        if len(q) < 3:
+            continue
+        if (area2(q) > 0) != (i == 0):
+            q.reverse()
+        rings.append(q)
+    for r in rings:
+        for x, y in r:
+            if (x in (x0, x1) and y0 <= y <= y1) or (y in (y0, y1) and x0 <= x <= x1):
+                raise ValueError(f"clip_box: vertex {(x, y)} on the box's outline")
+    edges = [((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0))]
+    on_edge = [[] for _ in edges]
+    noded = []
+    for r in rings:
+        out = []
+        for k, a in enumerate(r):
+            b = r[(k + 1) % len(r)]
+            out.append(a)
+            p, q = (a, b) if a <= b else (b, a)  # canonical: the same point from both directions
+            hits = []
+            for ei, ((ex0, ey0), (ex1, ey1)) in enumerate(edges):
+                axis = 1 if ey0 == ey1 else 0  # the coordinate the edge fixes
+                v = ey0 if axis else ex0
+                lo, hi = sorted((ex0, ex1) if axis else (ey0, ey1))
+                if (p[axis] - v) * (q[axis] - v) >= 0:
+                    continue
+                t = (v - p[axis]) / (q[axis] - p[axis])
+                w = p[1 - axis] + t * (q[1 - axis] - p[1 - axis])
+                if w in (lo, hi):
+                    raise ValueError(f"clip_box: an edge through the box's corner near {(w, v)}")
+                if lo < w < hi:
+                    pt = (w, v) if axis else (v, w)
+                    hits.append(pt)
+                    on_edge[ei].append(pt)
+            hits.sort(key=lambda h: (h[0] - a[0]) ** 2 + (h[1] - a[1]) ** 2)
+            out.extend(hits)
+        noded.append(out)
+    outline = []
+    for (start, _), pts in zip(edges, on_edge):
+        outline.append(start)
+        outline.extend(sorted(pts, key=lambda h: (h[0] - start[0]) ** 2 + (h[1] - start[1]) ** 2))
+    inside, outside = {}, {}
+
+    def add(segs, a, b):
+        segs[(a, b)] = segs.get((a, b), 0) + 1
+    for r in noded:
+        for k, a in enumerate(r):
+            b = r[(k + 1) % len(r)]
+            if a == b:
+                continue
+            mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+            add(inside if x0 < mx < x1 and y0 < my < y1 else outside, a, b)
+    for k, a in enumerate(outline):
+        b = outline[(k + 1) % len(outline)]
+        if in_polygon((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, rings):
+            add(inside, a, b)
+            add(outside, b, a)
+    return _polygons(_stitch(inside)), _polygons(_stitch(outside))
+
+
+def _polygons(rings):
+    """Rings (exteriors counterclockwise, holes clockwise, y up) -> polygons
+    [exterior, holes...] with closed rings; each hole goes to the smallest
+    exterior around it."""
+    exts = sorted((r for r in rings if area2(r) > 0), key=area2)
+    polys = [[r] for r in exts]
+    for h in (r for r in rings if area2(r) < 0):
+        mx, my = (h[0][0] + h[1][0]) / 2, (h[0][1] + h[1][1]) / 2
+        owner = next((p for p in polys if in_ring(mx, my, p[0])), None)
+        if owner is None:
+            raise ValueError("clip_box: a hole outside every exterior")
+        owner.append(h)
+    return [[r + r[:1] for r in p] for p in polys]
+
+
+def _seg_grid(segs, cell):
+    grid = {}
+    for i, (_, a, b) in enumerate(segs):
+        for cx in range(int(min(a[0], b[0]) // cell), int(max(a[0], b[0]) // cell) + 1):
+            for cy in range(int(min(a[1], b[1]) // cell), int(max(a[1], b[1]) // cell) + 1):
+                grid.setdefault((cx, cy), []).append(i)
+    return grid
+
+
+def _on_segment(p, a, b, eps):
+    """p strictly inside segment a-b (within eps of the line, not an end)."""
+    if p == a or p == b:
+        return False
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    l2 = dx * dx + dy * dy
+    if not l2:
+        return False
+    px, py = p[0] - a[0], p[1] - a[1]
+    along = px * dx + py * dy
+    if along <= 0 or along >= l2:
+        return False
+    return abs(px * dy - py * dx) <= eps * l2 ** 0.5
+
+
+def t_junctions(features, eps=1e-9, cell=0.5):
+    """features {fid: [polygons]} (planar or lon/lat): every vertex of one
+    feature lying inside an edge of another without being one of its
+    vertices, as (point, vertex's fids, edge's fid), sorted. Neighbours must
+    share their border vertices (else the arcs come out one-sided: slivers,
+    gaps); an adapter that moves or cuts geometry asserts there are none."""
+    segs, verts = [], {}
+    for fid, polys in features.items():
+        for p in polys:
+            for r in p:
+                q = open_ring([tuple(c[:2]) for c in r])
+                for k, a in enumerate(q):
+                    verts.setdefault(a, set()).add(fid)
+                    b = q[(k + 1) % len(q)]
+                    if a != b:
+                        segs.append((fid, a, b))
+    grid = _seg_grid(segs, cell)
+    out = set()
+    for pt, fids in verts.items():
+        for i in grid.get((int(pt[0] // cell), int(pt[1] // cell)), ()):
+            fid, a, b = segs[i]
+            if fid not in fids and _on_segment(pt, a, b, eps):
+                out.add((pt, tuple(sorted(fids)), fid))
+    return sorted(out)
+
+
+def node_points(polys, points, eps=1e-9, cell=0.5):
+    """Polygons with every one of points that lies inside one of their edges
+    inserted there (in order along the edge): neighbours of a cut get the
+    cut's new border vertices."""
+    pgrid = {}
+    for pt in points:
+        pgrid.setdefault((int(pt[0] // cell), int(pt[1] // cell)), []).append(pt)
+    out = []
+    for p in polys:
+        rings = []
+        for r in p:
+            q = open_ring([tuple(c[:2]) for c in r])
+            nr = []
+            for k, a in enumerate(q):
+                b = q[(k + 1) % len(q)]
+                nr.append(a)
+                cand = set()
+                for cx in range(int(min(a[0], b[0]) // cell), int(max(a[0], b[0]) // cell) + 1):
+                    for cy in range(int(min(a[1], b[1]) // cell), int(max(a[1], b[1]) // cell) + 1):
+                        cand.update(pt for pt in pgrid.get((cx, cy), ()) if _on_segment(pt, a, b, eps))
+                nr.extend(sorted(cand, key=lambda h: (h[0] - a[0]) ** 2 + (h[1] - a[1]) ** 2))
+            rings.append(nr + nr[:1])
+        out.append(rings)
+    return out

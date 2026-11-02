@@ -3,7 +3,8 @@
 A map quiz as a static page: an inline SVG map, a question card, round
 after round of "find this region". One engine for several images
 (`images/europe-quiz`, `images/vienna-districts`, `images/japan-quiz`:
-grouped rounds); each image brings its own data, texts and map, the
+grouped rounds, `images/world-quiz`: Fuller's net, rounds with and
+without the small states); each image brings its own data, texts and map, the
 engine stays the same.
 
 ```
@@ -399,8 +400,8 @@ theme-color meta.
 ## Generator core: mapgen
 
 Python 3.9+, stdlib only, deterministic (modules: `build` pipeline,
-`geometry`, `projection`, `lines` boundary lines, `svg` path text,
-`output` pins and emit). An image's
+`geometry`, `projection`, `polyhedral` Fuller's net, `lines` boundary
+lines, `svg` path text, `output` pins and emit). An image's
 `tools/build_map.py` is an adapter: it loads and pins its inputs, applies
 its own fix-ups, decides what is a region, context land or an overlay,
 and writes its data module; mapgen does the geometry. `python3 -I` keeps
@@ -447,8 +448,26 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   steps (vienna-districts) is not.
   Simplification can make arcs cross; `res.stats["crossings"]` counts
   them (the report prints it; europe's 5 are all in context land) and an
-  adapter that simplifies region arcs should require 0. A region lost to
-  the grid keeps its outline at 10× finer resolution.
+  adapter that simplifies region arcs should require 0:
+  `repair_crossings=True` simplifies the arcs of every crossing again
+  with half their tolerance, down to their own points, until none is
+  left (`stats["repaired"]`; crossings the snapping itself made stay, a
+  finer grid helps there;
+  `mapgen.crossing_pairs(arcs)` lists them). `region_tols={rid: tol}`
+  gives single regions their own tolerance (an arc takes the smallest of
+  its regions'), e.g. finer outlines for small states people zoom in on.
+  A region lost to the grid keeps its outline at 10× finer resolution.
+- `mapgen.cut_cells(poly, xs, ys)` cuts a polygon (lon/lat or projected)
+  along vertical and horizontal lines into `{(i, j): polygon}` cells; the
+  cells share their cut vertices exactly, so an adapter can hand a part
+  of one feature to another (a border-view fix-up) and the rest still
+  merges; the lines run across the whole feature. `mapgen.clip_box(poly,
+  box)` → `(inside, outside)` moves only what lies inside a rectangle.
+  Either way the new vertices also belong into the neighbours whose border
+  they lie on (`mapgen.node_points(polys, points)`), and
+  `mapgen.t_junctions({fid: polys})` lists every vertex lying on another
+  feature's edge without being one of its vertices (an adapter that cuts
+  asserts none: else arcs come out one-sided, with slivers or gaps).
 - Line overlays along the region edges (for `rounds[].lines`): the result
   keeps the shared topology it drew the paths from, `res.arcs`
   (simplified arcs, integer points in 1/`res.grid` units) and `res.topo`
@@ -468,6 +487,41 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   region edges and are never simplified on their own; a coast shared by
   two line overlays is drawn twice, so emit each edge in one overlay
   where size matters.
+- Polyhedral maps (`mapgen.polyhedral`): the sphere on an icosahedron's
+  faces, laid out as a net; `AIROCEAN` is Buckminster Fuller's Dymaxion
+  net (his 1954 orientation, all 12 vertices in the sea; faces 9 and 16
+  split so the continents stay whole), in Robert W. Gray's numbering and
+  coordinates (edge 1, x right, y up). Per-face transforms: `"fuller"`
+  (Gray's exact equations, 1995; the default), `"gnomonic"`, `"snyder"`
+  (Snyder's equal-area polyhedral, 1992). A net can't be projected vertex
+  by vertex, so the adapter splits each lon/lat polygon and feeds the
+  parts, already planar, to a MapBuilder with `Identity()`:
+
+  ```python
+  net = mapgen.Polyhedral("fuller")          # scale=1: unit edges; self_test()
+  window = mapgen.Window([p for _, tri in net.outline() for p in tri], 0.01, 1000.0, (0, 0))
+  mb = mapgen.MapBuilder(mapgen.Identity(), window, ids, grid=10)
+  for rid, polys in features:                 # one feature's polygons together:
+      for poly in mapgen.stitch_antimeridian(polys):   # Natural Earth's +-180 seams match up
+          for part in net.split(poly):        # clipped per net piece on the sphere
+              mb.add_region(rid, part)
+  marker = window.to_view(*net(lon, lat))     # a single point
+  ```
+
+  `split` clips each ring against the net's pieces (great-circle sides,
+  Sutherland-Hodgman on the sphere: every ring must fit in a hemisphere,
+  else BuildError) and computes each crossing of a fold once, from the
+  edge's end points, so the parts on two pieces that meet in the net share
+  those vertices exactly and the builder's dissolve merges them; across a
+  cut they stay apart (two rings). `densify` (default 1 degree) adds
+  lon/lat-linear points to long segments first. `outline()` gives the
+  net's triangles (the sea's shape), `edges()` its folds, cuts and the
+  split inside face 9. Sources: Gray's published vertex coordinates and
+  net (rwgrayprojects.com), d3-geo-polygon's `geoAirocean` (ISC) as a
+  cross-check of the vertices (within 0.25 arc seconds), Philippe
+  Rivière's public-domain port of Gray's equations (d3-geo-polygon
+  `grayfuller.js`) for the formulas; the tests compare 12 points with
+  values from Gray's own procedure.
 - Feed polygons in a fixed order: the output depends on it, and the same
   inputs in the same order give byte-identical files. `emit` writes, or
   with `check` compares and returns 1 on a difference, and prints sizes

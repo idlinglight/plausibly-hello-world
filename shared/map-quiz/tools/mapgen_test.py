@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Checks of the shared map generator core (mapgen) on synthetic data:
-python3 -I shared/map-quiz/tools/mapgen_test.py   (stdlib unittest)
+python3 -I shared/map-quiz/tools/mapgen_test.py   (stdlib unittest; the
+polyhedral tests take a few seconds)
 
 The real-data check is each image's own `build_map.py --check` (its inputs
 aren't committed)."""
 import hashlib
+import math
 import os
 import re
 import sys
@@ -348,6 +350,471 @@ class Lines(unittest.TestCase):
         lines = mapgen.boundary_lines(res, {rid: rid for rid in ids})
         self.assertEqual(lines_of(mapgen.lines_d(lines, res.dec), res.grid), lines)
         self.assertEqual(mapgen.lines_d([], 1), "")
+
+
+def dip_and_island(**kw):
+    """Region A's top edge dips between two tall bumps, island B sits in the
+    dip and reaches above the bumps: a strong Douglas-Peucker on A's ring
+    cuts straight through B."""
+    w = mapgen.Window([(0, 0), (20, 12)], 0.0, 200.0, (0, 0))
+    mb = mapgen.MapBuilder(mapgen.Identity(), w, ["A", "B"], grid=10, min_island=0, **kw)
+    mb.add_region("A", [[(0, 0), (20, 0), (20, 5), (15, 5), (14, 10), (13, 5), (7, 5), (6, 10), (5, 5), (0, 5), (0, 0)]])
+    mb.add_region("B", [[(9.5, 8), (10.5, 8), (10.5, 11), (9.5, 11), (9.5, 8)]])
+    return mb.build(keep_islands={"A", "B"})
+
+
+class Repairs(unittest.TestCase):
+    def test_crossing_pairs(self):
+        arcs = [[(0, 0), (10, 10)], [(0, 10), (10, 0)], [(20, 0), (30, 0)], [(20, 5), (30, 5), (30, 0), (20, 10)]]
+        self.assertEqual(mapgen.crossing_pairs(arcs), [(0, 1), (3, 3)])
+        self.assertEqual(mapgen.count_crossings(arcs), 2)
+        self.assertEqual(mapgen.crossing_pairs([]), [])
+
+    def test_repair_crossings(self):
+        self.assertEqual(dip_and_island().stats["crossings"], 0)
+        bad = dip_and_island(region_tol=60)
+        self.assertGreater(bad.stats["crossings"], 0)
+        self.assertEqual(bad.stats["repaired"], 0)
+        good = dip_and_island(region_tol=60, repair_crossings=True)
+        self.assertEqual(good.stats["crossings"], 0)
+        self.assertGreater(good.stats["repaired"], 0)
+        self.assertIn("repaired", good.report(["A", "B"])["arc crossings"])
+
+    def test_region_tols(self):
+        plain = dip_and_island()
+        fine = dip_and_island(region_tol=60, region_tols={"A": 0})
+        self.assertEqual(fine.stats["crossings"], 0)
+        self.assertEqual(fine.paths["A"], plain.paths["A"])  # A's arcs keep every vertex
+        with self.assertRaises(ValueError):
+            dip_and_island(region_tols={"Z": 1})
+
+    def test_cut_cells(self):
+        poly = [[(0, 0), (6, 0), (6, 6), (0, 6), (0, 0)], [(2.5, 0.5), (2.5, 1.5), (3.5, 1.5), (3.5, 0.5), (2.5, 0.5)]]
+        cells = mapgen.cut_cells(poly, xs=[2, 4], ys=[2, 4])
+        self.assertEqual(sorted(cells), [(i, j) for i in range(3) for j in range(3)])
+        self.assertEqual(len(cells[(1, 0)]), 2)  # the hole stays with its cell
+        self.assertAlmostEqual(sum(sum(mapgen.area2(r[:-1]) for r in c) for c in cells.values()) / 2, 35)
+        self.assertEqual(mapgen.cut_cells(poly, xs=[10]), {(0, 0): [list(map(tuple, poly[0][:-1])) + [(0, 0)],
+                                                                    list(map(tuple, poly[1][:-1])) + [(2.5, 0.5)]]})
+        w = mapgen.Window([(0, 0), (6, 6)], 0.0, 60.0, (0, 0))
+        mb = mapgen.MapBuilder(mapgen.Identity(), w, ["A", "B"], grid=10, min_island=0)
+        for cell, part in sorted(cells.items()):
+            mb.add_region("B" if cell == (1, 1) else "A", part)
+        res = mb.build()
+        a = [mapgen.ring_from_arcs(r, res.arcs) for r in res.topo["A"]]
+        self.assertEqual(sorted(mapgen.area2(r) > 0 for r in a), [False, False, True])  # the outline, B's hole, the hole
+        self.assertEqual(len(res.topo["B"]), 1)
+        self.assertEqual(res.stats["crossings"], 0)
+
+    def test_cut_cells_nested_crossings(self):
+        # a U whose prongs cross the cut y = 0: four crossings, nested on the line
+        u = [(-3, -1), (3, -1), (3, 1), (1, 1), (1, -0.5), (-1, -0.5), (-1, 1), (-3, 1), (-3, -1)]
+        cells = mapgen.cut_cells([u], ys=[0])
+        self.assertEqual(sorted(cells), [(0, 0), (0, 1)])
+        below = cells[(0, 0)][0]
+        self.assertIn((-1, 0), below)  # the crossings of the other prong split the long edge
+        w = mapgen.Window([(-3, -1), (3, 1)], 0.0, 60.0, (0, 0))
+        mb = mapgen.MapBuilder(mapgen.Identity(), w, ["U"], grid=10, min_island=0)
+        for part in cells.values():
+            mb.add_region("U", part)
+        res = mb.build()
+        self.assertEqual(len(res.topo["U"]), 1)
+        ring = mapgen.ring_from_arcs(res.topo["U"][0], res.arcs)
+        self.assertAlmostEqual(abs(mapgen.area2(ring)) / 2 / 100, 9 * 100, places=6)  # 9 units^2, 10 map units each way
+
+
+class BoxesAndJunctions(unittest.TestCase):
+    def test_clip_box(self):
+        # a coast with a peninsula; the box takes the peninsula's tip only
+        poly = [[(0, 0), (10, 0), (10, 4), (6, 4), (6, 7), (4, 7), (4, 4), (0, 4), (0, 0)]]
+        box = (3.5, 5.5, 6.5, 8)
+        inside, outside = mapgen.clip_box(poly, box)
+        self.assertEqual(len(inside), 1)
+        self.assertEqual(len(outside), 1)
+        self.assertAlmostEqual(mapgen.area2(inside[0][0][:-1]) / 2, 2 * 1.5)
+        self.assertAlmostEqual(mapgen.area2(outside[0][0][:-1]) / 2, 40 + 2 * 1.5)
+        cut = set(inside[0][0]) & set(outside[0][0])
+        self.assertEqual(cut, {(4.0, 5.5), (6.0, 5.5)})  # shared, bit-identical
+        # nothing outside the box changed: every other vertex is the polygon's own
+        self.assertLessEqual(set(outside[0][0]) - cut, set(map(tuple, poly[0])))
+        # merged again, the pieces give the polygon back
+        res = self._merge({"A": outside, "B": inside})
+        self.assertEqual(res.stats["crossings"], 0)
+        self.assertEqual([len(res.topo[k]) for k in ("A", "B")], [1, 1])
+        # a box inside the polygon: a hole; one outside it: nothing moves
+        inside, outside = mapgen.clip_box(poly, (1, 1, 2, 2))
+        self.assertEqual((len(inside), [len(p) for p in outside]), (1, [2]))
+        inside, outside = mapgen.clip_box(poly, (20, 20, 21, 21))
+        self.assertEqual((inside, len(outside)), ([], 1))
+        with self.assertRaises(ValueError):
+            mapgen.clip_box(poly, (4, 5, 7, 8))  # a vertex on the outline
+
+    def _merge(self, parts):
+        w = mapgen.Window([(0, 0), (10, 8)], 0.0, 100.0, (0, 0))
+        mb = mapgen.MapBuilder(mapgen.Identity(), w, sorted(parts), grid=100, min_island=0)
+        for rid, polys in sorted(parts.items()):
+            for p in polys:
+                mb.add_region(rid, p)
+        return mb.build()
+
+    def test_t_junctions_and_node_points(self):
+        a = [[(0, 0), (4, 0), (4, 4), (0, 4), (0, 0)]]
+        b = [[(4, 0), (8, 0), (8, 4), (4, 4), (4, 0)]]
+        self.assertEqual(mapgen.t_junctions({"A": [a], "B": [b]}), [])
+        # B gets a vertex on the shared edge, A doesn't: a T-junction
+        b2 = [[(4, 0), (8, 0), (8, 4), (4, 4), (4, 1.5), (4, 0)]]
+        self.assertEqual(mapgen.t_junctions({"A": [a], "B": [b2]}), [((4, 1.5), ("B",), "A")])
+        a2 = mapgen.node_points([a], [(4, 1.5)])
+        self.assertIn((4, 1.5), a2[0][0])
+        self.assertEqual(mapgen.t_junctions({"A": a2, "B": [b2]}), [])
+
+    def test_repair_keeps_far_tolerance(self):
+        """A far context arc in a crossing is simplified again with half its
+        far_tol, not with the near context_tol."""
+        w = mapgen.Window([(0, 0), (10, 10)], 0.0, 100.0, (20, 1))  # context drawn far out to the east
+
+        def build(**kw):
+            mb = mapgen.MapBuilder(mapgen.Identity(), w, ["R"], grid=10, min_island=0, context_tol=0.2, far_tol=60, **kw)
+            mb.add_region("R", square(1, 1, 2, 2)[0:1])
+            wiggle = [(100 + i * 0.5, 0.05 * (i % 2)) for i in range(41)]
+            mb.add_context([wiggle + [(120, 5), (115, 5), (114, 10), (113, 5), (107, 5), (106, 10), (105, 5), (100, 5)]])
+            mb.add_context([[(109.5, 8), (110.5, 8), (110.5, 11), (109.5, 11), (109.5, 8)]])
+            return mb.build()
+        bad = build()
+        self.assertGreater(bad.stats["crossings"], 0)
+        good = build(repair_crossings=True)
+        self.assertEqual(good.stats["crossings"], 0)
+        self.assertGreater(good.stats["repaired"], 0)
+        self.assertLess(good.stats["points_after"], good.stats["points_before"] - 30)  # the wiggles stay simplified
+
+    def test_report_names_what_was_simplified(self):
+        self.assertIn("context-only", dip_and_island().report(["A", "B"])["points"])
+        self.assertIn("some regions' arcs", dip_and_island(region_tols={"A": 0.5}).report(["A", "B"])["points"])
+        self.assertIn("all arcs, some regions finer", dip_and_island(region_tol=1, region_tols={"A": 0}).report(["A", "B"])["points"])
+
+
+# ------------------------------------------------------------------ polyhedral (Fuller's net)
+ph = mapgen.polyhedral
+NET_AREA = 20 * math.sqrt(3) / 4  # the net's area (unit edges) for the sphere's 4 pi
+
+# Gray's exact procedure ("Source Code For Coordinate Transformation",
+# rwgrayprojects.com), evaluated offline: (lon, lat, x, y) on his net (edge 1).
+GRAY_POINTS = [
+    (16.37, 48.21, 2.273917287308, 1.883897518315),  # triangle 1
+    (0.0, 0.0, 1.918655421635, 2.548259070204),  # triangle 6
+    (-74.0, 40.7, 3.269559485469, 1.556215130818),  # triangle 4
+    (139.7, 35.7, 2.166506585628, 0.706847815335),  # triangle 10
+    (151.2, -33.9, 1.003080695687, 0.324252527347),  # triangle 17
+    (-58.4, -34.6, 4.428062498662, 1.734679911039),  # triangle 14
+    (0.0, -90.0, 5.101912575285, 1.254685727080),  # triangle 20
+    (121.0, 14.6, 1.613467830591, 0.828248349544),  # triangle 9, the part with face 8 (9a)
+    (144.8, 13.4, 2.129450600800, 0.373476111512),  # triangle 9, the third with face 10 (9b)
+    (69.5, -49.3, 0.334626113358, 0.842583233992),  # triangle 16, the half with face 17 (16a)
+    (-157.86, 21.3, 3.359884817939, 0.538808248848),  # triangle 11
+    (144.32, -79.81, 5.171267879185, 1.124873943350),  # triangle 16, the half with face 20 (16b)
+]
+
+
+def d3_airocean_vertices():
+    """d3-geo-polygon's geoAirocean (ISC): a pole-up icosahedron, rotated by
+    [-83.65929, 25.44458, -87.45184] (d3-geo's rotation, inverted here)."""
+    dl, dp, dg = (math.radians(a) for a in (-83.65929, 25.44458, -87.45184))
+    th = math.degrees(math.atan(0.5))
+    std = [(0, 90), (0, -90)] + [((i * 36 + 180) % 360 - 180, th if i & 1 else -th) for i in range(10)]
+    out = []
+    for lon, lat in std:
+        lam, phi = math.radians(lon), math.radians(lat)
+        x, y, z = math.cos(lam) * math.cos(phi), math.sin(lam) * math.cos(phi), math.sin(phi)
+        k = z * math.cos(dg) - y * math.sin(dg)
+        lam2 = math.atan2(y * math.cos(dg) + z * math.sin(dg), x * math.cos(dp) + k * math.sin(dp)) - dl
+        out.append(ph.unit_vector(math.degrees(lam2), math.degrees(math.asin(k * math.cos(dp) - x * math.sin(dp)))))
+    return out
+
+
+def local_poly(centre, axis, outline, step=0.05):
+    """A lon/lat ring around the unit vector centre: outline points (a, b) in
+    degrees along axis (a unit tangent) and its normal, densified to step
+    degrees (so split's own densify can stay off), closed."""
+    n = ph._unit(ph._cross(centre, axis))
+    t = ph._cross(n, centre)
+    pts = []
+    for (a0, b0), (a1, b1) in zip(outline, outline[1:] + outline[:1]):
+        k = max(1, int(math.ceil(max(abs(a1 - a0), abs(b1 - b0)) / step)))
+        for j in range(k):
+            a, b = math.radians(a0 + (a1 - a0) * j / k), math.radians(b0 + (b1 - b0) * j / k)
+            pts.append(ph.lon_lat(ph._unit(tuple(centre[i] + a * t[i] + b * n[i] for i in range(3)))))
+    return pts + pts[:1]
+
+
+def sphere_area(ring):
+    """Signed area of a lon/lat ring with great-circle edges (unit sphere)."""
+    v = [ph.unit_vector(*c) for c in ring[:-1]]
+    c = ph._unit(tuple(sum(p[i] for p in v) for i in range(3)))
+    s = 0.0
+    for a, b in zip(v, v[1:] + v[:1]):
+        s += 2 * math.atan2(ph._dot(c, ph._cross(a, b)), 1 + ph._dot(c, a) + ph._dot(a, b) + ph._dot(b, c))
+    return s
+
+
+def plane_area(parts):
+    return sum(sum(mapgen.area2(r) for r in part) for part in parts) / 2
+
+
+def merged(parts_by_region, net, grid=10):
+    """MapBuilder (Identity) over the net: {rid: [parts]} -> Result."""
+    window = mapgen.Window([p for _, tri in net.outline() for p in tri], 0.01, 1000.0, (0, 0))
+    mb = mapgen.MapBuilder(mapgen.Identity(), window, list(parts_by_region), grid=grid)
+    for rid, parts in parts_by_region.items():
+        for part in parts:
+            mb.add_region(rid, part)
+    return mb.build(keep_islands=set(parts_by_region))
+
+
+def rings_in(res, rid):
+    return [mapgen.ring_from_arcs(r, res.arcs) for r in res.topo[rid]]
+
+
+def mid(u, v):
+    return ph._unit(tuple(ph.VERTICES[u][i] + ph.VERTICES[v][i] for i in range(3)))
+
+
+def along(u, v):
+    return ph._unit(tuple(ph.VERTICES[v][i] - ph.VERTICES[u][i] for i in range(3)))
+
+
+class Polyhedral(unittest.TestCase):
+    def test_icosahedron(self):
+        vs = ph.VERTICES
+        for v in vs.values():
+            self.assertAlmostEqual(ph._dot(v, v), 1.0, places=15)
+        edges = {tuple(sorted((f[i], f[(i + 1) % 3]))) for f in ph.FACES.values() for i in range(3)}
+        self.assertEqual(len(edges), 30)
+        for u, v in edges:
+            self.assertAlmostEqual(ph._angle(vs[u], vs[v]), ph.EDGE_ARC, places=13)
+        # Gray's table: vertex 1 at 64.7N 10.5362E, vertex 4 at 39.1N 122.3E
+        for v, (lon, lat) in ((1, (10.5362, 64.7)), (4, (122.3, 39.1))):
+            got = ph.lon_lat(vs[v])
+            self.assertAlmostEqual(got[0], lon, places=4)
+            self.assertAlmostEqual(got[1], lat, places=5)
+        # d3-geo-polygon's geoAirocean puts them within 0.25 arc seconds
+        for w in d3_airocean_vertices():
+            self.assertLess(min(ph._angle(w, v) for v in vs.values()), math.radians(0.25 / 3600))
+
+    def test_face_transforms(self):
+        sg, cg = math.sin(ph.G), ph.COS_G
+        corners = [(0.0, sg, cg), (-sg * math.sqrt(3) / 2, -sg / 2, cg), (sg * math.sqrt(3) / 2, -sg / 2, cg)]
+        template = [(0, 1 / math.sqrt(3)), (-0.5, -0.5 / math.sqrt(3)), (0.5, -0.5 / math.sqrt(3))]
+        rot = lambda p, a: (p[0] * math.cos(a) - p[1] * math.sin(a), p[0] * math.sin(a) + p[1] * math.cos(a))
+        for t in (ph.GNOMONIC, ph.FULLER, ph.SNYDER):
+            for u, want in zip(corners, template):
+                got = t.plane(*u)
+                self.assertAlmostEqual(got[0], want[0], places=12, msg=t)
+                self.assertAlmostEqual(got[1], want[1], places=12, msg=t)
+            self.assertEqual(tuple(round(c, 12) + 0 for c in t.plane(0, 0, 1)), (0, 0))
+            for x, y in ((0.1, 0.2), (-0.3, 0.05), (0.2, -0.35)):
+                z = math.sqrt(1 - x * x - y * y)
+                p = t.plane(x, y, z)
+                for k in (1, 2):  # a third of a turn about the centre
+                    q = t.plane(*rot((x, y), k * 2 * math.pi / 3), z)
+                    r = rot(p, k * 2 * math.pi / 3)
+                    self.assertAlmostEqual(q[0], r[0], places=12, msg=t)
+                    self.assertAlmostEqual(q[1], r[1], places=12, msg=t)
+                m = t.plane(-x, y, z)  # mirror
+                self.assertAlmostEqual(m[0], -p[0], places=12, msg=t)
+                self.assertAlmostEqual(m[1], p[1], places=12, msg=t)
+        net = ph.Polyhedral("fuller")
+        for k in range(11):  # Fuller keeps the edges' arc length
+            self.assertAlmostEqual(net.edge_t(ph.EDGE_ARC * k / 10), k / 10, places=12)
+
+    def test_snyder_is_equal_area_and_gnomonic_keeps_great_circles(self):
+        net = ph.Polyhedral("snyder")
+        k = NET_AREA / (4 * math.pi)
+        for lon, lat in ((10, 50), (-70, -20), (140, 40), (60, -50), (-160, 10), (0, -89)):
+            v = ph.unit_vector(lon, lat)
+            pc, _ = net.locate(v)
+            e = ph._unit(ph._cross((0.0, 0.0, 1.0) if abs(v[2]) < 0.9 else (1.0, 0.0, 0.0), v))  # tangent
+            n = ph._cross(v, e)
+            h = 1e-6
+
+            def at(a, b):
+                return net._in_face(pc, ph._unit(tuple(v[i] + a * e[i] + b * n[i] for i in range(3))))
+            p0, pe, pn = at(0, 0), at(h, 0), at(0, h)
+            det = ((pe[0] - p0[0]) * (pn[1] - p0[1]) - (pn[0] - p0[0]) * (pe[1] - p0[1])) / (h * h)
+            self.assertAlmostEqual(det / k, 1.0, places=4, msg=(lon, lat))
+        gn = ph.Polyhedral("gnomonic")
+        a, b = ph.unit_vector(5, 45), ph.unit_vector(20, 52)  # both in face 1
+        pts = [gn(*ph.lon_lat(ph._unit(tuple(a[i] + s * (b[i] - a[i]) for i in range(3))))) for s in (0, 0.3, 1)]
+        (x0, y0), (x1, y1), (x2, y2) = pts
+        self.assertAlmostEqual((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0), 0, places=12)
+
+    def test_net(self):
+        net = ph.Polyhedral()
+        self.assertEqual(len(net.pieces), 22)
+        self.assertAlmostEqual(sum(abs(mapgen.area2(t)) / 2 for _, t in net.outline()), NET_AREA, places=12)
+        h = math.sqrt(3) / 2
+        for pc in net.pieces.values():  # Gray's lattice: x in halves, y in steps of sqrt 3 / 2
+            for x, y in pc.pos.values():
+                self.assertAlmostEqual(x * 2, round(x * 2), places=12)
+                self.assertAlmostEqual(y / h, round(y / h), places=12)
+        xs = [p[0] for _, t in net.outline() for p in t]
+        ys = [p[1] for _, t in net.outline() for p in t]
+        self.assertEqual((round(min(xs), 9), round(max(xs), 9), round(min(ys), 9), round(max(ys), 9)),
+                         (0, 5.5, 0, round(3 * h, 9)))
+        kinds = [k for k, _, _ in net.edges()]
+        self.assertEqual((kinds.count("fold"), kinds.count("split")), (21, 1))
+        with self.assertRaises(ValueError):  # a mirrored root
+            ph.Polyhedral(root={1: ph.AIROCEAN_ROOT[1], 2: ph.AIROCEAN_ROOT[3], 3: ph.AIROCEAN_ROOT[2]})
+
+    def test_gray_reference_points(self):
+        net = ph.Polyhedral("fuller")
+        for lon, lat, x, y in GRAY_POINTS:
+            got = net(lon, lat)
+            self.assertAlmostEqual(got[0], x, places=10, msg=(lon, lat))
+            self.assertAlmostEqual(got[1], y, places=10, msg=(lon, lat))
+        scaled = ph.Polyhedral("fuller", scale=7.5)
+        self.assertAlmostEqual(scaled(16.37, 48.21)[0], 7.5 * GRAY_POINTS[0][2], places=9)
+        for t in ("gnomonic", "fuller", "snyder"):
+            ph.Polyhedral(t, scale=3).self_test()
+
+    def test_vertices_and_folds_from_both_sides(self):
+        for t in ("gnomonic", "fuller", "snyder"):
+            net = ph.Polyhedral(t)
+            for pc in net.pieces.values():
+                f = net.faces[pc.face]
+                for v in f.verts:
+                    got = net._in_face(pc, ph.VERTICES[v])
+                    self.assertAlmostEqual(got[0], pc.pos[v][0], places=12)
+                    self.assertAlmostEqual(got[1], pc.pos[v][1], places=12)
+                c = net._in_face(pc, f.m)
+                self.assertAlmostEqual(c[0], sum(pc.pos[v][0] for v in f.verts) / 3, places=12)
+                if pc.parent is None:
+                    continue
+                pp = net.pieces[pc.parent]
+                u, v = sorted(set(f.verts) & set(net.faces[pp.face].verts))
+                for s in (0.1, 0.37, 0.5, 0.9):  # a fold point maps alike from both faces
+                    x = ph._unit(tuple((1 - s) * ph.VERTICES[u][i] + s * ph.VERTICES[v][i] for i in range(3)))
+                    a, b = net._in_face(pc, x), net._in_face(pp, x)
+                    self.assertAlmostEqual(a[0], b[0], places=12, msg=(t, pc.name))
+                    self.assertAlmostEqual(a[1], b[1], places=12, msg=(t, pc.name))
+
+    def test_inside_one_face(self):
+        net = ph.Polyhedral()
+        poly = square(15, 47, 17, 49)  # Austria-ish, face 1 only
+        parts = net.split(poly)
+        self.assertEqual(len(parts), 1)
+        want = [net(lon, lat) for lon, lat in mapgen.open_ring(poly[0])]
+        self.assertEqual([tuple(round(c, 12) for c in p) for p in parts[0][0]][::2],
+                         [tuple(round(c, 12) for c in p) for p in want])  # densified: every other point
+
+    def test_fold_merges_exactly(self):
+        net = ph.Polyhedral("snyder", densify=0)
+        c, ax = mid(1, 3), along(1, 3)  # the fold between pieces 1 and 2
+        ring = local_poly(c, ax, [(-2, -1), (2, -1), (2, 1.5), (-2, 1.5)])
+        parts = net.split([ring])
+        self.assertEqual(len(parts), 2)
+        shared = set(parts[0][0]) & set(parts[1][0])
+        self.assertEqual(len(shared), 2)  # the two crossings of the fold, bit-identical
+        self.assertAlmostEqual(plane_area(parts) / (sphere_area(ring) * NET_AREA / (4 * math.pi)), 1, places=5)
+        res = merged({"A": parts}, net, grid=100)
+        self.assertEqual(len(rings_in(res, "A")), 1)
+
+    def test_fold_with_nested_crossings_and_a_hole(self):
+        net = ph.Polyhedral("snyder", densify=0)
+        c, ax = mid(1, 3), along(1, 3)
+        u = [(-3, -1), (3, -1), (3, 1), (1, 1), (1, -0.5), (-1, -0.5), (-1, 1), (-3, 1)]  # a U across the fold
+        ring = local_poly(c, ax, u)
+        hole = local_poly(c, ax, [(2.5, -0.8), (1.5, -0.8), (1.5, 0.5), (2.5, 0.5)])  # in a prong, across it too
+        parts = net.split([ring, hole])
+        want = (sphere_area(ring) + sphere_area(hole)) * NET_AREA / (4 * math.pi)
+        self.assertAlmostEqual(plane_area(parts) / want, 1, places=5)
+        res = merged({"U": parts}, net, grid=100)
+        rings = rings_in(res, "U")
+        self.assertEqual(sorted(mapgen.area2(r) > 0 for r in rings), [False, True])  # one exterior, one hole
+
+    def test_ring_vertex_on_a_fold(self):
+        """A ring vertex exactly on a fold (the edge's midpoint, through
+        lon/lat): inside both pieces, placed through the edge in both, a
+        noding point for the edges along the fold: bit-identical, one ring."""
+        net = ph.Polyhedral("snyder", densify=0)
+        c, ax = mid(1, 3), along(1, 3)
+        v = net.lines[("e", 1, 3)]
+        p = ph.unit_vector(*ph.lon_lat(c))
+        self.assertLessEqual(abs(ph._dot(v.n, p)), ph.ON_LINE)
+        # a V down to the fold, touching it at the midpoint (local (0, 0))
+        ring = local_poly(c, ax, [(-2, -1), (2, -1), (2, 1), (0, 0), (-2, 1)])
+        parts = net.split([ring])
+        self.assertEqual(len(parts), 2)  # below the fold, and above it the V's two sides pinched at the vertex
+        at = [net._on_edge(pc, v, p) for pc in (net.pieces["1"], net.pieces["2"])]
+        self.assertEqual(at[0], at[1])
+        for part in parts:
+            self.assertIn(at[0], part[0])  # every part has the vertex, the same floats
+        self.assertAlmostEqual(plane_area(parts) / (sphere_area(ring) * NET_AREA / (4 * math.pi)), 1, places=5)
+        self.assertEqual(len(rings_in(merged({"V": parts}, net, grid=100), "V")), 1)
+
+    def test_cut_stays_apart(self):
+        net = ph.Polyhedral()
+        c, ax = mid(1, 6), along(1, 6)  # between pieces 4 and 5: not folded in the net
+        parts = net.split([local_poly(c, ax, [(-2, -1), (2, -1), (2, 1), (-2, 1)])])
+        self.assertEqual(len(parts), 2)
+        self.assertFalse(set(parts[0][0]) & set(parts[1][0]))
+        self.assertEqual({net.piece_of(*ph.lon_lat(ph._unit(tuple(c[i] + s * ph._cross(c, ax)[i] for i in range(3)))))
+                          for s in (-0.01, 0.01)}, {"4", "5"})
+        self.assertEqual(len(rings_in(merged({"A": parts}, net), "A")), 2)
+
+    def test_around_a_vertex(self):
+        net = ph.Polyhedral("snyder", densify=0)
+        v = ph.VERTICES[2]  # faces 1, 5, 6, 14, 15 meet here; in the net 6-1-5 fold together, 14 hangs on 13, 15 on 20
+        ring = local_poly(v, along(2, 3), [(-4, -4), (4, -4), (4, 4), (-4, 4)])
+        parts = net.split([ring])
+        self.assertEqual(len(parts), 5)
+        self.assertAlmostEqual(plane_area(parts) / (sphere_area(ring) * NET_AREA / (4 * math.pi)), 1, places=5)
+        self.assertEqual(len(rings_in(merged({"A": parts}, net, grid=100), "A")), 3)  # 6-1-5, 14, 15
+
+    def test_antimeridian(self):
+        net = ph.Polyhedral()
+        # Chukotka's latitudes (piece 3 on both sides); the two halves have different vertices on the seam
+        east = [[[175, 64], [180, 64], [180, 65.5], [180, 67], [175, 67], [175, 64]]]
+        west = [[[-180, 64], [-176, 64], [-176, 67], [-179.99995, 67], [-180, 65], [-180, 64]]]  # 5 m off, as NE
+        seam = [net(180, 65.5), net(-180, 65)]
+
+        def ring_points(polys):
+            res = merged({"F": [p for poly in polys for p in net.split(poly)]}, net, grid=100)
+            rings = rings_in(res, "F")
+            return rings, {p for r in rings for p in r}, res
+        rings, pts, res = ring_points([east, west])
+        self.assertGreater(len(pts), 12)  # unstitched, the seam's T-junctions stay
+        rings, pts, res = ring_points(ph.stitch_antimeridian([east, west]))
+        self.assertEqual(len(rings), 1)
+        w = res.window
+        for x, y in seam:  # the seam cancelled: no vertex left on it
+            vx, vy = w.to_view(x, y)
+            self.assertNotIn((round(vx * 100), round(vy * 100)), pts)
+        self.assertEqual(ph.stitch_antimeridian([square(0, 0, 1, 1)]), [square(0, 0, 1, 1)])
+        self.assertEqual(net(180, 10), net(-180, 10))
+
+    def test_antarctica_like(self):
+        net = ph.Polyhedral("snyder", densify=0.25)
+        ring = [[-180, -90], [-180, -70]] + [[lon, -70] for lon in range(-170, 181, 10)] + [[180, -90], [-180, -90]]
+        parts = net.split([ring])
+        band = 2 * math.pi * (1 - math.sin(math.radians(70)))  # the cap's area
+        # parallels drawn as chords between 0.25-degree vertices: a hair less than the cap
+        self.assertAlmostEqual(-plane_area(parts) / (band * NET_AREA / (4 * math.pi)), 1, places=4)  # clockwise
+        rings = rings_in(merged({"ATA": parts}, net, grid=100), "ATA")
+        self.assertEqual(len(rings), 1)  # Fuller's net keeps it whole
+
+    def test_rejects_rings_wider_than_a_hemisphere(self):
+        net = ph.Polyhedral()
+        band = [[lon, 0] for lon in range(-180, 180, 10)] + [[lon, 10] for lon in range(180, -180, -10)]
+        with self.assertRaises(mapgen.BuildError):
+            net.split([band + band[:1]])
+        self.assertEqual(net.split([[[1, 1], [1, 1], [1, 1]]]), [])
+
+    def test_deterministic(self):
+        net = ph.Polyhedral()
+        c, ax = mid(1, 3), along(1, 3)
+        ring = local_poly(c, ax, [(-3, -1), (3, -1), (3, 1), (1, 1), (1, -0.5), (-1, -0.5), (-1, 1), (-3, 1)])
+        self.assertEqual(net.split([ring]), ph.Polyhedral().split([ring]))
+        self.assertEqual(net.split([ring]), net.split([ring]))
 
 
 if __name__ == "__main__":
