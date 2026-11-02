@@ -1,0 +1,27 @@
+{
+  "about": [
+    "The quiz set of images/south-america-quiz: the single source of truth for codes, names, capitals, marker points and which entries are clickable.",
+    "id: Natural Earth ADM0_A3 code (also the element id in site/map.svg); GUF (ISO 3166-1 for French Guiana) is split out of Natural Earth's FRA feature by tools/build_map.py.",
+    "name, capital: English short forms per the EU Interinstitutional Style Guide, diacritics kept. Bolivia: Sucre is the constitutional capital, La Paz the seat of government; the quiz asks both (tools/README.md).",
+    "of: the state a territory belongs to; the page shows it after the name, e.g. 'French Guiana (France)'.",
+    "quiz: false makes an entry context land (drawn, never clickable); missing = true. Flip it and regenerate (tools/README.md, Quiz set). French Guiana clickable, the Falkland Islands context land: the owner's call (2026-11-02).",
+    "marker: [lon, lat] for entries too small to tap at the full view: a ring is drawn there with a generous hit area (only for quiz entries).",
+    "Everything else in the map window (Central America, the Caribbean incl. Trinidad and Tobago, South Georgia, Antarctica, ...) is context land."
+  ],
+  "countries": [
+    { "id": "ARG", "name": "Argentina", "capital": "Buenos Aires" },
+    { "id": "BOL", "name": "Bolivia", "capital": "Sucre / La Paz" },
+    { "id": "BRA", "name": "Brazil", "capital": "Brasília" },
+    { "id": "CHL", "name": "Chile", "capital": "Santiago" },
+    { "id": "COL", "name": "Colombia", "capital": "Bogotá" },
+    { "id": "ECU", "name": "Ecuador", "capital": "Quito" },
+    { "id": "FLK", "name": "Falkland Islands", "capital": "Stanley", "of": "UK", "marker": [-59.30, -51.75], "quiz": false },
+    { "id": "GUF", "name": "French Guiana", "capital": "Cayenne", "of": "France", "quiz": true },
+    { "id": "GUY", "name": "Guyana", "capital": "Georgetown" },
+    { "id": "PRY", "name": "Paraguay", "capital": "Asunción" },
+    { "id": "PER", "name": "Peru", "capital": "Lima" },
+    { "id": "SUR", "name": "Suriname", "capital": "Paramaribo" },
+    { "id": "URY", "name": "Uruguay", "capital": "Montevideo" },
+    { "id": "VEN", "name": "Venezuela", "capital": "Caracas" }
+  ]
+}
