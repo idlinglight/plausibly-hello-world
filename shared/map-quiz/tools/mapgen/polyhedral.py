@@ -42,6 +42,7 @@ from .output import BuildError
 
 _S3 = math.sqrt(3.0)
 _S5 = math.sqrt(5.0)
+ON_LINE = 1e-12  # |n . v| up to this: a ring vertex on a piece's side (inside both pieces, placed canonically)
 
 # ------------------------------------------------------------------ the icosahedron
 # Fuller's orientation in Gray's coordinates (vertex numbers as Gray's; 7..12
@@ -490,8 +491,13 @@ class Polyhedral:
         return ((la * pa[0] + lb * pb[0] + lc * pcc[0]) * self.scale,
                 (la * pa[1] + lb * pb[1] + lc * pcc[1]) * self.scale)
 
-    def _place(self, pc, rec):
+    def _place(self, pc, rec, part=None):
         kind, vec, ref = rec
+        if kind == "p" and part is not None:
+            for ln, _ in part.lines:  # a ring vertex on a fold: through the edge, as from the other side
+                if ln.edge and abs(_dot(ln.n, vec)) <= ON_LINE:
+                    return self._on_edge(pc, ln, vec)
+            return self._in_face(pc, vec)
         if kind == "k":
             if isinstance(ref, int):
                 p = pc.pos[ref]
@@ -546,9 +552,9 @@ class Polyhedral:
             n = line.n
             out = []
             prev, psup = ring[-1]
-            pin = sign * _dot(n, prev[1]) >= 0
+            pin = sign * _dot(n, prev[1]) >= -ON_LINE
             for cur, csup in ring:
-                cin = sign * _dot(n, cur[1]) >= 0
+                cin = sign * _dot(n, cur[1]) >= -ON_LINE
                 if cin != pin:
                     x = self._isect(psup, line)
                     if x is None:  # a part side crossing the next one: their corner
@@ -595,7 +601,8 @@ class Polyhedral:
             rings.append((recs, c, cos_r))
         if not rings:
             return []
-        clipped = []  # (piece, [part ring or None per ring])
+        clipped = []  # (piece, part, [part ring or None per ring])
+        on_line = {}  # line id -> {vec: rec}: ring vertices on a part's side
         for pc in self.pieces.values():
             for part in pc.parts:
                 cap = math.acos(max(-1.0, min(1.0, part.cos_r)))
@@ -604,7 +611,7 @@ class Polyhedral:
                     if math.acos(max(-1.0, min(1.0, _dot(c, part.centre)))) > cap + math.acos(cos_r) + 1e-9:
                         outs.append(None)
                         continue
-                    flags = [[s * _dot(ln.n, rec[1]) >= 0 for rec, _ in recs] for ln, s in part.lines]
+                    flags = [[s * _dot(ln.n, rec[1]) >= -ON_LINE for rec, _ in recs] for ln, s in part.lines]
                     if all(all(f) for f in flags):
                         outs.append(recs)
                     elif any(not any(f) for f in flags):
@@ -612,11 +619,19 @@ class Polyhedral:
                     else:
                         outs.append(self._clip(recs, part) or None)
                 if outs[0]:
-                    clipped.append((pc, outs))
+                    clipped.append((pc, part, outs))
+                    for out in outs:
+                        for rec, _ in out or ():
+                            if rec[0] == "p":
+                                for ln, _ in part.lines:
+                                    if abs(_dot(ln.n, rec[1])) <= ON_LINE:
+                                        on_line.setdefault(ln.id, {})[rec[1]] = rec
         # points on each line (crossings of this polygon, static corners), by position along it
         along = {}
         for rec in self._memo.values():
             along.setdefault(rec[2].id, []).append(rec)
+        for lid, recs in on_line.items():
+            along.setdefault(lid, []).extend(recs.values())
         params = {}
 
         def param(line, rec):
@@ -626,14 +641,14 @@ class Polyhedral:
             return params[key]
 
         result = []
-        for pc, outs in clipped:
+        for pc, part, outs in clipped:
             poly_out = []
             for out in outs:
                 if not out:
                     continue
                 pts = []
                 for i, (rec, sup) in enumerate(out):
-                    pts.append(self._place(pc, rec))
+                    pts.append(self._place(pc, rec, part))
                     if sup[0] == "l":
                         line = self.lines[sup[1]]
                         nxt = out[(i + 1) % len(out)][0]
@@ -645,7 +660,7 @@ class Polyhedral:
                                       key=lambda e: e[0])
                         if t0 > t1:
                             mids.reverse()
-                        pts.extend(self._place(pc, r) for _, r in mids)
+                        pts.extend(self._place(pc, r, part) for _, r in mids)
                 poly_out.append(pts)
             result.append(poly_out)
         self._memo = {}

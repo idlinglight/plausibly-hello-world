@@ -53,6 +53,16 @@ class Window:
                 f"extent: [{ex0:g}, {ey0:g}, {ex1 - ex0:g}, {ey1 - ey0:g}] }};")
 
 
+def simplified(stats):
+    """What the report says was simplified."""
+    own = stats.get("region_tols", {})
+    if stats["region_tol"]:
+        return "all arcs" + (", some regions finer" if own else "")
+    if any(own.values()):
+        return "context arcs and some regions' arcs"
+    return "context-only arcs"
+
+
 class Result:
     """What MapBuilder.build made. paths, sizes and overlays go into map.svg
     (mapgen.map_svg); arcs and topo are the shared topology the paths were
@@ -80,8 +90,7 @@ class Result:
             "window": f"0 0 {self.window.width:g} {self.window.height:g}",
             "viewBox (extent)": self.window.viewbox(),
             "arcs": s["arcs"],
-            "points": f"{s['points_before']} -> {s['points_after']} ("
-                      f"{'all arcs' if s['region_tol'] else 'context-only arcs'} simplified)",
+            "points": f"{s['points_before']} -> {s['points_after']} ({simplified(s)} simplified)",
             "arc crossings": s["crossings"] if not s.get("repaired") else f"{s['crossings']} ({s['repaired']} arcs repaired)",
             "dropped islands": s["dropped"],
             "clipped parts": sorted(set(s["clipped"])) or "none",
@@ -206,17 +215,18 @@ class MapBuilder:
             bx0, by0, bx1, by1 = bbox(points)
             return bx1 < near[0] or bx0 > near[2] or by1 < near[1] or by0 > near[3]
 
-        def simplify_context(a):
-            """Runs of far points get far_tol, the rest context_tol; run ends stay put."""
+        def simplify_context(a, k=1.0):
+            """Runs of far points get far_tol, the rest context_tol (both times
+            k); run ends stay put."""
             flags = [far([p]) for p in a]
             if all(f == flags[0] for f in flags):
-                return simplify_arc(a, (self.far_tol if flags[0] else self.context_tol) * g)
+                return simplify_arc(a, (self.far_tol if flags[0] else self.context_tol) * g * k)
             out, start = [a[0]], 0
             for i in range(1, len(a)):
                 if i == len(a) - 1 or flags[i + 1] != flags[start]:
                     run = a[start:i + 1]
                     tol = self.far_tol if all(flags[start:i + 1]) else self.context_tol
-                    out.extend(douglas_peucker(run, tol * g)[1:])
+                    out.extend(douglas_peucker(run, tol * g * k)[1:])
                     start = i
             return out
 
@@ -251,19 +261,32 @@ class MapBuilder:
                        default=self.region_tol) * g
 
         raw = arcs
-        tols = [self.context_tol * g if users == {CONTEXT} else region_tol(users) for users in arc_users]
-        arcs = [simplify_context(a) if users == {CONTEXT} else simplify_arc(a, t) if t else a
-                for a, users, t in zip(arcs, arc_users, tols)]
+        base = [None if users == {CONTEXT} else region_tol(users) for users in arc_users]
+
+        def simplify(i, k):
+            """Arc i with its tolerances times k; k < 1 (a repair) below one
+            grid step gives its own points."""
+            if base[i] is None:
+                if k < 1 and max(self.far_tol, self.context_tol) * g * k < 1:
+                    return raw[i]
+                return simplify_context(raw[i], k)
+            t = base[i] * k
+            if not t or (k < 1 and t < 1):
+                return raw[i]
+            return simplify_arc(raw[i], t)
+
+        arcs = [simplify(i, 1.0) for i in range(len(raw))]
+        scale = [1.0] * len(raw)
         repaired = set()
         while self.repair_crossings:
-            # arcs in a crossing: simplified again with half their tolerance,
-            # below one grid step their own points
+            # arcs in a crossing: simplified again with half the tolerance they
+            # had, down to their own points
             bad = sorted({i for pair in crossing_pairs(arcs) for i in pair if arcs[i] is not raw[i]})
             if not bad:
                 break
             for i in bad:
-                tols[i] /= 2
-                arcs[i] = simplify_arc(raw[i], tols[i]) if tols[i] >= 1 else raw[i]
+                scale[i] /= 2
+                arcs[i] = simplify(i, scale[i])
             repaired.update(bad)
         repaired = len(repaired)
         n_after = sum(len(a) for a in arcs)
@@ -315,5 +338,5 @@ class MapBuilder:
 
         stats = {"arcs": len(arcs), "points_before": n_before, "points_after": n_after, "dropped": dropped,
                  "clipped": self.clipped, "notes": notes, "crossings": crossings, "region_tol": self.region_tol,
-                 "repaired": repaired}
+                 "region_tols": dict(self.region_tols), "repaired": repaired}
         return Result(w, CONTEXT, paths, sizes, overlays, stats, arcs=arcs, topo=drawn, grid=g, dec=self.dec)

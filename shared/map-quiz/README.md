@@ -450,7 +450,13 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   along vertical and horizontal lines into `{(i, j): polygon}` cells; the
   cells share their cut vertices exactly, so an adapter can hand a part
   of one feature to another (a border-view fix-up) and the rest still
-  merges.
+  merges; the lines run across the whole feature. `mapgen.clip_box(poly,
+  box)` → `(inside, outside)` moves only what lies inside a rectangle.
+  Either way the new vertices also belong into the neighbours whose border
+  they lie on (`mapgen.node_points(polys, points)`), and
+  `mapgen.t_junctions({fid: polys})` lists every vertex lying on another
+  feature's edge without being one of its vertices (an adapter that cuts
+  asserts none: else arcs come out one-sided, with slivers or gaps).
 - Line overlays along the region edges (for `rounds[].lines`): the result
   keeps the shared topology it drew the paths from, `res.arcs`
   (simplified arcs, integer points in 1/`res.grid` units) and `res.topo`

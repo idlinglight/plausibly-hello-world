@@ -423,6 +423,76 @@ class Repairs(unittest.TestCase):
         self.assertAlmostEqual(abs(mapgen.area2(ring)) / 2 / 100, 9 * 100, places=6)  # 9 units^2, 10 map units each way
 
 
+class BoxesAndJunctions(unittest.TestCase):
+    def test_clip_box(self):
+        # a coast with a peninsula; the box takes the peninsula's tip only
+        poly = [[(0, 0), (10, 0), (10, 4), (6, 4), (6, 7), (4, 7), (4, 4), (0, 4), (0, 0)]]
+        box = (3.5, 5.5, 6.5, 8)
+        inside, outside = mapgen.clip_box(poly, box)
+        self.assertEqual(len(inside), 1)
+        self.assertEqual(len(outside), 1)
+        self.assertAlmostEqual(mapgen.area2(inside[0][0][:-1]) / 2, 2 * 1.5)
+        self.assertAlmostEqual(mapgen.area2(outside[0][0][:-1]) / 2, 40 + 2 * 1.5)
+        cut = set(inside[0][0]) & set(outside[0][0])
+        self.assertEqual(cut, {(4.0, 5.5), (6.0, 5.5)})  # shared, bit-identical
+        # nothing outside the box changed: every other vertex is the polygon's own
+        self.assertLessEqual(set(outside[0][0]) - cut, set(map(tuple, poly[0])))
+        # merged again, the pieces give the polygon back
+        res = self._merge({"A": outside, "B": inside})
+        self.assertEqual(res.stats["crossings"], 0)
+        self.assertEqual([len(res.topo[k]) for k in ("A", "B")], [1, 1])
+        # a box inside the polygon: a hole; one outside it: nothing moves
+        inside, outside = mapgen.clip_box(poly, (1, 1, 2, 2))
+        self.assertEqual((len(inside), [len(p) for p in outside]), (1, [2]))
+        inside, outside = mapgen.clip_box(poly, (20, 20, 21, 21))
+        self.assertEqual((inside, len(outside)), ([], 1))
+        with self.assertRaises(ValueError):
+            mapgen.clip_box(poly, (4, 5, 7, 8))  # a vertex on the outline
+
+    def _merge(self, parts):
+        w = mapgen.Window([(0, 0), (10, 8)], 0.0, 100.0, (0, 0))
+        mb = mapgen.MapBuilder(mapgen.Identity(), w, sorted(parts), grid=100, min_island=0)
+        for rid, polys in sorted(parts.items()):
+            for p in polys:
+                mb.add_region(rid, p)
+        return mb.build()
+
+    def test_t_junctions_and_node_points(self):
+        a = [[(0, 0), (4, 0), (4, 4), (0, 4), (0, 0)]]
+        b = [[(4, 0), (8, 0), (8, 4), (4, 4), (4, 0)]]
+        self.assertEqual(mapgen.t_junctions({"A": [a], "B": [b]}), [])
+        # B gets a vertex on the shared edge, A doesn't: a T-junction
+        b2 = [[(4, 0), (8, 0), (8, 4), (4, 4), (4, 1.5), (4, 0)]]
+        self.assertEqual(mapgen.t_junctions({"A": [a], "B": [b2]}), [((4, 1.5), ("B",), "A")])
+        a2 = mapgen.node_points([a], [(4, 1.5)])
+        self.assertIn((4, 1.5), a2[0][0])
+        self.assertEqual(mapgen.t_junctions({"A": a2, "B": [b2]}), [])
+
+    def test_repair_keeps_far_tolerance(self):
+        """A far context arc in a crossing is simplified again with half its
+        far_tol, not with the near context_tol."""
+        w = mapgen.Window([(0, 0), (10, 10)], 0.0, 100.0, (20, 1))  # context drawn far out to the east
+
+        def build(**kw):
+            mb = mapgen.MapBuilder(mapgen.Identity(), w, ["R"], grid=10, min_island=0, context_tol=0.2, far_tol=60, **kw)
+            mb.add_region("R", square(1, 1, 2, 2)[0:1])
+            wiggle = [(100 + i * 0.5, 0.05 * (i % 2)) for i in range(41)]
+            mb.add_context([wiggle + [(120, 5), (115, 5), (114, 10), (113, 5), (107, 5), (106, 10), (105, 5), (100, 5)]])
+            mb.add_context([[(109.5, 8), (110.5, 8), (110.5, 11), (109.5, 11), (109.5, 8)]])
+            return mb.build()
+        bad = build()
+        self.assertGreater(bad.stats["crossings"], 0)
+        good = build(repair_crossings=True)
+        self.assertEqual(good.stats["crossings"], 0)
+        self.assertGreater(good.stats["repaired"], 0)
+        self.assertLess(good.stats["points_after"], good.stats["points_before"] - 30)  # the wiggles stay simplified
+
+    def test_report_names_what_was_simplified(self):
+        self.assertIn("context-only", dip_and_island().report(["A", "B"])["points"])
+        self.assertIn("some regions' arcs", dip_and_island(region_tols={"A": 0.5}).report(["A", "B"])["points"])
+        self.assertIn("all arcs, some regions finer", dip_and_island(region_tol=1, region_tols={"A": 0}).report(["A", "B"])["points"])
+
+
 # ------------------------------------------------------------------ polyhedral (Fuller's net)
 ph = mapgen.polyhedral
 NET_AREA = 20 * math.sqrt(3) / 4  # the net's area (unit edges) for the sphere's 4 pi
@@ -660,6 +730,26 @@ class Polyhedral(unittest.TestCase):
         res = merged({"U": parts}, net, grid=100)
         rings = rings_in(res, "U")
         self.assertEqual(sorted(mapgen.area2(r) > 0 for r in rings), [False, True])  # one exterior, one hole
+
+    def test_ring_vertex_on_a_fold(self):
+        """A ring vertex exactly on a fold (the edge's midpoint, through
+        lon/lat): inside both pieces, placed through the edge in both, a
+        noding point for the edges along the fold: bit-identical, one ring."""
+        net = ph.Polyhedral("snyder", densify=0)
+        c, ax = mid(1, 3), along(1, 3)
+        v = net.lines[("e", 1, 3)]
+        p = ph.unit_vector(*ph.lon_lat(c))
+        self.assertLessEqual(abs(ph._dot(v.n, p)), ph.ON_LINE)
+        # a V down to the fold, touching it at the midpoint (local (0, 0))
+        ring = local_poly(c, ax, [(-2, -1), (2, -1), (2, 1), (0, 0), (-2, 1)])
+        parts = net.split([ring])
+        self.assertEqual(len(parts), 2)  # below the fold, and above it the V's two sides pinched at the vertex
+        at = [net._on_edge(pc, v, p) for pc in (net.pieces["1"], net.pieces["2"])]
+        self.assertEqual(at[0], at[1])
+        for part in parts:
+            self.assertIn(at[0], part[0])  # every part has the vertex, the same floats
+        self.assertAlmostEqual(plane_area(parts) / (sphere_area(ring) * NET_AREA / (4 * math.pi)), 1, places=5)
+        self.assertEqual(len(rings_in(merged({"V": parts}, net, grid=100), "V")), 1)
 
     def test_cut_stays_apart(self):
         net = ph.Polyhedral()
