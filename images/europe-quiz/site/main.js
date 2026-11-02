@@ -61,7 +61,7 @@
 // with another seed is replaced).
 
 import config from './config.js';
-import { checkConfig, roundSpecs } from './contract.js';
+import { checkConfig, linkError, roundSpecs } from './contract.js';
 import { Quiz } from './quiz.js';
 import { wheelKind } from './wheel.js';
 
@@ -853,36 +853,48 @@ function buildRings() {
 
 // ── HUD ─────────────────────────────────────────────────────────────────
 
+// The prompt (kind, asked text, sub-line, link) is written only when the
+// asked answer or the round kind changes (promptKey), not at a misclick
+// or a pick that leaves it: the live region stays untouched, the link
+// isn't recomputed, and the prompt is refitted only then or when the
+// card changed size (resize: relayout()).
+let promptKey = null;
 function updateHud() {
   const round = ROUNDS[quiz.kind];
-  const a = SPECS[quiz.kind].byId.get(quiz.target);
   roundEl.textContent = round.label;
   if (picker) picker.value = String(quiz.kind);
   progressEl.textContent = `${quiz.done} / ${quiz.total}`;
   correctEl.textContent = String(quiz.correct);
   missesEl.textContent = String(quiz.misses);
-  promptKind.textContent = round.prompt;
-  const asked = round.ask(a);
-  promptText.textContent = asked;
-  if (promptLink) {
-    promptSaid.textContent = asked;
-    linkPrompt(round, a, asked);
-  }
-  if (promptSub) {
-    // shown under the prompt, read with it (aria-live) from the sr-only copy
-    const text = round.sub ? round.sub(a) : '';
-    promptSub.textContent = text;
-    promptSubSr.textContent = text ? ` ${text}` : '';
-    for (const el of [promptSub, promptSubSr]) {
-      if (text && round.subLang) el.lang = round.subLang;
-      else el.removeAttribute('lang');
+  const key = `${quiz.kind} ${quiz.target}`;
+  const asks = key !== promptKey;
+  if (asks) {
+    promptKey = key;
+    const a = SPECS[quiz.kind].byId.get(quiz.target);
+    promptKind.textContent = round.prompt;
+    const asked = round.ask(a);
+    promptText.textContent = asked;
+    if (promptLink) {
+      promptSaid.textContent = asked;
+      linkPrompt(round, a, asked);
+    }
+    if (promptSub) {
+      // shown under the prompt, read with it (aria-live) from the sr-only copy
+      const text = round.sub ? round.sub(a) : '';
+      promptSub.textContent = text;
+      promptSubSr.textContent = text ? ` ${text}` : '';
+      for (const el of [promptSub, promptSubSr]) {
+        if (text && round.subLang) el.lang = round.subLang;
+        else el.removeAttribute('lang');
+      }
     }
   }
   if (swatch) swatch.classList.toggle('b', quiz.colour === 2);
   root.dataset.round = round.key;
   root.dataset.progress = `${quiz.done}/${quiz.total}`;
-  if (fitRow() && svg) refitSoon(); // the card changed size
-  fitPrompt();
+  const resized = fitRow(); // the card changed size
+  if (resized && svg) refitSoon();
+  if (asks || resized) fitPrompt();
 }
 
 // The card's top row (round label, progress, counters) must fit the card.
@@ -931,32 +943,30 @@ function fitPrompt() {
   }
 }
 
-// The prompt link for the asked answer: href only for an https URL from
-// the round's link() (contract.js checks every one at test time; here a
-// bad one, or a throwing link(), costs the link, never the game), named by
-// text.link(asked text). Else plain text: no href (not a link, not
-// focusable; style.css hides the icon) and hidden from screen readers,
-// which read the prompt from #prompt-live.
-function isHttps(u) {
-  try {
-    return typeof u === 'string' && new URL(u).protocol === 'https:';
-  } catch {
-    return false; // not an absolute URL
-  }
-}
-
+// The prompt link for the asked answer: href only for a URL from the
+// round's link() that passes contract.js linkError() (an https URL; the
+// same rule checkTexts applies to every link at test time; here a bad
+// one, or a throwing link(), costs the link, never the game, with a
+// console warning once per round and answer), named by text.link(asked
+// text). Else plain text: no href (not a link, not focusable; style.css
+// hides the icon) and hidden from screen readers, which read the prompt
+// from #prompt-live.
+const linkWarned = new Set(); // "round key answer id"
 function linkPrompt(round, a, asked) {
   let url = null;
   let name = null;
   if (round.link) {
     try {
       const u = round.link(a);
-      if (!isHttps(u)) throw new Error(`gives ${JSON.stringify(u)}, not an https URL`);
+      const why = linkError(u);
+      if (why) throw new Error(`gives ${JSON.stringify(u)}: ${why}`);
       name = TEXT.link(asked);
       if (typeof name !== 'string' || !name) throw new Error(`text.link gives ${JSON.stringify(name)}`);
       url = u;
     } catch (err) {
-      console.warn(`config.js: rounds ${round.key}: link(${a.id}) ${err.message}; the prompt is shown without a link`);
+      const k = `${round.key} ${a.id}`;
+      if (!linkWarned.has(k)) console.warn(`config.js: rounds ${round.key}: link(${a.id}) ${err.message}; the prompt is shown without a link`);
+      linkWarned.add(k);
     }
   }
   if (url) {

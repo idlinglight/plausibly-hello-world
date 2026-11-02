@@ -17,6 +17,8 @@ shared/map-quiz/
     wheel.js          mouse wheel or trackpad? (no DOM)
     theme.js          light/dark, a classic script in <head>
     style.css         layout, theme tokens
+    wiki.js           Wikipedia article URLs for config.js (no DOM; a
+                      helper, main.js doesn't load it)
   tools/            not synced, not shipped
     mapgen/           generator core (Python 3.9+, stdlib), see below
     mapgen_test.py    python3 -I shared/map-quiz/tools/mapgen_test.py
@@ -28,6 +30,7 @@ shared/map-quiz/
     contract.test.mjs node shared/map-quiz/tools/contract.test.mjs
     wheel.test.mjs    node shared/map-quiz/tools/wheel.test.mjs
                       (+ wheel-fixture.json: recorded wheel events)
+    wiki.test.mjs     node shared/map-quiz/tools/wiki.test.mjs
 ```
 
 The engine files reach an image as byte-identical copies
@@ -47,7 +50,7 @@ data.
 | `map.svg` | generated | the map, layout below |
 | favicons | image | `favicon.svg`, `favicon.ico`, `apple-touch-icon.png` |
 | own stylesheet (optional) | image | token overrides, linked after `style.css` |
-| `main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css` | synced | the engine: don't edit there |
+| `main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`, `wiki.js` | synced | the engine: don't edit there (`wiki.js` only loads where `config.js` imports it) |
 
 ### index.html
 
@@ -80,6 +83,7 @@ An ES module beside the data module; its default export:
 
 ```js
 import { MAP, DISTRICTS } from './districts.js'; // generated
+import { wikipediaUrl } from './wiki.js';         // optional, for rounds[].link
 
 export default {
   map: MAP,           // { width, height, extent: [x, y, w, h] } (map units)
@@ -91,7 +95,7 @@ export default {
       prompt: 'Finde',              // screen-reader text before the asked one
       ask: (d) => d.name,           // the asked text (the card's big line)
       miss: (d) => d.name,          // label at a misclick on d
-      link: (d) => `https://de.wikipedia.org/wiki/${encodeURIComponent(d.wiki)}`, // optional: the prompt links there
+      link: (d) => wikipediaUrl('de', d.wiki), // optional: the prompt links there
       done: ({ total, misses }) => `Alle ${total} Bezirke gefunden. Jetzt die Nummern.`,
     },
     {
@@ -202,10 +206,17 @@ export default {
 - **rounds[].link** (optional): `(answer) => 'https://…'`, a page about
   the asked answer (e.g. its Wikipedia article; in a capitals round the
   capital's, whatever the round asks): the card's prompt text links there,
-  opened in a new tab (Behaviour below). Absolute `https:` URLs only,
-  encoded by the config (main.js links nothing else: a bad one, or a
-  `link()` that throws, shows the prompt without a link and a console
-  warning; `checkTexts` fails on it). A round without `link` shows plain
+  opened in a new tab (Behaviour below). Absolute `https:` URLs without
+  whitespace only (`contract.js` `linkError(url)`, the one rule for
+  `checkTexts`, which fails on a bad one, and main.js, which links
+  nothing else: a bad one, or a `link()` that throws, shows the prompt
+  without a link and a console warning, once per answer). For Wikipedia,
+  `wiki.js` (synced like the engine, no DOM, loaded only by a config that
+  imports it) has `wikipediaUrl(lang, title)`: the article's URL as
+  Wikipedia writes them (spaces as `_`, percent-encoded UTF-8 but for
+  letters, digits and `- _ . ! ~ * ' ( ) , / :`, so `? # % & +` stay part
+  of the title); it throws on a bad language code or no title, so
+  `checkTexts` names the answer without one. A round without `link` shows plain
   text. Once any round has `link`, `text.link` is needed: `(asked text) =>
   string`, the link's accessible name and tooltip, e.g. ``(asked) =>
   `${asked} on Wikipedia (opens a new tab)` ``.

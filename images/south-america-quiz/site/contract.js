@@ -145,8 +145,23 @@ export function roundSpecs(config) {
   });
 }
 
-// The prompt link of an asked answer: an absolute https URL (main.js
-// links nothing else), and the link's name for its asked text.
+// What a prompt link (rounds[].link) may be: an absolute https URL
+// without whitespace. null if it is one, else why not. The one rule for
+// checkTexts (test time) and main.js (which links nothing else).
+export function linkError(u) {
+  if (typeof u !== 'string') return 'not a string';
+  if (/\s/.test(u)) return 'contains whitespace';
+  let url;
+  try {
+    url = new URL(u);
+  } catch {
+    return 'not an absolute URL';
+  }
+  return url.protocol === 'https:' ? null : `not https (${url.protocol})`;
+}
+
+// The prompt link of an asked answer, and the link's name for its asked
+// text.
 function checkLink(r, it, id, asked, text) {
   let u;
   try {
@@ -154,14 +169,8 @@ function checkLink(r, it, id, asked, text) {
   } catch (err) {
     bad(`rounds ${r.key}: link(${id}) throws: ${err.message}`);
   }
-  let url = null;
-  try {
-    url = new URL(u);
-  } catch {
-    // not absolute, or no URL at all
-  }
-  if (typeof u !== 'string' || /\s/.test(u) || !url || url.protocol !== 'https:')
-    bad(`rounds ${r.key}: link(${id}) gives ${JSON.stringify(u)}, not an absolute https URL (without spaces)`);
+  const why = linkError(u);
+  if (why) bad(`rounds ${r.key}: link(${id}) gives ${JSON.stringify(u)}: ${why}`);
   const name = text.link(asked);
   if (!str(name)) bad(`text.link(${JSON.stringify(asked)}) gives ${JSON.stringify(name)}`);
 }

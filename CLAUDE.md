@@ -11,8 +11,10 @@ images/<name>/        one folder = one image, build context = this folder
   Dockerfile
   nginx.conf          → /etc/nginx/conf.d/default.conf (synced copy)
   site/               → /usr/share/nginx/html/ (static files, no build step)
-  tools/              optional: offline generators for data in site/ — not
-                      shipped, outputs committed (europe-quiz's map)
+  tools/              optional, not shipped: offline generators for data in
+                      site/ (outputs committed: europe-quiz's map), node
+                      tests (CI), hand-run online checkers (wiki_titles.py:
+                      never run by a build, a test or CI)
 shared/               files several images use: one source, synced copies
   sync.py             writes the copies into images/; --check (CI) fails on drift
   sync.json           which source goes to which images (+ files they must have)
@@ -20,7 +22,9 @@ shared/               files several images use: one source, synced copies
   nginx.conf          → every images/*/nginx.conf
   map-quiz/           the map-quiz engine (README.md: config contract)
     site/               → site/ of each map image (engine JS/CSS)
-    tools/              generator core (mapgen), engine tests; not synced
+    tools/              generator core (mapgen), engine tests; wikicheck.py
+                        (hand-run online title checker, never run by a
+                        build, a test or CI); not synced
 .github/
   dependabot.yml
   workflows/
@@ -117,7 +121,8 @@ images (now `europe-quiz`, `vienna-districts`, `japan-quiz`, `world-quiz`,
 `south-america-quiz`, `east-asia-quiz`). Its `README.md` has the contracts and the
 behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
 layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
-(`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`)
+(`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`,
+`wiki.js`: Wikipedia URLs for a config, loaded only where one imports it)
 are synced into each map image's `site/`; per image: `index.html` (static
 text, `lang`, `<html data-quiz="<name>">`, which namespaces localStorage),
 `config.js` (regions from the generated data module, rounds, every UI

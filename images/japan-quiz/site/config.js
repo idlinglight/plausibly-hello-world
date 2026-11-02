@@ -13,18 +13,15 @@
 // The asked name links to its English Wikipedia article (the capital's in
 // the capitals round; titles from japan.js: wiki, capitalWiki).
 import { MAP, PIECES, ISLANDS, REGIONS, PREFECTURES } from './japan.js';
+import { wikipediaUrl } from './wiki.js';
 
 const misclicks = (n) => (n ? ` · ${n} misclick${n === 1 ? '' : 's'}` : ' · no misclicks');
 const CAPITALS = PREFECTURES.filter((p) => p.capitalDiffers).length; // 18: the capital's name isn't the prefecture's
 const COASTS = ['coast-main', 'coast-isles'];
 const ALL_LINES = [...COASTS, 'borders-prefectures', 'borders-regions'];
-// An article's URL from its title, as Wikipedia writes them: spaces as _,
-// percent-encoded but for letters, digits, - _ . ! ~ * ' ( ) , / :
-// (so ? # % & + stay part of the title).
-const wiki = (title) => {
-  if (typeof title !== 'string' || !title) throw new Error(`no Wikipedia title: ${JSON.stringify(title)}`);
-  return 'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replaceAll(' ', '_')).replace(/%2C|%2F|%3A/g, decodeURIComponent);
-};
+// An English Wikipedia article's URL from its title (wiki.js, the engine's
+// helper: spaces as _, ? # % & + stay part of the title).
+const wiki = (title) => wikipediaUrl('en', title);
 
 // The islands, regions and prefectures rounds ask a name: the card shows
 // it, its kanji · kana under it; a misclick shows the picked one's name

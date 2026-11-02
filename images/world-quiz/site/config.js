@@ -12,6 +12,7 @@
 // The asked name links to its English Wikipedia article (the capital's in
 // the capitals rounds; titles from countries.js: wiki, capitalWiki).
 import { MAP, COUNTRIES } from './countries.js';
+import { wikipediaUrl } from './wiki.js';
 
 const misclicks = (n) => (n ? ` · ${n} misclick${n === 1 ? '' : 's'}` : ' · no misclicks');
 // A territory carries the state it belongs to: "Greenland (Denmark)".
@@ -22,13 +23,9 @@ const answer = (c) => ({ ...c, pieces: [c.id] });
 const MAIN = COUNTRIES.filter((c) => !c.small).map(answer);
 const ALL = COUNTRIES.map(answer);
 const smalls = ALL.length - MAIN.length;
-// An article's URL from its title, as Wikipedia writes them: spaces as _,
-// percent-encoded but for letters, digits, - _ . ! ~ * ' ( ) , / :
-// (so ? # % & + stay part of the title).
-const wiki = (title) => {
-  if (typeof title !== 'string' || !title) throw new Error(`no Wikipedia title: ${JSON.stringify(title)}`);
-  return 'https://en.wikipedia.org/wiki/' + encodeURIComponent(title.replaceAll(' ', '_')).replace(/%2C|%2F|%3A/g, decodeURIComponent);
-};
+// An English Wikipedia article's URL from its title (wiki.js, the engine's
+// helper: spaces as _, ? # % & + stay part of the title).
+const wiki = (title) => wikipediaUrl('en', title);
 
 export default {
   map: MAP,

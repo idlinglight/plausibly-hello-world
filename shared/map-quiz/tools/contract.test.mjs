@@ -2,7 +2,7 @@
 // runs at start) on synthetic configs.
 // No packages: node shared/map-quiz/tools/contract.test.mjs
 import assert from 'node:assert/strict';
-import { checkConfig, checkTexts, roundSpecs } from '../site/contract.js';
+import { checkConfig, checkTexts, linkError, roundSpecs } from '../site/contract.js';
 
 let checks = 0;
 function check(name, fn) {
@@ -301,15 +301,15 @@ check('prompt link texts: an absolute https URL per asked answer, a name per ask
   assert.deepEqual(calls.link, ['kagawa', 'ehime'], 'asked answers only');
   assert.deepEqual(calls.name, ['Takamatsu', 'Matsuyama'], 'the asked text');
   const cases = [
-    [(r) => () => 'http://example.org/x', /capitals: link\(kagawa\) gives "http:\/\/example\.org\/x", not an absolute https URL/],
-    [(r) => () => 'wiki/Kagawa', /link\(kagawa\) gives "wiki\/Kagawa"/],
-    [(r) => () => '//example.org/x', /link\(kagawa\) gives/],
-    [(r) => () => 'javascript:alert(1)', /link\(kagawa\) gives/],
-    [(r) => () => 'https://example.org/Kagawa Prefecture', /link\(kagawa\) gives .*without spaces/],
-    [(r) => () => '', /link\(kagawa\) gives ""/],
-    [(r) => () => undefined, /link\(kagawa\) gives undefined/],
-    [(r) => () => new URL('https://example.org/'), /link\(kagawa\) gives/],
-    [(r) => (p) => (p.id === 'ehime' ? 'https://' : `https://example.org/${p.id}`), /link\(ehime\) gives/],
+    [(r) => () => 'http://example.org/x', /capitals: link\(kagawa\) gives "http:\/\/example\.org\/x": not https \(http:\)/],
+    [(r) => () => 'wiki/Kagawa', /link\(kagawa\) gives "wiki\/Kagawa": not an absolute URL/],
+    [(r) => () => '//example.org/x', /link\(kagawa\) gives "\/\/example\.org\/x": not an absolute URL/],
+    [(r) => () => 'javascript:alert(1)', /link\(kagawa\) gives "javascript:alert\(1\)": not https \(javascript:\)/],
+    [(r) => () => 'https://example.org/Kagawa Prefecture', /link\(kagawa\) gives .*: contains whitespace/],
+    [(r) => () => '', /link\(kagawa\) gives "": not an absolute URL/],
+    [(r) => () => undefined, /link\(kagawa\) gives undefined: not a string/],
+    [(r) => () => new URL('https://example.org/'), /link\(kagawa\) gives "https:\/\/example\.org\/": not a string/],
+    [(r) => (p) => (p.id === 'ehime' ? 'https://' : `https://example.org/${p.id}`), /link\(ehime\) gives "https:\/\/": not an absolute URL/],
     [(r) => (p) => `https://example.org/${p.wiki.trim()}`, /capitals: link\(kagawa\) throws: .*trim/],
   ];
   for (const [make, re] of cases) {
@@ -322,6 +322,15 @@ check('prompt link texts: an absolute https URL per asked answer, a name per ask
   x.rounds[2].link = (p) => `https://example.org/${p.id}`;
   x.text.link = (asked) => (asked === 'Matsuyama' ? '' : asked);
   throwsWith(() => checkTexts(x), /text\.link\("Matsuyama"\) gives ""/);
+});
+
+check('linkError: the one rule for checkTexts and main.js', () => {
+  for (const u of ['https://en.wikipedia.org/wiki/C%C3%B4te_d\'Ivoire', 'https://de.wikipedia.org/wiki/Innere_Stadt_(Wien)', 'HTTPS://example.org/'])
+    assert.equal(linkError(u), null, u);
+  for (const [u, why] of [[undefined, 'not a string'], [7, 'not a string'], ['https://example.org/a b', 'contains whitespace'],
+    ['https://example.org/\n', 'contains whitespace'], [' https://example.org/', 'contains whitespace'], ['example.org', 'not an absolute URL'],
+    ['', 'not an absolute URL'], ['http://example.org/', 'not https (http:)'], ['data:text/html,x', 'not https (data:)']])
+    assert.equal(linkError(u), why, String(u));
 });
 
 console.log(`${checks} checks passed`);
