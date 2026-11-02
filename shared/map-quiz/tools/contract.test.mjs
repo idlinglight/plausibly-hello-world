@@ -266,4 +266,62 @@ check('roundPicker: optional, with text.roundPicker, two or more rounds, labels 
   throwsWith(() => checkConfig({ ...good(), text: { ...good().text, roundPicker: 7 } }), /text\.roundPicker: a string/);
 });
 
+check('prompt link: rounds[].link and text.link optional, functions; text.link needed with a link', () => {
+  const linked = (c) => {
+    c.rounds[0].link = (d) => `https://example.org/wiki/${encodeURIComponent(d.name)}`;
+    c.text.link = (asked) => `${asked} (opens a new tab)`;
+    return c;
+  };
+  checkTexts(linked(good()));
+  const g = grouped();
+  g.rounds[2].link = (p) => `https://example.org/${p.id}`;
+  g.text.link = (asked) => asked;
+  checkTexts(g);
+  checkConfig({ ...good(), text: { ...good().text, link: (a) => a } }); // text without a link: unused
+  const cases = [
+    [(c) => (c.rounds[1].link = 'https://example.org/'), /rounds\[1\]\.link: a function/],
+    [(c) => (c.rounds[0].link = null), /rounds\[0\]\.link: a function/],
+    [(c) => delete c.text.link, /text\.link: a function .*needed with rounds\[\]\.link/],
+    [(c) => (c.text.link = 'on Wikipedia'), /text\.link: a function/],
+  ];
+  for (const [breakIt, re] of cases) {
+    const c = linked(good());
+    breakIt(c);
+    throwsWith(() => checkConfig(c), re);
+  }
+  throwsWith(() => checkConfig({ ...good(), text: { ...good().text, link: 7 } }), /text\.link: a function/);
+});
+
+check('prompt link texts: an absolute https URL per asked answer, a name per asked text', () => {
+  const c = grouped();
+  const calls = { link: [], name: [] };
+  c.rounds[2].link = (p) => (calls.link.push(p.id), `https://example.org/${p.id}`);
+  c.text.link = (asked) => (calls.name.push(asked), `${asked} (opens a new tab)`);
+  checkTexts(c);
+  assert.deepEqual(calls.link, ['kagawa', 'ehime'], 'asked answers only');
+  assert.deepEqual(calls.name, ['Takamatsu', 'Matsuyama'], 'the asked text');
+  const cases = [
+    [(r) => () => 'http://example.org/x', /capitals: link\(kagawa\) gives "http:\/\/example\.org\/x", not an absolute https URL/],
+    [(r) => () => 'wiki/Kagawa', /link\(kagawa\) gives "wiki\/Kagawa"/],
+    [(r) => () => '//example.org/x', /link\(kagawa\) gives/],
+    [(r) => () => 'javascript:alert(1)', /link\(kagawa\) gives/],
+    [(r) => () => 'https://example.org/Kagawa Prefecture', /link\(kagawa\) gives .*without spaces/],
+    [(r) => () => '', /link\(kagawa\) gives ""/],
+    [(r) => () => undefined, /link\(kagawa\) gives undefined/],
+    [(r) => () => new URL('https://example.org/'), /link\(kagawa\) gives/],
+    [(r) => (p) => (p.id === 'ehime' ? 'https://' : `https://example.org/${p.id}`), /link\(ehime\) gives/],
+    [(r) => (p) => `https://example.org/${p.wiki.trim()}`, /capitals: link\(kagawa\) throws: .*trim/],
+  ];
+  for (const [make, re] of cases) {
+    const x = grouped();
+    x.rounds[2].link = make(x.rounds[2]);
+    x.text.link = (asked) => asked;
+    throwsWith(() => checkTexts(x), re);
+  }
+  const x = grouped();
+  x.rounds[2].link = (p) => `https://example.org/${p.id}`;
+  x.text.link = (asked) => (asked === 'Matsuyama' ? '' : asked);
+  throwsWith(() => checkTexts(x), /text\.link\("Matsuyama"\) gives ""/);
+});
+
 console.log(`${checks} checks passed`);

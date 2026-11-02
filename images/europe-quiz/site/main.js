@@ -47,6 +47,9 @@
 // Round picker (optional, config.roundPicker): the card's round label
 // opens a list of the round kinds; picking one starts a fresh round of it.
 //
+// Prompt link (optional, rounds[].link): the asked name on the card links
+// to a page about it (e.g. its Wikipedia article), opened in a new tab.
+//
 // State on <html>: data-round (the round's config key, e.g. countries |
 // capitals), data-progress ("12/46"), data-zoom (s / fitScale), data-ready
 // (1 once the map is in; "error" if it failed), data-wheel (how the last
@@ -859,7 +862,12 @@ function updateHud() {
   correctEl.textContent = String(quiz.correct);
   missesEl.textContent = String(quiz.misses);
   promptKind.textContent = round.prompt;
-  promptText.textContent = round.ask(a);
+  const asked = round.ask(a);
+  promptText.textContent = asked;
+  if (promptLink) {
+    promptSaid.textContent = asked;
+    linkPrompt(round, a, asked);
+  }
   if (promptSub) {
     // shown under the prompt, read with it (aria-live) from the sr-only copy
     const text = round.sub ? round.sub(a) : '';
@@ -905,13 +913,60 @@ function fitRow(force = false) {
   return size() !== before;
 }
 
-// Long names shrink to fit the card instead of being cut off.
+// Long names shrink to fit the card instead of being cut off (down to
+// 14 px, then cut with an ellipsis). With the prompt link the name's own
+// span is what overflows (the icon after it keeps its width), and the size
+// steps down 1 px more while the name is still over: text isn't quite
+// proportional to its size (system fonts get wider below 20 px), and the
+// icon leaves less slack than the plain line had.
 function fitPrompt() {
   promptEl.style.fontSize = '';
-  const over = promptEl.scrollWidth - promptEl.clientWidth;
+  const box = promptLink ? promptText : promptEl;
+  const over = box.scrollWidth - box.clientWidth;
   if (over > 0) {
     const fs = parseFloat(getComputedStyle(promptEl).fontSize);
-    promptEl.style.fontSize = `${Math.max(14, Math.floor((fs * promptEl.clientWidth) / promptEl.scrollWidth))}px`;
+    let size = Math.max(14, Math.floor((fs * box.clientWidth) / box.scrollWidth));
+    promptEl.style.fontSize = `${size}px`;
+    if (promptLink) while (size > 14 && box.scrollWidth > box.clientWidth) promptEl.style.fontSize = `${--size}px`;
+  }
+}
+
+// The prompt link for the asked answer: href only for an https URL from
+// the round's link() (contract.js checks every one at test time; here a
+// bad one, or a throwing link(), costs the link, never the game), named by
+// text.link(asked text). Else plain text: no href (not a link, not
+// focusable; style.css hides the icon) and hidden from screen readers,
+// which read the prompt from #prompt-live.
+function isHttps(u) {
+  try {
+    return typeof u === 'string' && new URL(u).protocol === 'https:';
+  } catch {
+    return false; // not an absolute URL
+  }
+}
+
+function linkPrompt(round, a, asked) {
+  let url = null;
+  let name = null;
+  if (round.link) {
+    try {
+      const u = round.link(a);
+      if (!isHttps(u)) throw new Error(`gives ${JSON.stringify(u)}, not an https URL`);
+      name = TEXT.link(asked);
+      if (typeof name !== 'string' || !name) throw new Error(`text.link gives ${JSON.stringify(name)}`);
+      url = u;
+    } catch (err) {
+      console.warn(`config.js: rounds ${round.key}: link(${a.id}) ${err.message}; the prompt is shown without a link`);
+    }
+  }
+  if (url) {
+    promptLink.setAttribute('href', url);
+    promptLink.setAttribute('aria-label', name);
+    promptLink.title = name;
+    promptLink.removeAttribute('aria-hidden');
+  } else {
+    for (const k of ['href', 'aria-label', 'title']) promptLink.removeAttribute(k);
+    promptLink.setAttribute('aria-hidden', 'true');
   }
 }
 
@@ -952,10 +1007,46 @@ function labelTheme() {
 new MutationObserver(labelTheme).observe(root, { attributes: true, attributeFilter: ['data-theme', 'data-theme-pref'] });
 labelTheme();
 
+// Optional prompt link (rounds[].link): the asked name, #prompt-text, goes
+// into an <a> (#prompt-link) that opens a new tab, rel noopener noreferrer
+// (nothing is fetched before it is followed), with an "opens a new tab"
+// icon after the name, which stays when a long name is cut (style.css).
+// linkPrompt() sets its href per prompt. Screen readers: the live region
+// moves from #prompt to an sr-only copy of the prompt (#prompt-live: the
+// prompt kind, the asked text and the sub-line's copy), so each new
+// question is announced as without the link, not with the link's name;
+// the link is named by text.link(asked text) and comes after the round
+// picker, before the controls, in the tab order.
+let promptLink = null;
+let promptLive = null;
+let promptSaid = null; // the asked text in #prompt-live
+if (ROUNDS.some((r) => r.link)) {
+  promptLive = document.createElement('span');
+  promptLive.id = 'prompt-live';
+  promptLive.className = 'sr-only';
+  promptLive.setAttribute('aria-live', 'polite');
+  promptLive.setAttribute('aria-atomic', 'true');
+  promptEl.removeAttribute('aria-live');
+  promptEl.removeAttribute('aria-atomic');
+  promptSaid = document.createElement('span');
+  promptKind.classList.remove('sr-only'); // inside the sr-only copy now
+  promptLive.append(promptKind, ' ', promptSaid);
+  promptLink = document.createElement('a');
+  promptLink.id = 'prompt-link';
+  promptLink.target = '_blank';
+  promptLink.rel = 'noopener noreferrer';
+  const icon = svgEl('svg', { class: 'link-icon', viewBox: '0 0 24 24', 'aria-hidden': 'true' });
+  icon.append(svgEl('path', { d: 'M18.5 13.5v5a1.5 1.5 0 0 1-1.5 1.5H5.5A1.5 1.5 0 0 1 4 18.5V7a1.5 1.5 0 0 1 1.5-1.5h5M14 4h6v6M20 4l-9 9' }));
+  promptLink.append(promptText, icon);
+  promptEl.replaceChildren(promptLive, promptLink);
+  root.classList.add('has-link');
+}
+
 // Optional second card line (rounds[].sub, e.g. a name in its own
 // script): reserved in every round once any round has one, so the card
 // keeps its height. Hidden from screen readers; a copy inside #prompt
-// (sr-only, language-tagged) is read with the prompt.
+// (sr-only, language-tagged; in #prompt-live with the prompt link) is read
+// with the prompt.
 let promptSub = null;
 let promptSubSr = null;
 if (ROUNDS.some((r) => r.sub)) {
@@ -964,8 +1055,11 @@ if (ROUNDS.some((r) => r.sub)) {
   promptSub.setAttribute('aria-hidden', 'true');
   promptEl.after(promptSub);
   promptSubSr = document.createElement('span');
-  promptSubSr.className = 'sr-only';
-  promptEl.append(promptSubSr);
+  if (promptLive) promptLive.append(promptSubSr);
+  else {
+    promptSubSr.className = 'sr-only';
+    promptEl.append(promptSubSr);
+  }
   root.classList.add('has-sub');
 }
 

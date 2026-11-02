@@ -60,8 +60,9 @@ data.
   `round`, `progress`, `correct`, `misses`, `prompt`, `prompt-kind`,
   `prompt-text`, `toast`, `controls`, `reset` (with `.btn-text`), `theme`
   (with `.icon-moon`, `.icon-sun`), `zoom-out`, `zoom-fit`, `zoom-in`,
-  `label`, `safe` (main.js adds `attribution`, `prompt-sub` and
-  `round-picker` when the config asks for them). Start from europe-quiz's `index.html` and translate its
+  `label`, `safe` (main.js adds `attribution`, `prompt-sub`,
+  `round-picker`, and `prompt-link` with `prompt-live` when the config
+  asks for them). Start from europe-quiz's `index.html` and translate its
   text: title, description, `aria-label`s, the `sr-only` help paragraph,
   `noscript`, "Reset?". The engine overwrites the round label, prompt and
   the reset/theme button labels from the config once it runs. Keep the
@@ -86,6 +87,7 @@ export default {
       prompt: 'Finde',              // screen-reader text before the asked one
       ask: (d) => d.name,           // the asked text (the card's big line)
       miss: (d) => d.name,          // label at a misclick on d
+      link: (d) => `https://de.wikipedia.org/wiki/${encodeURIComponent(d.wiki)}`, // optional: the prompt links there
       done: ({ total, misses }) => `Alle ${total} Bezirke gefunden. Jetzt die Nummern.`,
     },
     {
@@ -105,6 +107,7 @@ export default {
     // override = an override is stored (a press goes back to the system's)
     theme: (other, override) => ({ label: '…', title: '…' }),
     roundPicker: 'Runde wählen (beginnt von vorn)', // with roundPicker: its name and tooltip
+    link: (asked) => `${asked} auf Wikipedia (neuer Tab)`, // with rounds[].link: its name and tooltip
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
   view: { maxScale: 6, besideHud: true, panToCentre: true }, // optional, see below
@@ -192,6 +195,16 @@ export default {
   `sub`, the line is reserved in every round (empty where a round has
   none), so the card keeps its height. System fonts only; an image
   stylesheet can add a `:lang(ja)` font list.
+- **rounds[].link** (optional): `(answer) => 'https://…'`, a page about
+  the asked answer (e.g. its Wikipedia article; in a capitals round the
+  capital's, whatever the round asks): the card's prompt text links there,
+  opened in a new tab (Behaviour below). Absolute `https:` URLs only,
+  encoded by the config (main.js links nothing else: a bad one, or a
+  `link()` that throws, shows the prompt without a link and a console
+  warning; `checkTexts` fails on it). A round without `link` shows plain
+  text. Once any round has `link`, `text.link` is needed: `(asked text) =>
+  string`, the link's accessible name and tooltip, e.g. ``(asked) =>
+  `${asked} on Wikipedia (opens a new tab)` ``.
 - **attribution**: a credit line where it never meets the HUD: under the
   controls in portrait (they move up for it), the bottom-left corner in
   landscape. The full view stays clear of it in both. Fits about 50
@@ -235,9 +248,9 @@ export default {
 
 `contract.js`: `checkConfig(config)`, `roundSpecs(config)` (the rounds
 as the rules need them: answers, asked ids, the config object per
-answer) and `checkTexts(config)` (per round: ask and sub for every asked
-answer, miss and missSub for every answer, done; for an image's node
-test). At start main.js runs `checkConfig`, `roundSpecs` and checks
+answer) and `checkTexts(config)` (per round: ask, sub, link and
+`text.link` for every asked answer, miss and missSub for every answer,
+done; for an image's node test). At start main.js runs `checkConfig`, `roundSpecs` and checks
 `data-quiz`; on a failure the page shows
 `text.mapError` (or a built-in English line if that text is unusable) in
 the toast, sets `data-ready="error"`, and the error names the field in the
@@ -291,7 +304,8 @@ vienna-districts does), `--land`, `--land-line`, `--region`, `--region-hover`,
 colours; `--water` (overlay fill and outline, default `--sea`) and
 `--overlay-stroke` (overlay outline width in map units, e.g. `1.2px`,
 scales with the map; default 0); `--inert` / `--inert-line` (pieces in no
-answer of the round, default `--land` / `--land-line`). Classes on
+answer of the round, default `--land` / `--land-line`); `--link-line`
+(the prompt link's underline). Classes on
 `#card`: `.row-tight`, `.row-wide`, `.row-wrap` (top row, Behaviour). Classes on the
 regions: `.inert` (that piece this round), `.seamless` on the group in a
 round with `lines`; line overlays: `#overlays .line`, hidden ones `.off`
@@ -343,6 +357,27 @@ theme-color meta.
   `+ - 0` still pan and zoom the map. Screen
   readers get a combo box named by `text.roundPicker` (the visible label
   is hidden from them).
+- Prompt link (`rounds[].link`): the asked name on the card is a link,
+  `target="_blank"`, `rel="noopener noreferrer"` (the page sends no
+  referrer anyway), so a lookup opens a new tab and the game tab stays as
+  it was: no answer, no counter, nothing saved. Nothing is fetched or
+  prefetched from the linked site until the player follows the link (the
+  CSP is unchanged: a followed link is no request of the page). The name
+  keeps the text colour, underlined in `--link-line`, fully on hover and
+  keyboard focus (a focus ring too), with a small "opens a new tab" icon
+  after it (a box and an arrow); a long name shrinks and is cut with an
+  ellipsis before the icon, which stays; the card keeps its size. Where
+  the top row is one line, the round picker's larger target overlaps the
+  top 7 px of the prompt line and stays on top there (a near miss opens
+  the list, not a tab). Keys:
+  Tab reaches the link after the round picker, before the controls;
+  Enter follows it; `+ - 0` and the arrows still zoom and pan from it.
+  Screen readers: the live region moves from `#prompt` to an sr-only copy
+  of the prompt (`#prompt-live`: prompt kind, asked text, the sub-line),
+  so each new question is announced as without the link; the link itself
+  is named by `text.link`. In a round without `link` the name is plain
+  text: no href (not focusable), no icon, hidden from screen readers
+  (`#prompt-live` says it).
 - Rings (optional, per round's answers): a tap inside the drawn ring
   picks it, a tap in the wider zone around it only over sea, context
   land, an inert piece or that answer itself (never over a neighbour);

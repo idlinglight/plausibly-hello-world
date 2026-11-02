@@ -57,6 +57,7 @@
   --label-bg: rgba(29, 42, 48, 0.92);
   --label-fg: #ffffff;
   --focus: #2f7fae;
+  --link-line: rgba(93, 108, 115, 0.45); /* the prompt link's underline (--muted, faded) */
   --water: var(--sea); /* overlays (rivers, lakes) … */
   --overlay-stroke: 0; /* … and their outline, map units */
   --inert: var(--land); /* pieces in no answer of the round … */
@@ -91,6 +92,7 @@
     --label-bg: rgba(236, 244, 247, 0.95);
     --label-fg: #0d1e2a;
     --focus: #7cc4e8;
+    --link-line: rgba(142, 164, 174, 0.5);
   }
 }
 
@@ -121,6 +123,7 @@
   --label-bg: rgba(236, 244, 247, 0.95);
   --label-fg: #0d1e2a;
   --focus: #7cc4e8;
+  --link-line: rgba(142, 164, 174, 0.5);
 }
 
 html,
@@ -577,6 +580,82 @@ p {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Optional prompt link (rounds[].link; main.js puts #prompt-text into
+   #prompt-link and sets :root.has-link): the name keeps the text colour,
+   underlined in a muted colour, fully on hover and keyboard focus; a small
+   "opens a new tab" icon after it. The name's own span cuts a long name
+   (ellipsis), so the icon stays; the line keeps its height. Without href
+   (a round without link) plain text, no icon. #prompt doesn't clip here
+   (the <a> is never wider than the line), so the focus ring shows. Where
+   the top row is one line, the round picker's larger target overlaps the
+   line's top 7 px and stays on top there: a near miss opens the list, not
+   a new tab. */
+:root.has-link #prompt {
+  overflow: visible;
+}
+
+#prompt-link {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  vertical-align: top;
+  border-radius: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+#prompt-link #prompt-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#prompt-link[href] #prompt-text {
+  text-decoration: underline;
+  text-decoration-color: var(--link-line);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.14em;
+}
+
+.link-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  margin-left: 3px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#prompt-link:not([href]) .link-icon {
+  display: none;
+}
+
+@media (hover: hover) {
+  #prompt-link[href]:hover #prompt-text {
+    text-decoration-color: currentColor;
+  }
+
+  #prompt-link[href]:hover .link-icon {
+    stroke: currentColor;
+  }
+}
+
+#prompt-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+#prompt-link:focus-visible #prompt-text {
+  text-decoration-color: currentColor;
+}
+
+#prompt-link:focus-visible .link-icon {
+  stroke: currentColor;
 }
 
 /* Top row where it overflows (a 320 px phone, a long label, big counters,
