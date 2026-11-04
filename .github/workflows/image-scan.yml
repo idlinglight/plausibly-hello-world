@@ -1,41 +1,9 @@
 name: image-scan
 
-# Weekly CVE scan of every published image (images/*/ → one matrix job
-# each, so new folders are covered automatically). Closes the gap that
-# docker base images never get Dependabot alerts. Fails on FIXABLE
-# HIGH/CRITICAL findings; a failed scheduled run notifies the repo owner
-# by mail — that is the alert. Usual fix: merge the pending Dependabot
-# digest bump (opened 30 min earlier), else bump the digest manually. A
-# finding Alpine has fixed but nginxinc hasn't rebuilt yet stays red until
-# upstream ships a new digest (no RUN apk upgrade — contract is COPY-only);
-# the summary says which case it is. Accepted risks live as narrow,
-# reasoned ignore rules in .github/tool-images/grype/grype.yaml and are
-# listed in every summary.
-#
-# Scanner: Grype, run as a digest-pinned container from a plain `docker
-# run` (pin: .github/tool-images/grype/Dockerfile) — not trivy-action /
-# setup-trivy, and not anchore/scan-action:
-#   - March 2026: aquasecurity's release credentials were stolen (again,
-#     after an incomplete rotation); 76/77 trivy-action tags and all
-#     setup-trivy tags were force-pushed to an infostealer, plus malicious
-#     trivy v0.69.4 binaries/images and Docker Hub 0.69.5/0.69.6
-#     (GHSA-69fq-xp46-6x23, CVE-2026-33634). Only SHA/digest pins were safe.
-#   - The only action in the scan job is actions/checkout. The scanner
-#     container gets no credentials, no docker socket, no workspace: the
-#     image is pulled on the host and handed over as a read-only tarball.
-#   - Scanner actions aren't on the repo's Actions allowlist anyway
-#     (actions/* + five docker/* actions, SHA pinning enforced).
-#   - Grype/Anchore: no known incident as of 2026-10-29.
-# Only linux/amd64 is scanned: the arm64 variant is built from the same
-# base index digest, i.e. the same Alpine package set.
-#
-# Image not published yet (new folder, or before the first main build)
-# → that matrix job warns and passes.
+# CVE scan of every published image. Notes: image-scan.md, beside this
+# file.
 on:
   schedule:
-    # Fridays 19:30 Vienna local time, DST-safe: 30 min after Dependabot's
-    # weekly run (19:00), so a fix-carrying bump PR is usually already open
-    # when this reports. `timezone` on schedule: GitHub docs, 2026-10-29.
     - cron: '30 19 * * 5'
       timezone: Europe/Vienna
   workflow_dispatch:
@@ -44,33 +12,80 @@ on:
         description: Tag to scan in every image
         default: latest
         type: string
-  # Pre-merge test of THIS file / a scanner bump / an ignore-rule change:
-  # scans :latest, falling back to sha-<PR head short7> (exists after
-  # pushing the PR head to build-image/**) — testable before any :latest.
+  # A change to this file, the scanner pin or its rules: scan :latest, else
+  # sha-<PR head short7> (a test tag of the PR's branch), before merging.
   pull_request:
     paths:
       - '.github/workflows/image-scan.yml'
-      - '.github/tool-images/grype/**'
+      - 'tool-images/grype/**'
 
 permissions:
   contents: read
 
 jobs:
+  # Pull requests: the pinned scanner (its release and the pinned digest's
+  # build) must be at least 3 days old, before the scan runs it (why a check
+  # of its own: image-scan.md).
+  scanner-age:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tool-images/grype
+
+      - name: Scanner release at least 3 days old
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pin=tool-images/grype/Dockerfile
+          ref=$(awk 'toupper($1) == "FROM" { print $2; exit }' "$pin")
+          tag=${ref%@*}; tag=${tag##*:}
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error file=$pin::expected a vX.Y.Z tag on the FROM line, got '$tag'"; exit 1
+          fi
+          at() { jq -rn --argjson t "$1" '$t | todate'; }
+          released=$(gh api "repos/anchore/grype/releases/tags/$tag" --jq '.published_at | fromdateiso8601')
+          # The pinned digest's build time (linux/amd64 config): a re-pushed
+          # old tag has an old release but a new build.
+          repo=${ref%%@*}; repo=${repo%:*}; repo=${repo#ghcr.io/}
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull" | jq -er .token)
+          get() { curl -fsSL -H "Authorization: Bearer $token" -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json" "https://ghcr.io/v2/$repo/$1"; }
+          m=$(get "manifests/${ref#*@}")
+          if jq -e '.manifests' <<<"$m" >/dev/null; then
+            m=$(get "manifests/$(jq -er '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")][0].digest' <<<"$m")")
+          fi
+          built=$(get "blobs/$(jq -er .config.digest <<<"$m")" | jq -er '.created | sub("\\.[0-9]+"; "") | fromdateiso8601')
+          newest=$(( released > built ? released : built ))
+          ready=$(( newest + 3 * 86400 ))
+          if (( $(date -u +%s) < ready )); then
+            echo "::error file=$pin::grype $tag: released $(at "$released"), pinned digest built $(at "$built"); too new to pin before $(at "$ready") (re-run this job then)"
+            exit 1
+          fi
+          echo "grype $tag: released $(at "$released"), pinned digest built $(at "$built"): ok"
+          echo "Scanner \`$tag\`: released $(at "$released"), pinned digest built $(at "$built"): at least 3 days old." >> "$GITHUB_STEP_SUMMARY"
+
   discover:
     permissions:
       contents: read
     uses: ./.github/workflows/_discover-images.yml
 
   scan:
-    needs: discover
-    if: needs.discover.outputs.images != '[]'
+    # After scanner-age on pull requests (skipped elsewhere): a scanner too
+    # new to pin is never run.
+    needs: [discover, scanner-age]
+    if: >-
+      !cancelled() && needs.discover.result == 'success' && needs.discover.outputs.images != '[]'
+      && (needs.scanner-age.result == 'success' || needs.scanner-age.result == 'skipped')
     name: scan (${{ matrix.image }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Read-only. The phw-* packages are public, so pulls need no token; were
-    # one private, packages: read would still do: packages this repo's
-    # workflows publish are linked to it (OCI source label) and grant it
-    # read access.
+    # Read-only (why that suffices: image-scan.md).
     permissions:
       contents: read
       packages: read
@@ -86,7 +101,7 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: |
-            .github/tool-images/grype
+            tool-images/grype
             images/${{ matrix.image }}
 
       - id: probe
@@ -112,10 +127,8 @@ jobs:
           }
 
           # Registry pull token from GITHUB_TOKEN (credentials via stdin, not
-          # argv). Observed 2026-10-29: for a package that doesn't exist yet,
-          # GHCR still issues the token and answers the manifest with 404
-          # MANIFEST_UNKNOWN. So a REFUSED token is an access problem, not
-          # "unpublished" — fail loudly instead of skipping into blindness.
+          # argv). A refused token fails the job, a 404 manifest skips the
+          # image (why: image-scan.md).
           resp=$(printf 'user = "%s:%s"\n' "$GITHUB_ACTOR" "$TOKEN" | curl -sS -K - \
             "https://ghcr.io/token?service=ghcr.io&scope=repository:$repo:pull")
           bearer=$(jq -r '.token // empty' <<<"$resp")
@@ -176,14 +189,14 @@ jobs:
           docker tag "$REF@$AMD64" "scan-target/$IMAGE:amd64"
           docker save -o "$RUNNER_TEMP/scan/image.tar" "scan-target/$IMAGE:amd64"
 
-      # The scanner container gets: the tarball + its config (read-only), a
-      # DB cache dir, network for the DB download. No token, no docker
+      # The scanner container gets the tarball and its config (read-only), a
+      # DB cache folder and network for the DB download: no token, no docker
       # socket, no workspace.
       - name: Scan (Grype)
         if: steps.probe.outputs.found == 'true'
         run: |
           set -euo pipefail
-          pin=.github/tool-images/grype/Dockerfile
+          pin=tool-images/grype/Dockerfile
           grype=$(awk 'toupper($1) == "FROM" { print $2; exit }' "$pin")
           if [[ ! "$grype" =~ @sha256:[0-9a-f]{64}$ ]]; then
             echo "::error file=$pin::scanner image must be digest-pinned, got '$grype'"; exit 1
@@ -197,7 +210,7 @@ jobs:
             -e GRYPE_CHECK_FOR_APP_UPDATE=false \
             -v "$RUNNER_TEMP/grype-db:/db" \
             -v "$RUNNER_TEMP/scan/image.tar:/in/image.tar:ro" \
-            -v "$PWD/.github/tool-images/grype/grype.yaml:/cfg/grype.yaml:ro" \
+            -v "$PWD/tool-images/grype/grype.yaml:/cfg/grype.yaml:ro" \
             "$grype" -c /cfg/grype.yaml docker-archive:/in/image.tar -o json \
             > "$RUNNER_TEMP/scan/grype.json"
           jq -c '{matches: (.matches | length), ignored: ((.ignoredMatches // []) | length), distro: "\(.distro.name) \(.distro.version)", grype: .descriptor.version}' \
@@ -265,7 +278,7 @@ jobs:
             # Suppressed findings stay visible — with the rule's reason.
             if [ "$nign" -gt 0 ]; then
               echo
-              echo "#### Ignored ($nign) — rules in \`.github/tool-images/grype/grype.yaml\`"
+              echo "#### Ignored ($nign) — rules in \`tool-images/grype/grype.yaml\`"
               echo
               echo "| Severity | Vulnerability | Package | Installed | Fixed in | Reason |"
               echo "| --- | --- | --- | --- | --- | --- |"

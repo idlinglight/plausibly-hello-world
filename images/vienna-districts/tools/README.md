@@ -34,7 +34,7 @@ node images/vienna-districts/tools/data.test.mjs   # this image's data and confi
 
 The engine's own tests and the generator core's live in
 `shared/map-quiz/tools/`; CI runs them and `data.test.mjs`
-(`.github/workflows/shared-sync.yml`), not `build_map.py --check` (its
+(`.github/workflows/checks.yml`), not `build_map.py --check` (its
 inputs aren't committed).
 
 Python 3.9+, standard library only. Output is deterministic: re-running

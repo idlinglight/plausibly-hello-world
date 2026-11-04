@@ -13,10 +13,11 @@ images/<name>/        one folder = one image, build context = this folder
   site/               → /usr/share/nginx/html/ (static files, no build step)
   entrypoint/         optional: startup scripts → /docker-entrypoint.d/
                       (run before nginx; glyph-rain)
-  tools/              optional, not shipped: offline generators for data in
-                      site/ (outputs committed: europe-quiz's map), node
-                      tests (CI), hand-run online checkers (wiki_titles.py:
-                      never run by a build, a test or CI)
+  tools/              optional, not shipped (not in the image's CI paths):
+                      offline generators for data in site/ (outputs
+                      committed: europe-quiz's map), node tests (CI),
+                      hand-run online checkers (wiki_titles.py: never run
+                      by a build, a test or CI)
 shared/               files several images use: one source, synced copies
   sync.py             writes the copies into images/; --check (CI) fails on drift
   sync.json           which source goes to which images (+ files they must have)
@@ -27,18 +28,20 @@ shared/               files several images use: one source, synced copies
     tools/              generator core (mapgen), engine tests; wikicheck.py
                         (hand-run online title checker, never run by a
                         build, a test or CI); not synced
+tool-images/          pin holders for images CI runs from run: steps, never
+  README.md           built (Dependabot bumps the FROM lines); the notes,
+  buildkit/           incl. each scan ignore rule's analysis
+  grype/              (+ grype.yaml: scan ignore rules)
 .github/
-  dependabot.yml
-  workflows/
-    _build-image.yml        reusable: contract lint, verify, publish
+  dependabot.yml      (+ dependabot.md: its notes)
+  workflows/          each <workflow>.yml has its notes in <workflow>.md beside
+    README.md               it (they trigger nothing); README.md: the index
+    _build-image.yml        reusable: contract lint, verify, publish (publish-skip)
     _discover-images.yml    reusable: lists images/*/ (shared name rule)
-    image-<name>.yml        thin caller per image (paths-filtered)
+    image-<name>.yml        thin caller per image (paths-filtered; notes: _build-image.md)
     build-image-branch.yml  on demand: one image or all, at any ref (sha- tags)
-    image-scan.yml          weekly CVE scan of every :latest
-    shared-sync.yml         synced copies match shared/; engine tests
-  tool-images/        pin holders for images used from run: steps — never
-    buildkit/           built; they exist so Dependabot bumps the pins
-    grype/              (+ grype.yaml: scan ignore rules)
+    image-scan.yml          weekly CVE scan of every :latest; scanner-age on PRs
+    checks.yml              synced copies match shared/; every unit test
 ```
 
 ## Image contract
@@ -65,9 +68,14 @@ and deployments can rely on it without per-image knowledge:
   them under `set -e`, a failing script would stop the container. A
   deployment that overrides the container's command skips them.
 - **Published as** `ghcr.io/idlinglight/phw-<name>` (public), `<name>` =
-  the folder name, tags `sha-<short7>` (every build) and `latest` (only when
-  the commit is still main's head at publish time), `linux/amd64` +
-  `linux/arm64`. Flat and `phw-`-prefixed on purpose: GitHub's package list
+  the folder name, tags `sha-<short7>` and `latest` (only when the commit is
+  still main's head at publish time), `linux/amd64` + `linux/arm64`. A push
+  to main publishes an image only when its fingerprint changed: the shipped
+  files of `images/<name>/` without `tools/`, the platforms, the BuildKit
+  and `docker/*` action pins (annotation `com.github.idlinglight.phw.content`),
+  compared with `latest`'s. So `latest` and its `/version.txt` name the last
+  commit that changed the image or its build tools. A dispatch always
+  publishes. Flat and `phw-`-prefixed on purpose: GitHub's package list
   hides a leading `<repo>/` path part, so the earlier nested names
   (`…/plausibly-hello-world/<name>`, until 2026-10-31) showed as bare folder
   names. The rule lives in `_build-image.yml` (step "Published name") and
@@ -82,6 +90,12 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 phw-<name>
 
 ### nginx and static-site conventions
 
+- The base image's own `/etc/nginx/nginx.conf` puts the pid file and all
+  temp paths under `/tmp` (so a read-only root works given a writable
+  `/tmp`) and logs at http level to `/var/log/nginx/access.log` (a symlink
+  to stdout) in its `main` format; `shared/nginx.conf` replaces that log at
+  server level with the JSON one, same file. Re-check both after a base
+  image line change (a new nginx stable line).
 - Set `add_header` **only at server level**. A location with any
   `add_header` of its own drops all inherited ones, CSP included. Vary
   per-URI values through a `map` (see `shared/nginx.conf`,
@@ -118,7 +132,7 @@ a copy no rule produces any more (source renamed or removed, image taken
 off a rule) is removed by the next sync, unless it was edited since —
 then the sync stops until it is deleted, or kept as the image's own file
 by deleting its manifest entry. `python3 shared/sync.py --check` (CI:
-`shared-sync.yml`) fails on any missing, differing or stale copy, an
+`checks.yml`) fails on any missing, differing or stale copy, an
 outdated manifest or a missing required file, and names what to edit.
 Commit sources, copies and manifest together. Dockerfiles are never
 synced (Dependabot bumps them per folder).
@@ -399,15 +413,34 @@ the English Wikipedia article, a capital round's the capital's).
   `sim.test.mjs`. Favicon rasters exported once from `favicon.svg` as for
   europe-quiz.
 
+## Comments in files that run CI
+
+A comment in a file that triggers CI or ships in an image (workflows,
+`dependabot.yml`, tool-image pins, Dockerfiles, `nginx.conf`, everything in
+`site/` and `entrypoint/`, engine files) says only what its own lines do
+and why, in terms that change only when those lines change. Anything that
+can become false through a change elsewhere goes to a note that triggers
+nothing, and the comment keeps at most a pointer: another file's behaviour,
+which images or workflows exist or use something, dates and observations,
+upstream or vendor behaviour, owner settings, policy. The notes:
+this file (contracts, conventions, per-image notes); for each workflow a
+note named after it beside it (`.github/workflows/<workflow>.md`; the
+folder's `README.md` is the index), `.github/dependabot.md`;
+`tool-images/README.md` (pins, scan ignore rules); an image's
+`tools/README.md` (its data). A workflow's header is its name, at most a
+line of purpose, and the pointer to its note: even a summary of its own
+jobs would go stale unnoticed when they change. So updating a note never
+rebuilds an image, and no comment needs a rebuild to stay true.
+
 ## CI
 
-- **Adding an image**: `images/<name>/` + a copy of `image-glyph-rain.yml`
-  (the newest caller; the older ones' comments still name the push route)
-  named `image-<name>.yml`, every `glyph-rain` replaced, and
+- **Adding an image**: `images/<name>/` + a copy of any caller (they differ
+  only in the name, e.g. `image-snake.yml`) named `image-<name>.yml`, every
+  `snake` replaced, and
   `python3 shared/sync.py` for its `nginx.conf` (a map-quiz image: see
-  "Map-quiz engine" first). The scan, `build-image-branch.yml`,
-  Dependabot and the sync's `"*"` rule find new folders on their own
-  (a test tag before the caller is on main: see "Branches"). The
+  "Map-quiz engine" first). The scan, `build-image-branch.yml -f
+  image=all`, Dependabot and the sync's `"*"` rule find new folders on their
+  own; a test tag works before the caller is on main ("Branches"). The
   first publish creates `phw-<name>` already public and linked to this repo
   (observed 2026-10-31): nothing to set in the package settings. The
   README's "Live" column lists the owner's public instances
@@ -415,16 +448,18 @@ the English Wikipedia article, a capital round's the capital's).
   new image's row leaves it empty until then. Hostnames only there: no
   hosting provider or deploy details in the repo.
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
-  and BuildKit bumps are proven before merge. Push to main also publishes.
-- **shared-sync.yml** (PRs and main, paths `shared/**`, `images/**`):
-  `python3 shared/sync.py --check`, the generator core's unittest, the
-  Wikipedia title checker's offline unittest (`wikicheck_test.py`, canned
-  answers, network blocked; the live check stays by hand), and the
-  node tests (`shared/map-quiz/tools/*.test.mjs`,
-  `images/*/tools/*.test.mjs`) with the runner's own python3 and node (no
-  setup actions; the tests need Node 22.12+, the step checks). The image
-  callers need no `shared/**` path: a shared change reaches an image only
-  through its synced copies, inside its folder.
+  and BuildKit bumps are proven before merge. A push to main verifies and
+  publishes, but an image only when its fingerprint changed (shipped files,
+  platforms, BuildKit and `docker/*` action pins; "Image contract").
+- **checks.yml** (PRs and main, paths `shared/**`, `images/**`): every
+  offline check in one job, all of them on any change: `sync.py --check`,
+  the python unittests (sync script, generator core, the Wikipedia title
+  checker's offline logic) and every `*.test.mjs` under
+  `shared/map-quiz/tools/` and `images/*/tools/`, with the runner's own
+  python3 and node (Node 22.12+ checked, not pinned). Why all at once, the
+  couplings, what each step checks: `.github/workflows/checks.md`. A new
+  test file there is picked up by its glob; a new kind of test gets a step
+  and a line in that note.
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in
   publish. Prove them before merge by publishing one image from the PR's
   branch: `gh workflow run build-image-branch.yml --ref <branch> -f
@@ -433,9 +468,10 @@ the English Wikipedia article, a capital round's the capital's).
   digest-pinned container, fails on **fixable** HIGH/CRITICAL. If its summary
   says the upstream tag still points at the pinned digest, the fix waits on
   nginxinc rebuilding — a digest bump can't help yet, and `RUN` is not allowed.
-- **Ignore rules** live in `.github/tool-images/grype/grype.yaml`: each pinned
+- **Ignore rules** live in `tool-images/grype/grype.yaml`: each pinned
   to vulnerability + package + exact installed version (so it stops matching
-  on its own), with the reasoning and the owner's decision date. Ignored
+  on its own), with a short `reason`; the analysis, sources and the owner's
+  decision date per rule are in `tool-images/README.md`. Ignored
   matches are listed in the scan summary. Delete a rule once its version is
   gone from all images.
 - Who hears about a failed scheduled scan: GitHub notifies the account that
@@ -454,11 +490,14 @@ the English Wikipedia article, a capital round's the capital's).
 ## Supply-chain policy
 
 - Anything newly pinned (actions, base images, tool images) must have been
-  published **≥ 3 days** ago — same rule as Dependabot's cooldown.
+  published **≥ 3 days** ago — same rule as Dependabot's cooldown. Dependabot
+  has no cooldown for images on ghcr.io (the grype pin), so image-scan's
+  `scanner-age` job checks the scanner's release and digest build dates on
+  every PR that changes the scanner pin or the scan.
 - Actions are SHA-pinned with a `# vX.Y.Z` comment; images digest-pinned.
 - Dependabot version updates: weekly, **Friday 19:00 Europe/Vienna**, 3-day
-  cooldown for every ecosystem. Details and per-dependency rules live in
-  `.github/dependabot.yml`.
+  cooldown for every ecosystem. Per-dependency rules: `.github/dependabot.yml`;
+  what is off and why, review notes per bump kind: `.github/dependabot.md`.
 - Dependabot alerts and security-update PRs are deliberately off
   (security-update PRs skip the cooldown); base images never get alerts
   anyway — the weekly scan covers that gap.
@@ -471,20 +510,9 @@ Test tags (`sha-<short7>`) of any branch GitHub has, no merge needed:
 `gh workflow run build-image-branch.yml --ref <branch> -f image=<name>`
 verifies and publishes that one image, `-f image=all` every image. Also for
 a new image whose caller isn't on main yet, and for PR heads or Dependabot
-branches. Not for main: there the publish also moves `latest` and queues
-in main's own publish groups (main builds itself). The run uses the
+branches. On main only to force a republish (a push skips an unchanged
+image): there the publish also moves `latest` and queues in main's own
+publish groups. The run uses the
 workflow files at `--ref`, which therefore needs a version of
-`build-image-branch.yml` with the dispatch. A branch based on an older
-main: rebase it (a Dependabot PR: `@dependabot rebase`), or use the push
-route below. Once an image's caller is on main, `gh workflow run
-image-<name>.yml --ref <branch>` does the same for that image.
-
-Older route, still working: `git push origin HEAD:build-image/<topic>`
-builds **all** images at that state; delete the branch afterwards. It goes
-once the comments pointing to it are next edited anyway: the image
-callers and `_build-image.yml` (editing them re-verifies and re-publishes
-images) and `image-scan.yml` (editing it runs a scan); the callers' own
-`workflow_dispatch` can go then too. The per-image callers deliberately
-don't listen there: `on.push.paths` on a new branch is evaluated against
-that push's own diff, so re-pushing commits GitHub already has never
-triggers a paths-filtered workflow.
+`build-image-branch.yml` with the dispatch: rebase an older branch (a
+Dependabot PR: `@dependabot rebase`). Details: `.github/workflows/build-image-branch.md`.

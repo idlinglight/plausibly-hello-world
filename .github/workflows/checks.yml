@@ -1,38 +1,20 @@
-name: shared-sync
+name: checks
 
-# Files shared by several images live once under shared/ and are copied
-# into the image folders (each is its own build context), committed:
-# shared/sync.py, rules in shared/sync.json. This workflow fails if a copy
-# differs from its source, and runs the map-quiz engine's tests:
-#   - python3 shared/sync.py --check (copies, stale copies, the manifest,
-#     each rule's required files), and sync.py itself on scratch repos
-#   - the generator core on synthetic data (mapgen_test.py, stdlib unittest)
-#   - the Wikipedia title checker's offline logic on canned answers
-#     (wikicheck_test.py; the network is blocked there, the live check is
-#     run by hand)
-#   - node tests: shared/map-quiz/tools/*.test.mjs (quiz rules, config
-#     contract, wheel replay) and images/*/tools/*.test.mjs (each image's
-#     own data checks)
-# Only the runner's own python3 and node, no setup actions (ubuntu-latest
-# checked 2026-11-01: image 20261026, Node 22.23.4, Python 3.12.3). The node
-# tests need Node 22.12+ (ES module syntax in .js files, no package.json);
-# the step says so if a runner image ever has less.
-#
-# The per-image callers (image-<name>.yml) need no shared/** path: a shared
-# change reaches an image only through its synced copies, inside its folder.
+# Offline checks: synced copies and every unit test. Notes: checks.md,
+# beside this file.
 on:
   pull_request:
     paths:
       - 'shared/**'
       - 'images/**'
-      - '.github/workflows/shared-sync.yml'
+      - '.github/workflows/checks.yml'
   push:
     branches:
       - main
     paths:
       - 'shared/**'
       - 'images/**'
-      - '.github/workflows/shared-sync.yml'
+      - '.github/workflows/checks.yml'
 
 permissions:
   contents: read

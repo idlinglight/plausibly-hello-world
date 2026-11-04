@@ -51,7 +51,7 @@
 
 export const VERSION = 1; // of serialize()'s format
 
-// Small, seedable PRNG (mulberry32), as in the snake image.
+// Small, seedable PRNG (mulberry32).
 export function makeRng(seed) {
   let a = seed >>> 0;
   return function rng() {

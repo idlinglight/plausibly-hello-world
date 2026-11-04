@@ -1,29 +1,7 @@
 name: _build-image
 
-# Reusable: verify + publish ONE image folder (images/<image>/). Not triggered
-# directly. Callers own the triggers and pass the folder name: one thin
-# image-<name>.yml per image (PR / main / dispatch, paths-filtered) and the
-# build-image-branch.yml fan-out (build-image/**, all images).
-# Spec: /CLAUDE.md "Image contract".
-#
-#   verify   every trigger, PRs included: lint the Dockerfile against the
-#            contract, build BOTH platforms, load amd64, smoke-test it
-#            read-only. A base-image bump PR is therefore proven before
-#            merge — not only after, when publish would be the first build.
-#   publish  needs verify, never on pull_request: multi-arch push to
-#            ghcr.io/<owner>/phw-<image>, tags sha-<short7> (always) +
-#            latest (default branch head only).
-#
-# BuildKit runs digest-pinned (.github/tool-images/buildkit/Dockerfile)
-# instead of setup-buildx's floating default. No setup-qemu-action on
-# purpose: the contract makes Dockerfiles COPY-only, so arm64 builds need
-# no emulation — and a RUN fails loudly in the lint step instead of
-# silently depending on QEMU.
-#
-# Permissions: a called workflow's GITHUB_TOKEN is capped by the caller job's
-# `permissions:` — it can narrow them, never widen them. So callers grant
-# the ceiling (contents: read + packages: write); this file narrows per job:
-# verify (runs the Dockerfile + the image) only gets contents: read.
+# Reusable: verify + publish one image folder. Notes: _build-image.md,
+# beside this file.
 on:
   workflow_call:
     inputs:
@@ -39,6 +17,10 @@ env:
   # build-push-action's per-build record artifacts: noise here (the job
   # summary already shows the build); keep its job-summary table.
   DOCKER_BUILD_RECORD_UPLOAD: false
+  # Built, published and checked; part of the content fingerprint.
+  PLATFORMS: linux/amd64,linux/arm64
+  # The annotation and label holding the fingerprint.
+  CONTENT_KEY: com.github.idlinglight.phw.content
 
 jobs:
   verify:
@@ -61,7 +43,7 @@ jobs:
       - name: Dockerfile contract lint
         run: |
           set -euo pipefail
-          # same rule as _discover-images.yml: a valid GHCR path component
+          # a valid GHCR path component
           if [[ ! "$IMAGE" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
             echo "::error::inputs.image '$IMAGE' is not a valid image name"; exit 1
           fi
@@ -102,9 +84,9 @@ jobs:
       - id: vars
         run: |
           set -euo pipefail
-          buildkit=$(awk 'toupper($1) == "FROM" { print $2; exit }' .github/tool-images/buildkit/Dockerfile)
+          buildkit=$(awk 'toupper($1) == "FROM" { print $2; exit }' tool-images/buildkit/Dockerfile)
           if [[ ! "$buildkit" =~ @sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error file=.github/tool-images/buildkit/Dockerfile::BuildKit image must be digest-pinned, got '$buildkit'"; exit 1
+            echo "::error file=tool-images/buildkit/Dockerfile::BuildKit image must be digest-pinned, got '$buildkit'"; exit 1
           fi
           echo "buildkit=$buildkit" >> "$GITHUB_OUTPUT"
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
@@ -120,7 +102,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: images/${{ inputs.image }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.PLATFORMS }}
           outputs: type=cacheonly
           build-args: |
             GIT_SHA=${{ steps.vars.outputs.sha_short }}
@@ -218,13 +200,8 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # :latest must never move backwards. Serialization alone doesn't order
-    # runs (an older run whose verify finished later would publish last),
-    # so: (1) publishes of an image+ref run one at a time, and (2) inside
-    # that critical section, latest is only tagged if this commit is STILL
-    # the default branch head. Together: whichever run publishes last, a
-    # stale one skips latest. (A queued publish superseded by a newer
-    # queued one is cancelled — that commit then has no sha- tag; rare.)
+    # One publish per image and ref at a time; with the head check below,
+    # latest never moves backwards (_build-image.md).
     concurrency:
       group: publish-${{ inputs.image }}-${{ github.ref }}
       cancel-in-progress: false
@@ -251,10 +228,7 @@ jobs:
           fi
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
-      # Published name: ghcr.io/<owner>/phw-<folder>. Flat and prefixed:
-      # GitHub's package list hides a leading "<repo>/" path part, so nested
-      # names showed as bare folder names; phw-* keeps them findable and
-      # together. Same rule in image-scan.yml.
+      # Published name: ghcr.io/<owner>/phw-<folder> (why: _build-image.md).
       - id: name
         name: Published name
         env:
@@ -264,19 +238,59 @@ jobs:
           echo "name=phw-$IMAGE" >> "$GITHUB_OUTPUT"
           echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/phw-$IMAGE" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
+      # The fingerprint (shipped files, platforms, build-tool pins) against
+      # latest's: a push publishes only when they differ (_build-image.md).
+      - id: content
+        name: Changed since latest?
+        env:
+          IMAGE: ${{ inputs.image }}
+          REF: ${{ steps.name.outputs.ref }}
+          BUILDKIT: ${{ needs.verify.outputs.buildkit }}
+        run: |
+          set -euo pipefail
+          tools=$(grep -E '^[[:space:]-]*uses:[[:space:]]*docker/' .github/workflows/_build-image.yml | sed -E 's/^[[:space:]-]*//' | sort -u)
+          fp=$({
+            git ls-files -s -- "images/$IMAGE" ":(exclude)images/$IMAGE/tools"
+            echo "platforms=$PLATFORMS"
+            echo "buildkit=$BUILDKIT"
+            printf '%s\n' "$tools"
+          } | sha256sum | cut -d' ' -f1)
+          echo "fingerprint=$fp" >> "$GITHUB_OUTPUT"
+          publish=true
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            if ! index=$(docker buildx imagetools inspect --raw "$REF:latest" 2>"$RUNNER_TEMP/latest.err"); then
+              index=
+              echo "::warning::$IMAGE: can't read latest's fingerprint, so publishing ($(tr '\n' ' ' < "$RUNNER_TEMP/latest.err" | cut -c1-200))"
+            fi
+            seen=$(jq -r --arg k "$CONTENT_KEY" '.annotations[$k] // empty' <<<"$index" 2>/dev/null || true)
+            if [ "$seen" = "$fp" ]; then
+              publish=false
+              rev=$(jq -r '.annotations["org.opencontainers.image.revision"] // "?"' <<<"$index")
+              echo "::notice::$IMAGE: unchanged since latest (${rev::7}): nothing published"
+              {
+                echo "### Not published: \`$REF\`"
+                echo
+                echo "Shipped files and build tools match \`latest\` (commit \`${rev::7}\`, fingerprint \`${fp::12}\`): no new tag, \`latest\` stays."
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+      - if: steps.content.outputs.publish == 'true'
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
         with:
           driver-opts: image=${{ needs.verify.outputs.buildkit }}
 
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+      - if: steps.content.outputs.publish == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # OCI labels on each platform's config; also as index annotations,
-      # which is what GHCR's package page reads for multi-arch images.
+      # OCI labels on each platform's config, and as index annotations.
       - id: meta
+        if: steps.content.outputs.publish == 'true'
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
@@ -287,14 +301,17 @@ jobs:
             type=raw,value=latest,enable=${{ steps.head.outputs.latest }}
           labels: |
             org.opencontainers.image.title=${{ steps.name.outputs.name }}
+            ${{ env.CONTENT_KEY }}=${{ steps.content.outputs.fingerprint }}
           annotations: |
             org.opencontainers.image.title=${{ steps.name.outputs.name }}
+            ${{ env.CONTENT_KEY }}=${{ steps.content.outputs.fingerprint }}
 
       - id: build
+        if: steps.content.outputs.publish == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: images/${{ inputs.image }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.PLATFORMS }}
           push: true
           build-args: |
             GIT_SHA=${{ needs.verify.outputs.sha_short }}
@@ -305,6 +322,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ inputs.image }}
 
       - name: Check pushed platforms
+        if: steps.content.outputs.publish == 'true'
         env:
           REF: ${{ steps.name.outputs.ref }}
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -324,6 +342,7 @@ jobs:
             cat "$RUNNER_TEMP/inspect.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$platforms" != "linux/amd64,linux/arm64" ]; then
-            echo "::error::expected linux/amd64,linux/arm64 in the pushed index, got '$platforms'"; exit 1
+          want=$(tr ',' '\n' <<<"$PLATFORMS" | sort | paste -sd, -)
+          if [ "$platforms" != "$want" ]; then
+            echo "::error::expected $want in the pushed index, got '$platforms'"; exit 1
           fi

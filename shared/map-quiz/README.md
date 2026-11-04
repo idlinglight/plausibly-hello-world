@@ -35,7 +35,7 @@ shared/map-quiz/
 
 The engine files reach an image as byte-identical copies
 (`python3 shared/sync.py`, rules in `shared/sync.json`; CI's
-`shared-sync.yml` fails on drift). Edit them here, never in an image,
+`checks.yml` fails on drift). Edit them here, never in an image,
 and commit the source together with the updated copies. Each image's
 behaviour is its own `site/config.js` + `site/index.html` + generated
 data.
