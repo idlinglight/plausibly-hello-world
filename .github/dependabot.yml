@@ -25,8 +25,9 @@
 #   docker/* actions (owner setting, SHA pinning enforced) — a bump can't
 #   introduce anything else. Bumps in _build-image.yml re-verify every
 #   image on the PR; but login-action + metadata-action only run in
-#   publish — prove those before merge with
-#   `git push origin <PR head>:build-image/<topic>` (builds all images).
+#   publish — prove those before merge by publishing one image from the
+#   PR's branch: `gh workflow run build-image-branch.yml --ref <branch>
+#   -f image=snake` (CLAUDE.md "Branches").
 version: 2
 updates:
   # Base images (images/*/Dockerfile) + tool images run from workflow
