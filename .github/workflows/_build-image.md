@@ -72,7 +72,10 @@ decided before BuildKit starts.
   versions right away, not first on some later content change.
 - `/version.txt` and the `revision` annotation name the last commit that
   changed the fingerprint. A `latest` without the annotation (published
-  before #22), or one that can't be read, counts as different.
+  before #22), or one that can't be read, counts as different; an
+  unreadable one also leaves a warning, so a skip that never happens
+  doesn't go unnoticed. A new image's first publish warns too (there is no
+  `latest` yet): harmless.
 - A dispatch (`build-image-branch.yml`) always publishes; on main that is
   the way to force a republish.
 
