@@ -1,13 +1,31 @@
 name: build-image-branch
 
-# Push ANY state to build-image/** → every image folder is verified and
-# published as sha-<short7> (never latest), without merging:
-#   git push origin HEAD:build-image/<topic>
-# Works before a workflow file is on main (unlike workflow_dispatch), and
-# also for commits GitHub already has (e.g. an open PR's head). Delete the
-# branch afterwards; the image tags stay.
+# Build images of ANY ref without merging: verify + publish sha-<short7>.
+# Meant for branches: with --ref main the publish also moves latest (while
+# that commit is main's head: _build-image.yml decides) and queues behind
+# main's own publishes in their concurrency groups — main builds itself.
 #
-# Why this fan-out instead of build-image/** in each image caller: on.push
+# Default — dispatch one image folder, or all of them:
+#   gh workflow run build-image-branch.yml --ref <branch> -f image=<name>
+#   gh workflow run build-image-branch.yml --ref <branch> -f image=all
+# Works for any branch GitHub has (a PR head, a Dependabot branch) and for
+# a new image whose caller isn't on main yet. GitHub only offers dispatch
+# for workflows on the default branch, but the run uses the workflow files
+# AT --ref (this one and _build-image.yml), so changes to the build itself
+# are exercised too — the ref needs a version of this file with the
+# dispatch trigger (else 422 "does not have workflow_dispatch trigger"):
+# rebase it, `@dependabot rebase` a Dependabot PR, or use the push below.
+#
+# Older route, still working: push ANY state to build-image/** → all
+# images, then delete the branch (the tags stay):
+#   git push origin HEAD:build-image/<topic>
+# The dispatch covers everything it does; it stays until the comments
+# pointing to it are next edited anyway: the image callers and
+# _build-image.yml (editing them re-verifies and re-publishes images) and
+# image-scan.yml (editing it runs a scan). The callers' own dispatch can go
+# then too (this one does the same with -f image=<name>).
+#
+# Why a fan-out instead of build-image/** in each image caller: on.push
 # `paths:` is evaluated against the push's OWN diff, not against main.
 # Verified 2026-10-29 with a throwaway probe workflow:
 #   - new branch whose commits are all already on GitHub (re-pushing a PR
@@ -15,31 +33,52 @@ name: build-image-branch
 #   - new branch with new commits → diff against the parent of the oldest
 #     new commit → runs only if THOSE commits touch the paths
 # So with paths, the typical `git push origin HEAD:build-image/x` silently
-# builds nothing. This workflow has no paths filter and simply builds all
-# images (cheap: COPY-only, seconds each), found via images/*/ — new
-# folders need no change here.
+# builds nothing. This workflow has no paths filter; "all" means every
+# folder under images/*/ — new folders need no change here.
 on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Image folder under images/ (e.g. snake), or "all" (reserved: no folder may have that name)'
+        required: true
+        type: string
   push:
     branches:
       - 'build-image/**'
+
+run-name: build ${{ github.event_name == 'push' && 'all' || inputs.image }} @ ${{ github.ref_name }}
 
 permissions:
   contents: read
 
 jobs:
+  # One image: no discovery. _build-image.yml checks the name and that
+  # images/<name>/Dockerfile exists at this ref (its lint step fails
+  # otherwise, before anything is built).
+  one:
+    if: github.event_name == 'workflow_dispatch' && inputs.image != 'all'
+    # Ceiling for _build-image.yml, which narrows per job (see there).
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_build-image.yml
+    with:
+      image: ${{ inputs.image }}
+
   discover:
+    if: github.event_name == 'push' || inputs.image == 'all'
     permissions:
       contents: read
     uses: ./.github/workflows/_discover-images.yml
 
-  build:
+  all:
     needs: discover
     if: needs.discover.outputs.images != '[]'
     strategy:
       fail-fast: false
       matrix:
         image: ${{ fromJSON(needs.discover.outputs.images) }}
-    # Ceiling for _build-image.yml, which narrows per job (see there).
+    # Ceiling for _build-image.yml, as in `one`.
     permissions:
       contents: read
       packages: write

@@ -38,6 +38,10 @@ jobs:
             if [[ ! "$n" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
               echo "::error::images/$n: not a valid image name (lowercase, digits, . _ -)"; exit 1
             fi
+            # build-image-branch.yml's dispatch reads -f image=all as every image
+            if [ "$n" = all ]; then
+              echo "::error::images/all: 'all' is reserved (build-image-branch.yml -f image=all)"; exit 1
+            fi
             names+=("$n")
           done
           images=$(printf '%s\n' "${names[@]}" | jq -Rnc '[inputs | select(length > 0)]')

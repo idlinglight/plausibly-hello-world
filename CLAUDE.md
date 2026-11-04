@@ -31,7 +31,7 @@ shared/               files several images use: one source, synced copies
     _build-image.yml        reusable: contract lint, verify, publish
     _discover-images.yml    reusable: lists images/*/ (shared name rule)
     image-<name>.yml        thin caller per image (paths-filtered)
-    build-image-branch.yml  build-image/** fan-out, all images, no paths filter
+    build-image-branch.yml  on demand: one image or all, at any ref (sha- tags)
     image-scan.yml          weekly CVE scan of every :latest
     shared-sync.yml         synced copies match shared/; engine tests
   tool-images/        pin holders for images used from run: steps — never
@@ -361,8 +361,9 @@ the English Wikipedia article, a capital round's the capital's).
 - **Adding an image**: `images/<name>/` + a copy of `image-gradient-ripple.yml`
   named `image-<name>.yml`, every `gradient-ripple` replaced, and
   `python3 shared/sync.py` for its `nginx.conf` (a map-quiz image: see
-  "Map-quiz engine" first). The scan, the `build-image/**` fan-out,
-  Dependabot and the sync's `"*"` rule find new folders on their own. The
+  "Map-quiz engine" first). The scan, `build-image-branch.yml`,
+  Dependabot and the sync's `"*"` rule find new folders on their own
+  (a test tag before the caller is on main: see "Branches"). The
   first publish creates `phw-<name>` already public and linked to this repo
   (observed 2026-10-31): nothing to set in the package settings. The
   README's "Live" column lists the owner's public instances
@@ -381,8 +382,9 @@ the English Wikipedia article, a capital round's the capital's).
   callers need no `shared/**` path: a shared change reaches an image only
   through its synced copies, inside its folder.
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in
-  publish. Prove them before merge by pushing the PR head to a
-  `build-image/<topic>` branch.
+  publish. Prove them before merge by publishing one image from the PR's
+  branch: `gh workflow run build-image-branch.yml --ref <branch> -f
+  image=snake`.
 - **Weekly scan** (Friday evening, after Dependabot's run): Grype as a
   digest-pinned container, fails on **fixable** HIGH/CRITICAL. If its summary
   says the upstream tag still points at the pinned digest, the fix waits on
@@ -421,11 +423,24 @@ the English Wikipedia article, a capital round's the capital's).
 
 `feature/<YYYY-MM-DD>-<topic>` / `bugfix/...`, squash-merged via PR.
 
-`build-image/**`: `git push origin HEAD:build-image/<topic>` verifies and
-publishes `sha-<short7>` of **all** images at that state
-(`build-image-branch.yml`, no paths filter); delete the branch afterwards.
-The per-image callers deliberately don't listen there: `on.push.paths` on a
-new branch is evaluated against that push's own diff, so re-pushing commits
-GitHub already has never triggers a paths-filtered workflow. Single image,
-any branch, once its caller is on main: `gh workflow run image-<name>.yml
---ref <branch>`.
+Test tags (`sha-<short7>`) of any branch GitHub has, no merge needed:
+`gh workflow run build-image-branch.yml --ref <branch> -f image=<name>`
+verifies and publishes that one image, `-f image=all` every image. Also for
+a new image whose caller isn't on main yet, and for PR heads or Dependabot
+branches. Not for main: there the publish also moves `latest` and queues
+in main's own publish groups (main builds itself). The run uses the
+workflow files at `--ref`, which therefore needs a version of
+`build-image-branch.yml` with the dispatch. A branch based on an older
+main: rebase it (a Dependabot PR: `@dependabot rebase`), or use the push
+route below. Once an image's caller is on main, `gh workflow run
+image-<name>.yml --ref <branch>` does the same for that image.
+
+Older route, still working: `git push origin HEAD:build-image/<topic>`
+builds **all** images at that state; delete the branch afterwards. It goes
+once the comments pointing to it are next edited anyway: the image
+callers and `_build-image.yml` (editing them re-verifies and re-publishes
+images) and `image-scan.yml` (editing it runs a scan); the callers' own
+`workflow_dispatch` can go then too. The per-image callers deliberately
+don't listen there: `on.push.paths` on a new branch is evaluated against
+that push's own diff, so re-pushing commits GitHub already has never
+triggers a paths-filtered workflow.
