@@ -6,8 +6,9 @@ name: _build-image
 #   verify   always: lint the Dockerfile against the contract, build both
 #            platforms, load amd64, smoke-test it with a read-only root.
 #   publish  after verify, never on pull_request: multi-arch push to
-#            ghcr.io/<owner>/phw-<image>, tags sha-<short7> (always) and
-#            latest (only while the commit is the default branch's head).
+#            ghcr.io/<owner>/phw-<image>, tags sha-<short7> and latest
+#            (only while the commit is the default branch's head). A push
+#            whose shipped files match latest's publishes nothing.
 #
 # BuildKit runs from a digest pin (tool-images/buildkit/), not setup-buildx's
 # floating default. No QEMU: the lint step rejects RUN, so arm64 builds need
@@ -29,6 +30,10 @@ env:
   # build-push-action's per-build record artifacts: noise here (the job
   # summary already shows the build); keep its job-summary table.
   DOCKER_BUILD_RECORD_UPLOAD: false
+  # Built, published and checked; part of the content fingerprint.
+  PLATFORMS: linux/amd64,linux/arm64
+  # The annotation and label holding the fingerprint.
+  CONTENT_KEY: com.github.idlinglight.phw.content
 
 jobs:
   verify:
@@ -110,7 +115,7 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: images/${{ inputs.image }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.PLATFORMS }}
           outputs: type=cacheonly
           build-args: |
             GIT_SHA=${{ steps.vars.outputs.sha_short }}
@@ -261,8 +266,39 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The fingerprint of what the image ships: the git tree of its folder
+      # without tools/ (path, mode, blob per file) and the platforms. A
+      # push publishes only when it differs from the one on latest (a
+      # missing or unreadable one differs); a dispatch always publishes.
+      - id: content
+        name: Shipped content changed since latest?
+        env:
+          IMAGE: ${{ inputs.image }}
+          REF: ${{ steps.name.outputs.ref }}
+        run: |
+          set -euo pipefail
+          fp=$({ git ls-files -s -- "images/$IMAGE" ":(exclude)images/$IMAGE/tools"; echo "platforms=$PLATFORMS"; } | sha256sum | cut -d' ' -f1)
+          echo "fingerprint=$fp" >> "$GITHUB_OUTPUT"
+          publish=true
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            index=$(docker buildx imagetools inspect --raw "$REF:latest" 2>/dev/null || true)
+            seen=$(jq -r --arg k "$CONTENT_KEY" '.annotations[$k] // empty' <<<"$index" 2>/dev/null || true)
+            if [ "$seen" = "$fp" ]; then
+              publish=false
+              rev=$(jq -r '.annotations["org.opencontainers.image.revision"] // "?"' <<<"$index")
+              echo "::notice::$IMAGE: shipped files unchanged since latest (${rev::7}): nothing published"
+              {
+                echo "### Not published: \`$REF\`"
+                echo
+                echo "The shipped files match \`latest\` (commit \`${rev::7}\`, content \`${fp::12}\`): no new tag, \`latest\` stays."
+              } >> "$GITHUB_STEP_SUMMARY"
+            fi
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
       # OCI labels on each platform's config, and as index annotations.
       - id: meta
+        if: steps.content.outputs.publish == 'true'
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
@@ -273,14 +309,17 @@ jobs:
             type=raw,value=latest,enable=${{ steps.head.outputs.latest }}
           labels: |
             org.opencontainers.image.title=${{ steps.name.outputs.name }}
+            ${{ env.CONTENT_KEY }}=${{ steps.content.outputs.fingerprint }}
           annotations: |
             org.opencontainers.image.title=${{ steps.name.outputs.name }}
+            ${{ env.CONTENT_KEY }}=${{ steps.content.outputs.fingerprint }}
 
       - id: build
+        if: steps.content.outputs.publish == 'true'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: images/${{ inputs.image }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.PLATFORMS }}
           push: true
           build-args: |
             GIT_SHA=${{ needs.verify.outputs.sha_short }}
@@ -291,6 +330,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ inputs.image }}
 
       - name: Check pushed platforms
+        if: steps.content.outputs.publish == 'true'
         env:
           REF: ${{ steps.name.outputs.ref }}
           DIGEST: ${{ steps.build.outputs.digest }}
@@ -310,6 +350,6 @@ jobs:
             cat "$RUNNER_TEMP/inspect.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$platforms" != "linux/amd64,linux/arm64" ]; then
-            echo "::error::expected linux/amd64,linux/arm64 in the pushed index, got '$platforms'"; exit 1
+          if [ "$platforms" != "$PLATFORMS" ]; then
+            echo "::error::expected $PLATFORMS in the pushed index, got '$platforms'"; exit 1
           fi

@@ -68,9 +68,13 @@ and deployments can rely on it without per-image knowledge:
   them under `set -e`, a failing script would stop the container. A
   deployment that overrides the container's command skips them.
 - **Published as** `ghcr.io/idlinglight/phw-<name>` (public), `<name>` =
-  the folder name, tags `sha-<short7>` (every build) and `latest` (only when
-  the commit is still main's head at publish time), `linux/amd64` +
-  `linux/arm64`. Flat and `phw-`-prefixed on purpose: GitHub's package list
+  the folder name, tags `sha-<short7>` and `latest` (only when the commit is
+  still main's head at publish time), `linux/amd64` + `linux/arm64`. A push
+  to main publishes an image only when its shipped files changed: the
+  fingerprint of `images/<name>/` without `tools/` (annotation
+  `com.github.idlinglight.phw.content`) is compared with `latest`'s, so
+  `latest` and its `/version.txt` name the last commit that changed the
+  image. A dispatch always publishes. Flat and `phw-`-prefixed on purpose: GitHub's package list
   hides a leading `<repo>/` path part, so the earlier nested names
   (`…/plausibly-hello-world/<name>`, until 2026-10-31) showed as bare folder
   names. The rule lives in `_build-image.yml` (step "Published name") and
@@ -498,8 +502,9 @@ Test tags (`sha-<short7>`) of any branch GitHub has, no merge needed:
 `gh workflow run build-image-branch.yml --ref <branch> -f image=<name>`
 verifies and publishes that one image, `-f image=all` every image. Also for
 a new image whose caller isn't on main yet, and for PR heads or Dependabot
-branches. Not for main: there the publish also moves `latest` and queues
-in main's own publish groups (main builds itself). The run uses the
+branches. On main only to force a republish (a push skips an unchanged
+image): there the publish also moves `latest` and queues in main's own
+publish groups. The run uses the
 workflow files at `--ref`, which therefore needs a version of
 `build-image-branch.yml` with the dispatch: rebase an older branch (a
 Dependabot PR: `@dependabot rebase`). Details: `.github/workflows/README.md`.

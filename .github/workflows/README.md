@@ -46,8 +46,23 @@ tool images are described in [tool-images/README.md](../../tool-images/README.md
 - **OCI labels** go on each platform's config and, as annotations, on the
   index: GHCR's package page reads the index annotations for multi-arch
   images.
-- The pushed platforms are checked after the push (`linux/amd64` +
-  `linux/arm64`, nothing else).
+- The pushed platforms are checked after the push (`PLATFORMS`, nothing
+  else).
+- **Publish-skip** (since #22): a push to main publishes an image only when
+  what it ships changed. The fingerprint is the sha256 of `git ls-files -s`
+  for `images/<image>/` without `tools/` (path, mode and blob per file, so
+  the exec bit and symlinks count) plus `PLATFORMS`. It is stored as the
+  annotation and label `com.github.idlinglight.phw.content`, and a push
+  whose fingerprint equals `latest`'s publishes nothing: no new `sha-` tag,
+  `latest` stays, the job summary says so. So a change to the build logic,
+  a caller, a comment in `_build-image.yml` or a BuildKit bump re-verifies
+  every image but republishes none, and deployments that follow `latest`
+  or new tags see a new image only when it changed. `/version.txt` and the
+  `revision` annotation then name the last commit that changed the image.
+  A `latest` without the annotation (published before #22), or one that
+  can't be read, counts as different. Not in the fingerprint, on purpose:
+  the BuildKit version and the labels' other values; to republish anyway,
+  dispatch on main (below). A dispatch always publishes.
 
 ## Callers (`image-<name>.yml`)
 
@@ -86,8 +101,10 @@ gh workflow run build-image-branch.yml --ref <branch> -f image=all      # every 
   itself are exercised too. A ref without this workflow's dispatch fails
   with 422 ("does not have workflow_dispatch trigger"): rebase the branch,
   or `@dependabot rebase` a Dependabot PR.
-- **Not for main**: there the publish also moves `latest` and queues in the
-  same concurrency groups as main's own publishes; main builds itself.
+- **On main only to force a republish** (a push to main skips an image
+  whose shipped files didn't change; a dispatch never skips): there the
+  publish also moves `latest` and queues in the same concurrency groups as
+  main's own publishes.
 - Before 2026-11-04 (#19, #21) test tags came from pushing to
   `build-image/<topic>`, which built and published every image (about 19
   jobs); the per-image callers had their own dispatch too.
