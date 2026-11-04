@@ -25,8 +25,8 @@ permissions:
   contents: read
 
 jobs:
-  # Pull requests: the repository pins nothing released less than 3 days
-  # ago, and Dependabot's cooldown can't see release dates on ghcr.io.
+  # Pull requests: the pinned scanner release must be at least 3 days old
+  # (why a check of its own: README.md here).
   scanner-age:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

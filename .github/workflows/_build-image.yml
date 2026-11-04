@@ -1,29 +1,19 @@
 name: _build-image
 
-# Reusable: verify + publish ONE image folder (images/<image>/). Not triggered
-# directly. Callers own the triggers and pass the folder name: one thin
-# image-<name>.yml per image (PR / main / dispatch, paths-filtered) and the
-# build-image-branch.yml fan-out (build-image/**, all images).
-# Spec: /CLAUDE.md "Image contract".
+# Reusable: verify + publish ONE image folder (images/<image>/). Image
+# contract: CLAUDE.md.
 #
-#   verify   every trigger, PRs included: lint the Dockerfile against the
-#            contract, build BOTH platforms, load amd64, smoke-test it
-#            read-only. A base-image bump PR is therefore proven before
-#            merge — not only after, when publish would be the first build.
-#   publish  needs verify, never on pull_request: multi-arch push to
-#            ghcr.io/<owner>/phw-<image>, tags sha-<short7> (always) +
-#            latest (default branch head only).
+#   verify   always: lint the Dockerfile against the contract, build both
+#            platforms, load amd64, smoke-test it with a read-only root.
+#   publish  after verify, never on pull_request: multi-arch push to
+#            ghcr.io/<owner>/phw-<image>, tags sha-<short7> (always) and
+#            latest (only while the commit is the default branch's head).
 #
-# BuildKit runs digest-pinned (tool-images/buildkit/Dockerfile)
-# instead of setup-buildx's floating default. No setup-qemu-action on
-# purpose: the contract makes Dockerfiles COPY-only, so arm64 builds need
-# no emulation — and a RUN fails loudly in the lint step instead of
-# silently depending on QEMU.
-#
-# Permissions: a called workflow's GITHUB_TOKEN is capped by the caller job's
-# `permissions:` — it can narrow them, never widen them. So callers grant
-# the ceiling (contents: read + packages: write); this file narrows per job:
-# verify (runs the Dockerfile + the image) only gets contents: read.
+# BuildKit runs from a digest pin (tool-images/buildkit/), not setup-buildx's
+# floating default. No QEMU: the lint step rejects RUN, so arm64 builds need
+# no emulation. Permissions: callers grant the ceiling (a called workflow
+# can only narrow it); verify, which runs the Dockerfile and the image,
+# narrows itself to contents: read. Design notes: README.md here.
 on:
   workflow_call:
     inputs:
@@ -61,7 +51,7 @@ jobs:
       - name: Dockerfile contract lint
         run: |
           set -euo pipefail
-          # same rule as _discover-images.yml: a valid GHCR path component
+          # a valid GHCR path component
           if [[ ! "$IMAGE" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
             echo "::error::inputs.image '$IMAGE' is not a valid image name"; exit 1
           fi
@@ -251,10 +241,7 @@ jobs:
           fi
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
-      # Published name: ghcr.io/<owner>/phw-<folder>. Flat and prefixed:
-      # GitHub's package list hides a leading "<repo>/" path part, so nested
-      # names showed as bare folder names; phw-* keeps them findable and
-      # together. Same rule in image-scan.yml.
+      # Published name: ghcr.io/<owner>/phw-<folder> (why: README.md here).
       - id: name
         name: Published name
         env:
@@ -274,8 +261,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # OCI labels on each platform's config; also as index annotations,
-      # which is what GHCR's package page reads for multi-arch images.
+      # OCI labels on each platform's config, and as index annotations.
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         env:

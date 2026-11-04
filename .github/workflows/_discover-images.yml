@@ -1,9 +1,7 @@
 name: _discover-images
 
 # Reusable: the image folders under images/ (one with a Dockerfile = one
-# image), as a JSON list for matrix jobs. The single place for the folder
-# glob + name rule; used by build-image-branch.yml and image-scan.yml.
-# (_build-image.yml re-checks its input against the same rule.)
+# image), as a JSON list for matrix jobs, checked against the name rule.
 on:
   workflow_call:
     outputs:
@@ -38,7 +36,7 @@ jobs:
             if [[ ! "$n" =~ ^[a-z0-9]+([._-][a-z0-9]+)*$ ]]; then
               echo "::error::images/$n: not a valid image name (lowercase, digits, . _ -)"; exit 1
             fi
-            # build-image-branch.yml's dispatch reads -f image=all as every image
+            # "all" is reserved: a dispatch's word for every image
             if [ "$n" = all ]; then
               echo "::error::images/all: 'all' is reserved (build-image-branch.yml -f image=all)"; exit 1
             fi
