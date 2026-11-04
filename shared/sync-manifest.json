@@ -17,6 +17,7 @@
     "images/europe-quiz/site/theme.js": {"from": "shared/map-quiz/site/theme.js", "sha256": "2d6290916523f7f968bb7c7ba97de58cc571307053f6895c8176f14865b15957"},
     "images/europe-quiz/site/wheel.js": {"from": "shared/map-quiz/site/wheel.js", "sha256": "c876073b1caa67af0002b553bb1b2ccdba6d07d8fcfd29f3f09fd20d1d908924"},
     "images/europe-quiz/site/wiki.js": {"from": "shared/map-quiz/site/wiki.js", "sha256": "114f515776832bfdd8d4284cb32aafcb3979fb20fdc05ef4628eaaf34a11bd8c"},
+    "images/glyph-rain/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/gradient-ripple/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/japan-quiz/nginx.conf": {"from": "shared/nginx.conf", "sha256": "e3aca00581ef56697e9f860535f8642126706ca0856a8fb08caa72936c8e4957"},
     "images/japan-quiz/site/contract.js": {"from": "shared/map-quiz/site/contract.js", "sha256": "8bb1fc5e5de8082884e9bc5946c0d5917fba182450d80f5a7f2d2471795fb6bd"},

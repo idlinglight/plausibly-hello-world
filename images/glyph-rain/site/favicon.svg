@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#000"/>
+  <g fill="#2bef68">
+    <rect x="7" y="6" width="6" height="5" rx="1.5" opacity=".2"/>
+    <rect x="7" y="14" width="6" height="5" rx="1.5" opacity=".4"/>
+    <rect x="7" y="22" width="6" height="5" rx="1.5" opacity=".65"/>
+    <rect x="7" y="30" width="6" height="5" rx="1.5"/>
+    <rect x="7" y="38" width="6" height="5" rx="1.5" fill="#f2fff5"/>
+    <rect x="51" y="22" width="6" height="5" rx="1.5" opacity=".2"/>
+    <rect x="51" y="30" width="6" height="5" rx="1.5" opacity=".4"/>
+    <rect x="51" y="38" width="6" height="5" rx="1.5" opacity=".65"/>
+    <rect x="51" y="46" width="6" height="5" rx="1.5"/>
+    <rect x="51" y="54" width="6" height="5" rx="1.5" fill="#f2fff5"/>
+  </g>
+  <g fill="none" stroke-linecap="round">
+    <g stroke="#2bef68" stroke-width="11" opacity=".28">
+      <ellipse cx="32" cy="17" rx="7" ry="9"/>
+      <path d="M32 27V55M21 31H43"/>
+    </g>
+    <g stroke="#e9fff0" stroke-width="5.5">
+      <ellipse cx="32" cy="17" rx="7" ry="9"/>
+      <path d="M32 27V55M21 31H43"/>
+    </g>
+  </g>
+</svg>
