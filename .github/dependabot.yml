@@ -26,8 +26,8 @@
 #   introduce anything else. Bumps in _build-image.yml re-verify every
 #   image on the PR; but login-action + metadata-action only run in
 #   publish — prove those before merge by publishing one image from the
-#   PR's branch: `gh workflow run build-image-branch.yml --ref <branch>
-#   -f image=snake` (CLAUDE.md "Branches").
+#   PR's branch (CLAUDE.md "Branches"):
+#     gh workflow run build-image-branch.yml --ref <branch> -f image=snake
 version: 2
 updates:
   # Base images (images/*/Dockerfile) + tool images run from workflow

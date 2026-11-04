@@ -463,21 +463,24 @@ the English Wikipedia article, a capital round's the capital's).
 
 `feature/<YYYY-MM-DD>-<topic>` / `bugfix/...`, squash-merged via PR.
 
-Test tags (`sha-<short7>`, never `latest`) of any branch GitHub has, no
-merge needed: `gh workflow run build-image-branch.yml --ref <branch> -f
-image=<name>` verifies and publishes that one image, `-f image=all` every
-image. Also for a new image whose caller isn't on main yet, and for PR
-heads or Dependabot branches. The run uses the workflow files at `--ref`,
-which therefore needs a version of `build-image-branch.yml` with the
-dispatch (a branch based on an older main: rebase first). Once an image's
-caller is on main, `gh workflow run image-<name>.yml --ref <branch>` does
-the same for that image.
+Test tags (`sha-<short7>`) of any branch GitHub has, no merge needed:
+`gh workflow run build-image-branch.yml --ref <branch> -f image=<name>`
+verifies and publishes that one image, `-f image=all` every image. Also for
+a new image whose caller isn't on main yet, and for PR heads or Dependabot
+branches. Not for main: there the publish also moves `latest` and queues
+in main's own publish groups (main builds itself). The run uses the
+workflow files at `--ref`, which therefore needs a version of
+`build-image-branch.yml` with the dispatch. A branch based on an older
+main: rebase it (a Dependabot PR: `@dependabot rebase`), or use the push
+route below. Once an image's caller is on main, `gh workflow run
+image-<name>.yml --ref <branch>` does the same for that image.
 
 Older route, still working: `git push origin HEAD:build-image/<topic>`
 builds **all** images at that state; delete the branch afterwards. It goes
-once the comments pointing to it in the image callers and `_build-image.yml`
-are next edited anyway (editing those files re-verifies and re-publishes
-images). The per-image callers deliberately don't listen there:
-`on.push.paths` on a new branch is evaluated against that push's own diff,
-so re-pushing commits GitHub already has never triggers a paths-filtered
-workflow.
+once the comments pointing to it are next edited anyway: the image
+callers and `_build-image.yml` (editing them re-verifies and re-publishes
+images) and `image-scan.yml` (editing it runs a scan); the callers' own
+`workflow_dispatch` can go then too. The per-image callers deliberately
+don't listen there: `on.push.paths` on a new branch is evaluated against
+that push's own diff, so re-pushing commits GitHub already has never
+triggers a paths-filtered workflow.
