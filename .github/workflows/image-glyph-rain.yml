@@ -3,23 +3,25 @@ name: image-glyph-rain
 # Thin caller for images/glyph-rain — all logic is in _build-image.yml.
 # Adding an image = new folder images/<name>/ + a copy of this file named
 # image-<name>.yml with every "glyph-rain" replaced by <name>
-# (name:, both paths: lists, with.image). Nothing else to register: the
-# build-image/** fan-out, the weekly scan and Dependabot all find new
+# (name:, both paths: lists, with.image). Nothing else to register:
+# build-image-branch.yml, the weekly scan and Dependabot all find new
 # folders via images/*.
 #
 # Triggers:
 #   - pull_request: verify only (lint, build both platforms, smoke test)
 #   - push to main: verify + publish sha-<short7> and latest
 #   - workflow_dispatch: verify + publish sha-<short7> of the chosen ref
-#     (any branch; latest only for main) — the one trigger here WITHOUT a
-#     paths filter, so it is the way to force a build. Needs this file on
-#     main; before that, use build-image/** (build-image-branch.yml).
+#     (latest only for main) — the one trigger here WITHOUT a paths
+#     filter. Needs this file on main. Test tags of a branch, also before
+#     this file is on main (a new image's PR):
+#       gh workflow run build-image-branch.yml --ref <branch> -f image=glyph-rain
 #
 # paths: also lists the reusable workflow and the BuildKit pin, so a change
 # to how images are built re-verifies (PR) and re-publishes (main) all
-# images. build-image/** is deliberately NOT a trigger here: paths on a
-# new branch's first push is evaluated against that push's own diff (empty
-# when the commits already exist on GitHub), see build-image-branch.yml.
+# images. build-image/** pushes are deliberately NOT a trigger here: paths
+# on a new branch's first push is evaluated against that push's own diff
+# (empty when the commits already exist on GitHub), see
+# build-image-branch.yml.
 on:
   push:
     branches:

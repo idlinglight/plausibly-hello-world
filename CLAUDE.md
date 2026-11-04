@@ -398,8 +398,9 @@ the English Wikipedia article, a capital round's the capital's).
 
 ## CI
 
-- **Adding an image**: `images/<name>/` + a copy of `image-gradient-ripple.yml`
-  named `image-<name>.yml`, every `gradient-ripple` replaced, and
+- **Adding an image**: `images/<name>/` + a copy of `image-glyph-rain.yml`
+  (the newest caller; the older ones' comments still name the push route)
+  named `image-<name>.yml`, every `glyph-rain` replaced, and
   `python3 shared/sync.py` for its `nginx.conf` (a map-quiz image: see
   "Map-quiz engine" first). The scan, `build-image-branch.yml`,
   Dependabot and the sync's `"*"` rule find new folders on their own
