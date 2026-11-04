@@ -1,20 +1,7 @@
 name: _build-image
 
-# Reusable: verify + publish ONE image folder (images/<image>/). Image
-# contract: CLAUDE.md.
-#
-#   verify   always: lint the Dockerfile against the contract, build both
-#            platforms, load amd64, smoke-test it with a read-only root.
-#   publish  after verify, never on pull_request: multi-arch push to
-#            ghcr.io/<owner>/phw-<image>, tags sha-<short7> and latest
-#            (only while the commit is the default branch's head). A push
-#            whose fingerprint matches latest's publishes nothing.
-#
-# BuildKit runs from a digest pin (tool-images/buildkit/), not setup-buildx's
-# floating default. No QEMU: the lint step rejects RUN, so arm64 builds need
-# no emulation. Permissions: callers grant the ceiling; verify, which runs
-# the Dockerfile and the image, narrows itself to contents: read. Design
-# notes: README.md here.
+# Reusable: verify + publish one image folder. Notes: _build-image.md,
+# beside this file.
 on:
   workflow_call:
     inputs:
@@ -213,13 +200,8 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # :latest must never move backwards. Serialization alone doesn't order
-    # runs (an older run whose verify finished later would publish last),
-    # so: (1) publishes of an image+ref run one at a time, and (2) inside
-    # that critical section, latest is only tagged if this commit is STILL
-    # the default branch head. Together: whichever run publishes last, a
-    # stale one skips latest. (A queued publish superseded by a newer
-    # queued one is cancelled — that commit then has no sha- tag; rare.)
+    # One publish per image and ref at a time; with the head check below,
+    # latest never moves backwards (_build-image.md).
     concurrency:
       group: publish-${{ inputs.image }}-${{ github.ref }}
       cancel-in-progress: false
@@ -246,7 +228,7 @@ jobs:
           fi
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
-      # Published name: ghcr.io/<owner>/phw-<folder> (why: README.md here).
+      # Published name: ghcr.io/<owner>/phw-<folder> (why: _build-image.md).
       - id: name
         name: Published name
         env:
@@ -256,11 +238,8 @@ jobs:
           echo "name=phw-$IMAGE" >> "$GITHUB_OUTPUT"
           echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/phw-$IMAGE" >> "$GITHUB_OUTPUT"
 
-      # The fingerprint of an image: the git tree of its folder without
-      # tools/ (path, mode, blob per file), the platforms, and what builds and
-      # publishes it (the docker/* actions' pins, the BuildKit pin). A push
-      # publishes only when it differs from the one on latest (a missing or
-      # unreadable one differs); a dispatch always publishes.
+      # The fingerprint (shipped files, platforms, build-tool pins) against
+      # latest's: a push publishes only when they differ (_build-image.md).
       - id: content
         name: Changed since latest?
         env:

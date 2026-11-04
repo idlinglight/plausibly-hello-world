@@ -1,7 +1,7 @@
 name: image-east-asia-quiz
 
-# Build of images/east-asia-quiz: verify on pull requests, verify + publish on main.
-# The logic is in _build-image.yml; how the callers work: README.md here.
+# Build of images/east-asia-quiz by _build-image.yml. Notes: _build-image.md
+# ("Callers"), beside this file.
 on:
   push:
     branches:
@@ -25,7 +25,7 @@ permissions:
 
 jobs:
   build:
-    # The ceiling for _build-image.yml's jobs (README.md here).
+    # The ceiling for _build-image.yml's jobs (_build-image.md).
     permissions:
       contents: read
       packages: write

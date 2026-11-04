@@ -1,7 +1,7 @@
 name: _discover-images
 
-# Reusable: the image folders under images/ (one with a Dockerfile = one
-# image), as a JSON list for matrix jobs, checked against the name rule.
+# Reusable: the image folders, as a JSON list. Notes: _discover-images.md,
+# beside this file.
 on:
   workflow_call:
     outputs:

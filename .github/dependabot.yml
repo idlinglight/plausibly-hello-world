@@ -1,7 +1,4 @@
-# Dependabot version updates (this file's presence turns them on). Policy:
-# CLAUDE.md "Supply-chain policy"; cooldown = the 3-day rule. What each
-# kind of bump PR runs and how to review it, and what is deliberately off:
-# .github/workflows/README.md, "Dependabot".
+# Dependabot version updates. Notes: dependabot.md, beside this file.
 version: 2
 updates:
   # Base images (images/*/Dockerfile) and the tool-image pins

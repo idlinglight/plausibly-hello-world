@@ -1,9 +1,7 @@
 name: image-scan
 
-# CVE scan of every published image (Grype, digest-pinned in
-# tool-images/grype/): fails on fixable HIGH/CRITICAL findings, lists ignored
-# ones with their rule's reason. Why it is built this way, and what to do
-# when it fails: README.md here.
+# CVE scan of every published image. Notes: image-scan.md, beside this
+# file.
 on:
   schedule:
     - cron: '30 19 * * 5'
@@ -27,7 +25,7 @@ permissions:
 jobs:
   # Pull requests: the pinned scanner (its release and the pinned digest's
   # build) must be at least 3 days old, before the scan runs it (why a check
-  # of its own: README.md here).
+  # of its own: image-scan.md).
   scanner-age:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -87,7 +85,7 @@ jobs:
     name: scan (${{ matrix.image }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Read-only (why that suffices: README.md here, Scan / Pulls).
+    # Read-only (why that suffices: image-scan.md).
     permissions:
       contents: read
       packages: read
@@ -130,7 +128,7 @@ jobs:
 
           # Registry pull token from GITHUB_TOKEN (credentials via stdin, not
           # argv). A refused token fails the job, a 404 manifest skips the
-          # image (why: README.md here, Scan / Pulls).
+          # image (why: image-scan.md).
           resp=$(printf 'user = "%s:%s"\n' "$GITHUB_ACTOR" "$TOKEN" | curl -sS -K - \
             "https://ghcr.io/token?service=ghcr.io&scope=repository:$repo:pull")
           bearer=$(jq -r '.token // empty' <<<"$resp")

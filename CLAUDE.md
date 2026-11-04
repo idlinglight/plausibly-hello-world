@@ -33,15 +33,15 @@ tool-images/          pin holders for images CI runs from run: steps, never
   buildkit/           incl. each scan ignore rule's analysis
   grype/              (+ grype.yaml: scan ignore rules)
 .github/
-  dependabot.yml
-  workflows/
-    README.md               CI notes: the why, dates, vendor facts (no CI)
-    _build-image.yml        reusable: contract lint, verify, publish
+  dependabot.yml      (+ dependabot.md: its notes)
+  workflows/          each <workflow>.yml has its notes in <workflow>.md beside
+    README.md               it (they trigger nothing); README.md: the index
+    _build-image.yml        reusable: contract lint, verify, publish (publish-skip)
     _discover-images.yml    reusable: lists images/*/ (shared name rule)
-    image-<name>.yml        thin caller per image (paths-filtered)
+    image-<name>.yml        thin caller per image (paths-filtered; notes: _build-image.md)
     build-image-branch.yml  on demand: one image or all, at any ref (sha- tags)
-    image-scan.yml          weekly CVE scan of every :latest
-    shared-sync.yml         synced copies match shared/; engine tests
+    image-scan.yml          weekly CVE scan of every :latest; scanner-age on PRs
+    checks.yml              synced copies match shared/; every unit test
 ```
 
 ## Image contract
@@ -132,7 +132,7 @@ a copy no rule produces any more (source renamed or removed, image taken
 off a rule) is removed by the next sync, unless it was edited since —
 then the sync stops until it is deleted, or kept as the image's own file
 by deleting its manifest entry. `python3 shared/sync.py --check` (CI:
-`shared-sync.yml`) fails on any missing, differing or stale copy, an
+`checks.yml`) fails on any missing, differing or stale copy, an
 outdated manifest or a missing required file, and names what to edit.
 Commit sources, copies and manifest together. Dockerfiles are never
 synced (Dependabot bumps them per folder).
@@ -423,10 +423,14 @@ can become false through a change elsewhere goes to a note that triggers
 nothing, and the comment keeps at most a pointer: another file's behaviour,
 which images or workflows exist or use something, dates and observations,
 upstream or vendor behaviour, owner settings, policy. The notes:
-this file (contracts, conventions, per-image notes), `.github/workflows/README.md`
-(CI), `tool-images/README.md` (pins, scan ignore rules), an image's
-`tools/README.md` (its data). So updating a note never rebuilds an image,
-and no comment needs a rebuild to stay true.
+this file (contracts, conventions, per-image notes); for each workflow a
+note named after it beside it (`.github/workflows/<workflow>.md`; the
+folder's `README.md` is the index), `.github/dependabot.md`;
+`tool-images/README.md` (pins, scan ignore rules); an image's
+`tools/README.md` (its data). A workflow's header is its name, at most a
+line of purpose, and the pointer to its note: even a summary of its own
+jobs would go stale unnoticed when they change. So updating a note never
+rebuilds an image, and no comment needs a rebuild to stay true.
 
 ## CI
 
@@ -447,15 +451,15 @@ and no comment needs a rebuild to stay true.
   and BuildKit bumps are proven before merge. A push to main verifies and
   publishes, but an image only when its fingerprint changed (shipped files,
   platforms, BuildKit and `docker/*` action pins; "Image contract").
-- **shared-sync.yml** (PRs and main, paths `shared/**`, `images/**`):
-  `python3 shared/sync.py --check`, the generator core's unittest, the
-  Wikipedia title checker's offline unittest (`wikicheck_test.py`, canned
-  answers, network blocked; the live check stays by hand), and the
-  node tests (`shared/map-quiz/tools/*.test.mjs`,
-  `images/*/tools/*.test.mjs`) with the runner's own python3 and node (no
-  setup actions; the tests need Node 22.12+, the step checks). The image
-  callers need no `shared/**` path: a shared change reaches an image only
-  through its synced copies, inside its folder.
+- **checks.yml** (PRs and main, paths `shared/**`, `images/**`): every
+  offline check in one job, all of them on any change: `sync.py --check`,
+  the python unittests (sync script, generator core, the Wikipedia title
+  checker's offline logic) and every `*.test.mjs` under
+  `shared/map-quiz/tools/` and `images/*/tools/`, with the runner's own
+  python3 and node (Node 22.12+ checked, not pinned). Why all at once, the
+  couplings, what each step checks: `.github/workflows/checks.md`. A new
+  test file there is picked up by its glob; a new kind of test gets a step
+  and a line in that note.
 - Bumps to `docker/login-action` or `docker/metadata-action` only execute in
   publish. Prove them before merge by publishing one image from the PR's
   branch: `gh workflow run build-image-branch.yml --ref <branch> -f
@@ -493,8 +497,7 @@ and no comment needs a rebuild to stay true.
 - Actions are SHA-pinned with a `# vX.Y.Z` comment; images digest-pinned.
 - Dependabot version updates: weekly, **Friday 19:00 Europe/Vienna**, 3-day
   cooldown for every ecosystem. Per-dependency rules: `.github/dependabot.yml`;
-  what is off and why, review notes per bump kind: `.github/workflows/README.md`,
-  "Dependabot".
+  what is off and why, review notes per bump kind: `.github/dependabot.md`.
 - Dependabot alerts and security-update PRs are deliberately off
   (security-update PRs skip the cooldown); base images never get alerts
   anyway — the weekly scan covers that gap.
@@ -512,4 +515,4 @@ image): there the publish also moves `latest` and queues in main's own
 publish groups. The run uses the
 workflow files at `--ref`, which therefore needs a version of
 `build-image-branch.yml` with the dispatch: rebase an older branch (a
-Dependabot PR: `@dependabot rebase`). Details: `.github/workflows/README.md`.
+Dependabot PR: `@dependabot rebase`). Details: `.github/workflows/build-image-branch.md`.

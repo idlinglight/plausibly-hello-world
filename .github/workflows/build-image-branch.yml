@@ -1,7 +1,7 @@
 name: build-image-branch
 
-# On demand: verify + publish sha-<short7> of one image folder, or of all
-# of them, at the ref chosen with --ref. Usage and caveats: README.md here.
+# On demand: one image or all, at any ref. Notes: build-image-branch.md,
+# beside this file.
 on:
   workflow_dispatch:
     inputs:
@@ -19,7 +19,7 @@ jobs:
   # One image, by name: no discovery needed.
   one:
     if: inputs.image != 'all'
-    # The ceiling for _build-image.yml's jobs (README.md here).
+    # The ceiling for _build-image.yml's jobs (_build-image.md).
     permissions:
       contents: read
       packages: write

@@ -49,7 +49,7 @@ node images/japan-quiz/tools/data.test.mjs   # this image's data and config (Nod
 
 The engine's own tests (quiz rules, config contract, wheel replay) and
 the generator core's live in `shared/map-quiz/tools/`; CI runs them all
-(`.github/workflows/shared-sync.yml`), not `build_map.py --check` (its
+(`.github/workflows/checks.yml`), not `build_map.py --check` (its
 inputs aren't committed).
 
 Python 3.9+, standard library only (about 10 s). The script verifies its
