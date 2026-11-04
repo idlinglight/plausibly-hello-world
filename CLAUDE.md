@@ -11,6 +11,8 @@ images/<name>/        one folder = one image, build context = this folder
   Dockerfile
   nginx.conf          → /etc/nginx/conf.d/default.conf (synced copy)
   site/               → /usr/share/nginx/html/ (static files, no build step)
+  entrypoint/         optional: startup scripts → /docker-entrypoint.d/
+                      (run before nginx; glyph-rain)
   tools/              optional, not shipped: offline generators for data in
                       site/ (outputs committed: europe-quiz's map), node
                       tests (CI), hand-run online checkers (wiki_titles.py:
@@ -55,6 +57,13 @@ and deployments can rely on it without per-image knowledge:
   `RUN` (multi-arch would need QEMU), `ADD`, `ONBUILD`, `COPY --from` and an
   unpinned `# syntax=` (both would pull a second, unpinned image). Static
   files ship as-is — no npm, no bundler, so there's no JS dependency tree.
+- **Startup scripts** (optional): `entrypoint/*.sh` →
+  `/docker-entrypoint.d/` (`COPY --chmod=0755`); the base image's
+  entrypoint runs them as uid 101 before nginx starts. They write only
+  under `/tmp` (a result is served through a symlink in `site/`, so the
+  shared `nginx.conf` stays as it is) and never fail: the entrypoint runs
+  them under `set -e`, a failing script would stop the container. A
+  deployment that overrides the container's command skips them.
 - **Published as** `ghcr.io/idlinglight/phw-<name>` (public), `<name>` =
   the folder name, tags `sha-<short7>` (every build) and `latest` (only when
   the commit is still main's head at publish time), `linux/amd64` +
@@ -355,6 +364,37 @@ the English Wikipedia article, a capital round's the capital's).
   fix-ups, point checks and choices in `tools/README.md`. Checks: `node
   tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
   as for europe-quiz.
+- **glyph-rain**: canvas 2D, dark only: glyphs fall down columns and fade
+  (white head, green trail, black ground); a tap starts a column there.
+  It shows which of two documented switches, neither of them secret,
+  reached the container at its start (meant for checking config and
+  secret delivery behind an auth layer; no public instance, so no Live
+  link): none → Egyptian hieroglyphs; env `PHW_GLYPHS=music` → musical
+  symbols; a file `/etc/phw/glyphs` containing `runes` (one trailing
+  newline ok; e.g. a secret mounted as a file, the volume at `/etc/phw`)
+  → runes; both → the two mixed. `entrypoint/40-phw-glyphs.sh` (POSIX
+  sh, every start) writes `/tmp/phw/glyphs.json`, served as
+  `/glyphs.json` through the symlink `site/glyphs.json`. It holds fixed
+  tokens only (the sets; per switch unset/match/other and
+  absent/match/other/unreadable/directory): a switch's value is never
+  written or logged, and the page has no URL or storage override (the set
+  on screen is the signal). Read once at start: a change needs a restart.
+  The caption (bottom left) names each set and its switch, plus a note
+  for a switch that didn't take or a file that didn't load; `<html
+  data-glyphs data-env data-file>` (+ `data-missing`, `data-motion`).
+  System fonts only. Checked 2026-11-04: hieroglyphs are default on
+  Windows 10+, Apple systems, Android, ChromeOS and Ubuntu 24.04+;
+  musical symbols are complete on Windows, Android and Ubuntu, Apple
+  systems draw 17, ChromeOS 7; runes U+16A0–16EA everywhere. `render.js`
+  drops glyphs a system can't draw (a missing glyph's metrics equal an
+  unassigned code point's), keeps upright hieroglyphs (ink aspect
+  0.45–1.35), and a set with under 6 drawable glyphs shows digits, said in
+  the caption. `?seed=<int>` fixes the rain; `prefers-reduced-motion`: a
+  still frame. Rhythm constants at the top of `sim.js`. Checks: `node
+  tools/entrypoint.test.mjs` (every switch state under the system's sh; a
+  sentinel value never reaches the log or the file), `glyphs.test.mjs`,
+  `sim.test.mjs`. Favicon rasters exported once from `favicon.svg` as for
+  europe-quiz.
 
 ## CI
 
