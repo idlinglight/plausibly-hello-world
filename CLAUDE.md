@@ -433,7 +433,7 @@ the English Wikipedia article, a capital round's the capital's).
   digest-pinned container, fails on **fixable** HIGH/CRITICAL. If its summary
   says the upstream tag still points at the pinned digest, the fix waits on
   nginxinc rebuilding — a digest bump can't help yet, and `RUN` is not allowed.
-- **Ignore rules** live in `.github/tool-images/grype/grype.yaml`: each pinned
+- **Ignore rules** live in `tool-images/grype/grype.yaml`: each pinned
   to vulnerability + package + exact installed version (so it stops matching
   on its own), with the reasoning and the owner's decision date. Ignored
   matches are listed in the scan summary. Delete a rule once its version is

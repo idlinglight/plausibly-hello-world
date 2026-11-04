@@ -31,11 +31,11 @@
 version: 2
 updates:
   # Base images (images/*/Dockerfile) + tool images run from workflow
-  # `run:` steps (.github/tool-images/*/Dockerfile, pin holders, never built).
+  # `run:` steps (tool-images/*/Dockerfile, pin holders, never built).
   - package-ecosystem: docker
     directories:
       - /images/*          # globs: GitHub docs, 2026-10-29 — new folders join automatically
-      - /.github/tool-images/*
+      - /tool-images/*
     schedule:
       interval: weekly
       day: friday

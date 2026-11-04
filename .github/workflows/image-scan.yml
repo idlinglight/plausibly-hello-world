@@ -9,11 +9,11 @@ name: image-scan
 # finding Alpine has fixed but nginxinc hasn't rebuilt yet stays red until
 # upstream ships a new digest (no RUN apk upgrade — contract is COPY-only);
 # the summary says which case it is. Accepted risks live as narrow,
-# reasoned ignore rules in .github/tool-images/grype/grype.yaml and are
+# reasoned ignore rules in tool-images/grype/grype.yaml and are
 # listed in every summary.
 #
 # Scanner: Grype, run as a digest-pinned container from a plain `docker
-# run` (pin: .github/tool-images/grype/Dockerfile) — not trivy-action /
+# run` (pin: tool-images/grype/Dockerfile) — not trivy-action /
 # setup-trivy, and not anchore/scan-action:
 #   - March 2026: aquasecurity's release credentials were stolen (again,
 #     after an incomplete rotation); 76/77 trivy-action tags and all
@@ -50,7 +50,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/image-scan.yml'
-      - '.github/tool-images/grype/**'
+      - 'tool-images/grype/**'
 
 permissions:
   contents: read
@@ -86,7 +86,7 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: |
-            .github/tool-images/grype
+            tool-images/grype
             images/${{ matrix.image }}
 
       - id: probe
@@ -183,7 +183,7 @@ jobs:
         if: steps.probe.outputs.found == 'true'
         run: |
           set -euo pipefail
-          pin=.github/tool-images/grype/Dockerfile
+          pin=tool-images/grype/Dockerfile
           grype=$(awk 'toupper($1) == "FROM" { print $2; exit }' "$pin")
           if [[ ! "$grype" =~ @sha256:[0-9a-f]{64}$ ]]; then
             echo "::error file=$pin::scanner image must be digest-pinned, got '$grype'"; exit 1
@@ -197,7 +197,7 @@ jobs:
             -e GRYPE_CHECK_FOR_APP_UPDATE=false \
             -v "$RUNNER_TEMP/grype-db:/db" \
             -v "$RUNNER_TEMP/scan/image.tar:/in/image.tar:ro" \
-            -v "$PWD/.github/tool-images/grype/grype.yaml:/cfg/grype.yaml:ro" \
+            -v "$PWD/tool-images/grype/grype.yaml:/cfg/grype.yaml:ro" \
             "$grype" -c /cfg/grype.yaml docker-archive:/in/image.tar -o json \
             > "$RUNNER_TEMP/scan/grype.json"
           jq -c '{matches: (.matches | length), ignored: ((.ignoredMatches // []) | length), distro: "\(.distro.name) \(.distro.version)", grype: .descriptor.version}' \
@@ -265,7 +265,7 @@ jobs:
             # Suppressed findings stay visible — with the rule's reason.
             if [ "$nign" -gt 0 ]; then
               echo
-              echo "#### Ignored ($nign) — rules in \`.github/tool-images/grype/grype.yaml\`"
+              echo "#### Ignored ($nign) — rules in \`tool-images/grype/grype.yaml\`"
               echo
               echo "| Severity | Vulnerability | Package | Installed | Fixed in | Reason |"
               echo "| --- | --- | --- | --- | --- | --- |"

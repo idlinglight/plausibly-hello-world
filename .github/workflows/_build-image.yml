@@ -14,7 +14,7 @@ name: _build-image
 #            ghcr.io/<owner>/phw-<image>, tags sha-<short7> (always) +
 #            latest (default branch head only).
 #
-# BuildKit runs digest-pinned (.github/tool-images/buildkit/Dockerfile)
+# BuildKit runs digest-pinned (tool-images/buildkit/Dockerfile)
 # instead of setup-buildx's floating default. No setup-qemu-action on
 # purpose: the contract makes Dockerfiles COPY-only, so arm64 builds need
 # no emulation — and a RUN fails loudly in the lint step instead of
@@ -102,9 +102,9 @@ jobs:
       - id: vars
         run: |
           set -euo pipefail
-          buildkit=$(awk 'toupper($1) == "FROM" { print $2; exit }' .github/tool-images/buildkit/Dockerfile)
+          buildkit=$(awk 'toupper($1) == "FROM" { print $2; exit }' tool-images/buildkit/Dockerfile)
           if [[ ! "$buildkit" =~ @sha256:[0-9a-f]{64}$ ]]; then
-            echo "::error file=.github/tool-images/buildkit/Dockerfile::BuildKit image must be digest-pinned, got '$buildkit'"; exit 1
+            echo "::error file=tool-images/buildkit/Dockerfile::BuildKit image must be digest-pinned, got '$buildkit'"; exit 1
           fi
           echo "buildkit=$buildkit" >> "$GITHUB_OUTPUT"
           echo "sha_short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"

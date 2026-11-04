@@ -28,13 +28,13 @@ on:
       - 'images/snake/**'
       - '.github/workflows/image-snake.yml'
       - '.github/workflows/_build-image.yml'
-      - '.github/tool-images/buildkit/**'
+      - 'tool-images/buildkit/**'
   pull_request:
     paths:
       - 'images/snake/**'
       - '.github/workflows/image-snake.yml'
       - '.github/workflows/_build-image.yml'
-      - '.github/tool-images/buildkit/**'
+      - 'tool-images/buildkit/**'
   workflow_dispatch:
 
 permissions:

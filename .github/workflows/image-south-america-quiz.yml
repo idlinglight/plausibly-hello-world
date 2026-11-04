@@ -28,13 +28,13 @@ on:
       - 'images/south-america-quiz/**'
       - '.github/workflows/image-south-america-quiz.yml'
       - '.github/workflows/_build-image.yml'
-      - '.github/tool-images/buildkit/**'
+      - 'tool-images/buildkit/**'
   pull_request:
     paths:
       - 'images/south-america-quiz/**'
       - '.github/workflows/image-south-america-quiz.yml'
       - '.github/workflows/_build-image.yml'
-      - '.github/tool-images/buildkit/**'
+      - 'tool-images/buildkit/**'
   workflow_dispatch:
 
 permissions:
