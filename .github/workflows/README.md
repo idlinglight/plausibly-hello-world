@@ -29,9 +29,9 @@ tool images are described in [tool-images/README.md](../../tool-images/README.md
   fails loudly in the lint instead of silently depending on QEMU.
 - **Permissions**: a called workflow's `GITHUB_TOKEN` is capped by the
   caller job's `permissions:`; it can narrow them, never widen them. So the
-  callers grant the ceiling (`contents: read`, `packages: write`), and
-  verify, which runs the Dockerfile and the image, narrows itself to
-  `contents: read`.
+  callers (and `build-image-branch.yml`'s jobs) grant the ceiling
+  (`contents: read`, `packages: write`), and verify, which runs the
+  Dockerfile and the image, narrows itself to `contents: read`.
 - **`:latest` never moves backwards.** Serialization alone doesn't order
   runs: an older run whose verify finished later would publish last. So
   publishes of an image and ref run one at a time (concurrency group, no
@@ -49,29 +49,34 @@ tool images are described in [tool-images/README.md](../../tool-images/README.md
 - The pushed platforms are checked after the push (`PLATFORMS`, nothing
   else).
 - **Publish-skip** (since #22): a push to main publishes an image only when
-  what it ships changed. The fingerprint is the sha256 of `git ls-files -s`
-  for `images/<image>/` without `tools/` (path, mode and blob per file, so
-  the exec bit and symlinks count) plus `PLATFORMS`. It is stored as the
+  its fingerprint changed: the sha256 of `git ls-files -s` for
+  `images/<image>/` without `tools/` (path, mode and blob per file, so the
+  exec bit and symlinks count), `PLATFORMS`, the BuildKit pin and the pins
+  of the `docker/*` actions in `_build-image.yml`. It is stored as the
   annotation and label `com.github.idlinglight.phw.content`, and a push
   whose fingerprint equals `latest`'s publishes nothing: no new `sha-` tag,
-  `latest` stays, the job summary says so. So a change to the build logic,
-  a caller, a comment in `_build-image.yml` or a BuildKit bump re-verifies
-  every image but republishes none, and deployments that follow `latest`
-  or new tags see a new image only when it changed. `/version.txt` and the
-  `revision` annotation then name the last commit that changed the image.
-  A `latest` without the annotation (published before #22), or one that
-  can't be read, counts as different. Not in the fingerprint, on purpose:
-  the BuildKit version and the labels' other values; to republish anyway,
-  dispatch on main (below). A dispatch always publishes.
+  `latest` stays, the job summary says so (the skip is decided before
+  BuildKit starts).
+  - Comments, a caller, other edits of `_build-image.yml`, an
+    `actions/checkout` bump: re-verified, nothing republished.
+  - A BuildKit or `docker/*` action bump: every image is republished on
+    merge, so the publish path (login, metadata, push) runs with the new
+    versions right away, not first on some later content change.
+  - `/version.txt` and the `revision` annotation name the last commit that
+    changed the fingerprint. A `latest` without the annotation (published
+    before #22), or one that can't be read, counts as different.
+  - To republish anyway: dispatch on main (below). A dispatch always
+    publishes.
 
 ## Callers (`image-<name>.yml`)
 
 - **Paths**: the image's folder minus `tools/` (generators, their notes and
   node tests: nothing there is shipped; shared-sync runs the tests), the
   caller itself, `_build-image.yml` and the BuildKit pin. So a change to how
-  images are built re-verifies (PR) and re-publishes (main) every image. A
-  negation rather than a list of shipped folders, so a new shipped folder
-  triggers by default.
+  images are built re-verifies every image (PR and main); whether main then
+  republishes is the fingerprint's call (publish-skip, above). A negation
+  rather than a list of shipped folders, so a new shipped folder triggers
+  by default.
 - **No `shared/**` path**: a shared change reaches an image only through its
   synced copies, inside its folder.
 - **New image**: copy any caller, replace the name (CLAUDE.md, "Adding an
@@ -144,7 +149,8 @@ gh workflow run build-image-branch.yml --ref <branch> -f image=all      # every 
   socket, no workspace.
 - **Only linux/amd64** is scanned: arm64 is built from the same base index
   digest, i.e. the same Alpine package set.
-- **Pulls**: the phw-* packages are public. Were one private,
+- **Permissions and pulls**: the scan jobs are read-only. The phw-*
+  packages are public. Were one private,
   `packages: read` would still do: packages this repository's workflows
   publish are linked to it (OCI source label) and grant it read access.
   Observed 2026-10-29: for a package that doesn't exist yet, GHCR still
@@ -155,12 +161,16 @@ gh workflow run build-image-branch.yml --ref <branch> -f image=all      # every 
   falling back to `sha-<PR head short7>` (make one with the dispatch
   above), so a scanner bump is tested against the real images before
   merge.
-- **`scanner-age`** (PRs only): the pinned grype release must be at least 3
-  days old. Dependabot's cooldown can't see release dates on ghcr.io
-  ("No verified registry publication date source for ghcr.io; skipping
-  cooldown", observed 2026-11-04), so this check enforces the repository's
-  rule for the scanner. It reads the GitHub release of the pinned tag and
-  says when to re-run.
+- **`scanner-age`** (PRs touching the scan or the scanner pin): the pinned
+  grype must be at least 3 days old, both its GitHub release and the
+  pinned digest's build (the linux/amd64 config's `created`), so a
+  re-pushed old tag is held too. The scan matrix waits for it, so a
+  scanner too new to pin never runs. Dependabot's cooldown can't see
+  release dates on ghcr.io ("No verified registry publication date source
+  for ghcr.io; skipping cooldown", observed 2026-11-04), so this check
+  enforces the repository's rule for the scanner. It says when to re-run.
+  Only grype is checked: the one pin on ghcr.io; the docker.io pins have
+  Dependabot's cooldown.
 
 ## Sync and tests (`shared-sync.yml`)
 
@@ -202,8 +212,9 @@ gh workflow run build-image-branch.yml --ref <branch> -f image=all      # every 
   - `images/*` base digests: the image's PR run builds both platforms and
     smoke-tests the contract before merge; green means the new base works.
     The merge publishes `sha-<short7>` and `latest`.
-  - `tool-images/buildkit`: in every caller's paths, so every image is
-    re-verified on the PR and re-published on merge.
+  - `tool-images/buildkit`: in every caller's paths and in the
+    fingerprint, so every image is re-verified on the PR and republished on
+    merge.
   - `tool-images/grype`: runs the scan on the PR (and `scanner-age`).
   - github-actions: the repository's Actions allowlist is `actions/*` plus
     five `docker/*` actions (owner setting, SHA pinning enforced), so a bump
@@ -212,3 +223,5 @@ gh workflow run build-image-branch.yml --ref <branch> -f image=all      # every 
     `docker/metadata-action` only run in publish: prove them before merge
     by publishing one image from the PR's branch:
     `gh workflow run build-image-branch.yml --ref <branch> -f image=snake`.
+    The merge then republishes every image (the `docker/*` pins are in the
+    fingerprint); an `actions/checkout` bump republishes none.

@@ -1,4 +1,4 @@
-# Grype config for image-scan.yml (mounted read-only): ignore rules only.
+# Grype config (ignore rules only).
 # Each rule names vulnerability + package + exact installed version, so it
 # stops matching once the package moves; `reason` shows in every scan
 # summary. Each rule's analysis, sources and decision: tool-images/README.md.

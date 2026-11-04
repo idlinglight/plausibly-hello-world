@@ -16,8 +16,8 @@ change files under `.github/` for any ecosystem but github-actions
 
 | Folder | Read by | A bump runs |
 | --- | --- | --- |
-| `buildkit/` | `_build-image.yml` (the buildx docker-container driver's image) | every caller's paths include it: all images are re-verified on the PR and re-published on merge |
-| `grype/` | `image-scan.yml` | the scan on the PR, against the published images, and `scanner-age` (the release must be 3 days old: Dependabot has no cooldown for ghcr.io) |
+| `buildkit/` | `_build-image.yml` (the buildx docker-container driver's image; also part of each image's fingerprint) | every caller's paths include it: all images are re-verified on the PR and republished on merge |
+| `grype/` (+ `grype.yaml`, mounted read-only) | `image-scan.yml` | `scanner-age` first (release and pinned digest at least 3 days old: Dependabot has no cooldown for ghcr.io), then the scan on the PR, against the published images |
 
 Editing this README triggers nothing (no `paths` match it).
 

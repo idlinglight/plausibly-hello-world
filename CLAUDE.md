@@ -70,11 +70,12 @@ and deployments can rely on it without per-image knowledge:
 - **Published as** `ghcr.io/idlinglight/phw-<name>` (public), `<name>` =
   the folder name, tags `sha-<short7>` and `latest` (only when the commit is
   still main's head at publish time), `linux/amd64` + `linux/arm64`. A push
-  to main publishes an image only when its shipped files changed: the
-  fingerprint of `images/<name>/` without `tools/` (annotation
-  `com.github.idlinglight.phw.content`) is compared with `latest`'s, so
-  `latest` and its `/version.txt` name the last commit that changed the
-  image. A dispatch always publishes. Flat and `phw-`-prefixed on purpose: GitHub's package list
+  to main publishes an image only when its fingerprint changed: the shipped
+  files of `images/<name>/` without `tools/`, the platforms, the BuildKit
+  and `docker/*` action pins (annotation `com.github.idlinglight.phw.content`),
+  compared with `latest`'s. So `latest` and its `/version.txt` name the last
+  commit that changed the image or its build tools. A dispatch always
+  publishes. Flat and `phw-`-prefixed on purpose: GitHub's package list
   hides a leading `<repo>/` path part, so the earlier nested names
   (`…/plausibly-hello-world/<name>`, until 2026-10-31) showed as bare folder
   names. The rule lives in `_build-image.yml` (step "Published name") and
@@ -443,7 +444,9 @@ and no comment needs a rebuild to stay true.
   new image's row leaves it empty until then. Hostnames only there: no
   hosting provider or deploy details in the repo.
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
-  and BuildKit bumps are proven before merge. Push to main also publishes.
+  and BuildKit bumps are proven before merge. A push to main verifies and
+  publishes, but an image only when its fingerprint changed (shipped files,
+  platforms, BuildKit and `docker/*` action pins; "Image contract").
 - **shared-sync.yml** (PRs and main, paths `shared/**`, `images/**`):
   `python3 shared/sync.py --check`, the generator core's unittest, the
   Wikipedia title checker's offline unittest (`wikicheck_test.py`, canned
@@ -485,11 +488,13 @@ and no comment needs a rebuild to stay true.
 - Anything newly pinned (actions, base images, tool images) must have been
   published **≥ 3 days** ago — same rule as Dependabot's cooldown. Dependabot
   has no cooldown for images on ghcr.io (the grype pin), so image-scan's
-  `scanner-age` job checks the scanner's release date on every PR.
+  `scanner-age` job checks the scanner's release and digest build dates on
+  every PR that changes the scanner pin or the scan.
 - Actions are SHA-pinned with a `# vX.Y.Z` comment; images digest-pinned.
 - Dependabot version updates: weekly, **Friday 19:00 Europe/Vienna**, 3-day
-  cooldown for every ecosystem. Details and per-dependency rules live in
-  `.github/dependabot.yml`.
+  cooldown for every ecosystem. Per-dependency rules: `.github/dependabot.yml`;
+  what is off and why, review notes per bump kind: `.github/workflows/README.md`,
+  "Dependabot".
 - Dependabot alerts and security-update PRs are deliberately off
   (security-update PRs skip the cooldown); base images never get alerts
   anyway — the weekly scan covers that gap.

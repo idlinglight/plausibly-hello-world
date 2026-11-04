@@ -25,8 +25,9 @@ permissions:
   contents: read
 
 jobs:
-  # Pull requests: the pinned scanner release must be at least 3 days old
-  # (why a check of its own: README.md here).
+  # Pull requests: the pinned scanner (its release and the pinned digest's
+  # build) must be at least 3 days old, before the scan runs it (why a check
+  # of its own: README.md here).
   scanner-age:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -50,15 +51,26 @@ jobs:
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error file=$pin::expected a vX.Y.Z tag on the FROM line, got '$tag'"; exit 1
           fi
-          released=$(gh api "repos/anchore/grype/releases/tags/$tag" --jq '.published_at | fromdateiso8601')
-          ready=$(( released + 3 * 86400 ))
           at() { jq -rn --argjson t "$1" '$t | todate'; }
+          released=$(gh api "repos/anchore/grype/releases/tags/$tag" --jq '.published_at | fromdateiso8601')
+          # The pinned digest's build time (linux/amd64 config): a re-pushed
+          # old tag has an old release but a new build.
+          repo=${ref%%@*}; repo=${repo%:*}; repo=${repo#ghcr.io/}
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:$repo:pull" | jq -er .token)
+          get() { curl -fsSL -H "Authorization: Bearer $token" -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json" "https://ghcr.io/v2/$repo/$1"; }
+          m=$(get "manifests/${ref#*@}")
+          if jq -e '.manifests' <<<"$m" >/dev/null; then
+            m=$(get "manifests/$(jq -er '[.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")][0].digest' <<<"$m")")
+          fi
+          built=$(get "blobs/$(jq -er .config.digest <<<"$m")" | jq -er '.created | sub("\\.[0-9]+"; "") | fromdateiso8601')
+          newest=$(( released > built ? released : built ))
+          ready=$(( newest + 3 * 86400 ))
           if (( $(date -u +%s) < ready )); then
-            echo "::error file=$pin::grype $tag was released $(at "$released"): too new to pin before $(at "$ready") (re-run this job then)"
+            echo "::error file=$pin::grype $tag: released $(at "$released"), pinned digest built $(at "$built"); too new to pin before $(at "$ready") (re-run this job then)"
             exit 1
           fi
-          echo "grype $tag, released $(at "$released"): ok"
-          echo "Scanner \`$tag\`, released $(at "$released"): at least 3 days old." >> "$GITHUB_STEP_SUMMARY"
+          echo "grype $tag: released $(at "$released"), pinned digest built $(at "$built"): ok"
+          echo "Scanner \`$tag\`: released $(at "$released"), pinned digest built $(at "$built"): at least 3 days old." >> "$GITHUB_STEP_SUMMARY"
 
   discover:
     permissions:
@@ -66,13 +78,16 @@ jobs:
     uses: ./.github/workflows/_discover-images.yml
 
   scan:
-    needs: discover
-    if: needs.discover.outputs.images != '[]'
+    # After scanner-age on pull requests (skipped elsewhere): a scanner too
+    # new to pin is never run.
+    needs: [discover, scanner-age]
+    if: >-
+      !cancelled() && needs.discover.result == 'success' && needs.discover.outputs.images != '[]'
+      && (needs.scanner-age.result == 'success' || needs.scanner-age.result == 'skipped')
     name: scan (${{ matrix.image }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Read-only: pulls need nothing more, also for a private package of
-    # this repository's own.
+    # Read-only (why that suffices: README.md here, Scan / Pulls).
     permissions:
       contents: read
       packages: read
@@ -114,8 +129,8 @@ jobs:
           }
 
           # Registry pull token from GITHUB_TOKEN (credentials via stdin, not
-          # argv). An unpublished package still gets a token (and a 404 for
-          # its manifest), so a REFUSED token is an access problem: fail.
+          # argv). A refused token fails the job, a 404 manifest skips the
+          # image (why: README.md here, Scan / Pulls).
           resp=$(printf 'user = "%s:%s"\n' "$GITHUB_ACTOR" "$TOKEN" | curl -sS -K - \
             "https://ghcr.io/token?service=ghcr.io&scope=repository:$repo:pull")
           bearer=$(jq -r '.token // empty' <<<"$resp")

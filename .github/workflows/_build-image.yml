@@ -8,13 +8,13 @@ name: _build-image
 #   publish  after verify, never on pull_request: multi-arch push to
 #            ghcr.io/<owner>/phw-<image>, tags sha-<short7> and latest
 #            (only while the commit is the default branch's head). A push
-#            whose shipped files match latest's publishes nothing.
+#            whose fingerprint matches latest's publishes nothing.
 #
 # BuildKit runs from a digest pin (tool-images/buildkit/), not setup-buildx's
 # floating default. No QEMU: the lint step rejects RUN, so arm64 builds need
-# no emulation. Permissions: callers grant the ceiling (a called workflow
-# can only narrow it); verify, which runs the Dockerfile and the image,
-# narrows itself to contents: read. Design notes: README.md here.
+# no emulation. Permissions: callers grant the ceiling; verify, which runs
+# the Dockerfile and the image, narrows itself to contents: read. Design
+# notes: README.md here.
 on:
   workflow_call:
     inputs:
@@ -256,28 +256,26 @@ jobs:
           echo "name=phw-$IMAGE" >> "$GITHUB_OUTPUT"
           echo "ref=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/phw-$IMAGE" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
-        with:
-          driver-opts: image=${{ needs.verify.outputs.buildkit }}
-
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # The fingerprint of what the image ships: the git tree of its folder
-      # without tools/ (path, mode, blob per file) and the platforms. A
-      # push publishes only when it differs from the one on latest (a
-      # missing or unreadable one differs); a dispatch always publishes.
+      # The fingerprint of an image: the git tree of its folder without
+      # tools/ (path, mode, blob per file), the platforms, and what builds and
+      # publishes it (the docker/* actions' pins, the BuildKit pin). A push
+      # publishes only when it differs from the one on latest (a missing or
+      # unreadable one differs); a dispatch always publishes.
       - id: content
-        name: Shipped content changed since latest?
+        name: Changed since latest?
         env:
           IMAGE: ${{ inputs.image }}
           REF: ${{ steps.name.outputs.ref }}
+          BUILDKIT: ${{ needs.verify.outputs.buildkit }}
         run: |
           set -euo pipefail
-          fp=$({ git ls-files -s -- "images/$IMAGE" ":(exclude)images/$IMAGE/tools"; echo "platforms=$PLATFORMS"; } | sha256sum | cut -d' ' -f1)
+          tools=$(grep -E '^[[:space:]-]*uses:[[:space:]]*docker/' .github/workflows/_build-image.yml | sed -E 's/^[[:space:]-]*//' | sort -u)
+          fp=$({
+            git ls-files -s -- "images/$IMAGE" ":(exclude)images/$IMAGE/tools"
+            echo "platforms=$PLATFORMS"
+            echo "buildkit=$BUILDKIT"
+            printf '%s\n' "$tools"
+          } | sha256sum | cut -d' ' -f1)
           echo "fingerprint=$fp" >> "$GITHUB_OUTPUT"
           publish=true
           if [ "$GITHUB_EVENT_NAME" = push ]; then
@@ -286,15 +284,27 @@ jobs:
             if [ "$seen" = "$fp" ]; then
               publish=false
               rev=$(jq -r '.annotations["org.opencontainers.image.revision"] // "?"' <<<"$index")
-              echo "::notice::$IMAGE: shipped files unchanged since latest (${rev::7}): nothing published"
+              echo "::notice::$IMAGE: unchanged since latest (${rev::7}): nothing published"
               {
                 echo "### Not published: \`$REF\`"
                 echo
-                echo "The shipped files match \`latest\` (commit \`${rev::7}\`, content \`${fp::12}\`): no new tag, \`latest\` stays."
+                echo "Shipped files and build tools match \`latest\` (commit \`${rev::7}\`, fingerprint \`${fp::12}\`): no new tag, \`latest\` stays."
               } >> "$GITHUB_STEP_SUMMARY"
             fi
           fi
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+      - if: steps.content.outputs.publish == 'true'
+        uses: docker/setup-buildx-action@594f3bf4285d9ea8dc53c9a0c9c4092420091003 # v4.4.0
+        with:
+          driver-opts: image=${{ needs.verify.outputs.buildkit }}
+
+      - if: steps.content.outputs.publish == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       # OCI labels on each platform's config, and as index annotations.
       - id: meta
@@ -350,6 +360,7 @@ jobs:
             cat "$RUNNER_TEMP/inspect.txt"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if [ "$platforms" != "$PLATFORMS" ]; then
-            echo "::error::expected $PLATFORMS in the pushed index, got '$platforms'"; exit 1
+          want=$(tr ',' '\n' <<<"$PLATFORMS" | sort | paste -sd, -)
+          if [ "$platforms" != "$want" ]; then
+            echo "::error::expected $want in the pushed index, got '$platforms'"; exit 1
           fi
