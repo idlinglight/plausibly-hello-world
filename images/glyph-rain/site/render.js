@@ -14,7 +14,7 @@ const NEAR_S = 0.18; // seconds a cell stays pale after its head passed
 // metrics equal those of a code point no font has (U+0378, U+1D127, both
 // unassigned; as many hex digits as the glyphs they're compared with, as
 // a hex box widens with them). Equal metrics → missing.
-const TOFU_BMP = '͸';
+const TOFU_BMP = '\u0378';
 const TOFU_SMP = '\u{1d127}';
 
 function metrics(g, ch) {
@@ -31,11 +31,12 @@ function canvas(w, h) {
 }
 
 // The glyphs of set this system draws, each with its ink box at font size
-// px. upright: only signs whose ink fits a cell standing up. Cached per set
-// and size (measuring the hieroglyphs takes a few milliseconds).
+// px. upright: only signs whose ink fits a cell standing up. filter false:
+// every glyph, unchecked (the digits fallback of last resort). Cached per
+// set, size and filter (measuring the hieroglyphs takes a few ms).
 const cache = new Map();
-export function usableGlyphs(set, px) {
-  const key = `${set.label}|${px}`;
+export function usableGlyphs(set, px, filter = true) {
+  const key = `${set.label}|${px}|${filter}`;
   if (cache.has(key)) return cache.get(key);
   const g = canvas(8, 8).getContext('2d');
   g.font = `${px}px ${set.font}`;
@@ -43,6 +44,10 @@ export function usableGlyphs(set, px) {
   const out = [];
   for (const ch of set.chars) {
     const m = metrics(g, ch);
+    if (!filter) {
+      out.push({ ch, left: m[1], right: m[2], ascent: m[3], descent: m[4] });
+      continue;
+    }
     if (same(m, tofu[ch.codePointAt(0) > 0xffff ? 1 : 0])) continue;
     const w = m[1] + m[2];
     const h = m[3] + m[4];
@@ -59,14 +64,20 @@ export class Renderer {
     this.canvas = el;
     this.g = el.getContext('2d', { alpha: false });
     this.atlases = [];
+    this.sheets = new Map(); // (set, cell) → atlas: a resize at the same cell size redraws none
   }
 
-  // sets: [{ font, px, glyphs: usableGlyphs(set, px) }]; cell: device px.
+  // sets: [{ label, font, px, glyphs: usableGlyphs(set, px) }]; cell: device px.
   setup(sets, cell, width, height) {
+    if (cell !== this.cell) this.sheets.clear(); // only the current size is kept
     this.cell = cell;
     this.canvas.width = width;
     this.canvas.height = height;
-    this.atlases = sets.map((s) => this.atlas(s, cell));
+    this.atlases = sets.map((s) => {
+      const key = `${s.label}|${s.glyphs.length}`;
+      if (!this.sheets.has(key)) this.sheets.set(key, this.atlas(s, cell));
+      return this.sheets.get(key);
+    });
   }
 
   // One sheet per colour; slots of cell + 2 * pad px (the head's glow

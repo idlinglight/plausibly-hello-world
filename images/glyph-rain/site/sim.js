@@ -9,7 +9,7 @@ export const MAX_PER_COL = 2;
 const SPEED = [6, 19]; // rows per second
 const FADE = [0.9, 2.8]; // seconds until a lit cell is dark again
 const GAP = [0.8, 7]; // seconds between two heads starting in a column
-const SWAPS = 0.7; // glyph swaps per lit cell and second
+const SWAPS = 0.25; // glyph swaps per lit cell and second
 
 // mulberry32: small, fast, seedable (?seed=<int>).
 export function rng(seed) {
@@ -78,9 +78,10 @@ export class Sim {
       h.row = Math.max(h.row, to);
     }
     this.heads = this.heads.filter((h) => h.y < this.rows + 1);
-    // Swaps: a random sample of cells, the lit ones among them change.
+    // Swaps: each cell is sampled SWAPS times a second on average, and a
+    // sampled cell that is lit changes its glyph.
     const n = this.cols * this.rows;
-    let k = n * 0.35 * SWAPS * dt;
+    let k = n * SWAPS * dt;
     for (; k >= 1 || this.r() < k; k--) {
       const i = Math.floor(this.r() * n);
       if (this.level(i) > 0) this.glyph[i] = Math.floor(this.r() * this.counts[this.set[i]]);

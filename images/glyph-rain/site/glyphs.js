@@ -62,7 +62,7 @@ export const FALLBACK = {
 };
 
 export const ENV_STATES = ['unset', 'match', 'other'];
-export const FILE_STATES = ['absent', 'match', 'other', 'unreadable', 'directory'];
+export const FILE_STATES = ['absent', 'match', 'other', 'unreadable', 'directory', 'notfile'];
 
 // glyphs.json (parsed, or null when it didn't load) → { sets, env, file,
 // loaded }. Unknown names and states are dropped, so a damaged file can
@@ -94,5 +94,6 @@ export function describe(rt, missing = []) {
   if (rt.file === 'other') notes.push(`${FILE_PATH} has other content: ignored`);
   if (rt.file === 'unreadable') notes.push(`${FILE_PATH} isn't readable here`);
   if (rt.file === 'directory') notes.push(`${FILE_PATH} is a folder: mount the volume one level up`);
+  if (rt.file === 'notfile') notes.push(`${FILE_PATH} isn't a regular file: ignored`);
   return { lines, notes };
 }

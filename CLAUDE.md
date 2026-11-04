@@ -370,15 +370,18 @@ the English Wikipedia article, a capital round's the capital's).
   reached the container at its start (meant for checking config and
   secret delivery behind an auth layer; no public instance, so no Live
   link): none → Egyptian hieroglyphs; env `PHW_GLYPHS=music` → musical
-  symbols; a file `/etc/phw/glyphs` containing `runes` (one trailing
-  newline ok; e.g. a secret mounted as a file, the volume at `/etc/phw`)
-  → runes; both → the two mixed. `entrypoint/40-phw-glyphs.sh` (POSIX
-  sh, every start) writes `/tmp/phw/glyphs.json`, served as
-  `/glyphs.json` through the symlink `site/glyphs.json`. It holds fixed
-  tokens only (the sets; per switch unset/match/other and
-  absent/match/other/unreadable/directory): a switch's value is never
-  written or logged, and the page has no URL or storage override (the set
-  on screen is the signal). Read once at start: a change needs a restart.
+  symbols; a regular file `/etc/phw/glyphs` of exactly the bytes `runes`,
+  optionally + LF or CRLF (byte-compared with `cmp`; e.g. a secret mounted
+  as a file, the volume at `/etc/phw`; links are followed) → runes; both
+  → the two mixed. `entrypoint/40-phw-glyphs.sh` (POSIX sh, every start)
+  writes `/tmp/phw/glyphs.json` (beside, then moved; a failed write
+  removes the old one), served as `/glyphs.json` through the symlink
+  `site/glyphs.json`. It holds fixed tokens only (the sets; per switch
+  unset/match/other and absent/match/other/unreadable/directory/notfile):
+  a switch's value is never written or logged, nothing but a regular file
+  is read (a pipe can't block the start), and the page has no URL or
+  storage override (the set on screen is the signal). Read once at start:
+  a change needs a restart.
   The caption (bottom left) names each set and its switch, plus a note
   for a switch that didn't take or a file that didn't load; `<html
   data-glyphs data-env data-file>` (+ `data-missing`, `data-motion`).

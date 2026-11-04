@@ -52,6 +52,7 @@ assert.deepEqual(describe(parseRuntime({ glyphs: ['music', 'runes'], env: 'match
 assert.deepEqual(describe(parseRuntime(null)).notes, ['glyphs.json not loaded: default']);
 assert.deepEqual(describe(parseRuntime({ glyphs: ['hieroglyphs'], env: 'other', file: 'directory' })).notes, ['PHW_GLYPHS has another value: ignored', '/etc/phw/glyphs is a folder: mount the volume one level up']);
 assert.deepEqual(describe(parseRuntime({ glyphs: ['hieroglyphs'], env: 'unset', file: 'unreadable' })).notes, ['/etc/phw/glyphs isn\'t readable here']);
+assert.deepEqual(describe(parseRuntime({ glyphs: ['hieroglyphs'], env: 'unset', file: 'notfile' })).notes, ['/etc/phw/glyphs isn\'t a regular file: ignored']);
 assert.deepEqual(describe(parseRuntime({ glyphs: ['runes'], env: 'unset', file: 'match' }), ['runes']).lines, ['Runes (no font here: digits) · /etc/phw/glyphs']);
 console.log('ok the caption: set and source per line, notes for switches that didn\'t take');
 

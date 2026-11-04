@@ -37,27 +37,46 @@ function showCaption(rt, missing) {
   );
 }
 
-let renderer, sim, sets, raf = 0, last = 0;
+let renderer, sim, sets, geom = null, raf = 0, last = 0;
 
-function cellSize() {
-  const css = Math.round(Math.min(28, Math.max(16, Math.sqrt(innerWidth * innerHeight) / 44)));
+// Everything is laid out in device pixels: the grid covers the canvas
+// exactly at any pixel ratio, and taps map with the geometry the current
+// grid was built with.
+function geometry() {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  return { css, dpr, px: Math.round(css * dpr) };
+  const css = Math.round(Math.min(28, Math.max(16, Math.sqrt(innerWidth * innerHeight) / 44)));
+  const px = Math.round(css * dpr);
+  const w = Math.round(innerWidth * dpr);
+  const h = Math.round(innerHeight * dpr);
+  return { dpr, px, w, h, cols: Math.ceil(w / px), rows: Math.ceil(h / px) };
 }
 
+// What a set is drawn with at px. A set with no drawable glyph at this
+// size (the startup check passed it at another) falls back to the digits,
+// taken without the ink filter, so a set is never empty.
+function drawable(set, px) {
+  const glyphs = usableGlyphs(set, px);
+  if (glyphs.length) return { label: set.label, font: set.font, px, glyphs };
+  return { label: FALLBACK.label, font: FALLBACK.font, px, glyphs: usableGlyphs(FALLBACK, px, false) };
+}
+
+// Rebuilds when the geometry changed; returns whether it did.
 function build() {
-  const { css, dpr, px } = cellSize();
-  const cols = Math.ceil(innerWidth / css);
-  const rows = Math.ceil(innerHeight / css);
-  const drawn = sets.map((s) => ({ font: s.font, px, glyphs: usableGlyphs(s, px) }));
-  renderer.setup(drawn, px, Math.round(innerWidth * dpr), Math.round(innerHeight * dpr));
-  sim = new Sim(cols, rows, drawn.map((d) => d.glyphs.length), random);
+  const g = geometry();
+  if (geom && ['dpr', 'px', 'w', 'h'].every((k) => g[k] === geom[k])) return false;
+  geom = g;
+  const drawn = sets.map((s) => drawable(s, g.px));
+  renderer.setup(drawn, g.px, g.w, g.h);
+  sim = new Sim(g.cols, g.rows, drawn.map((d) => d.glyphs.length), random);
   for (let t = 0; t < PREFILL_S; t += 1 / 30) sim.step(1 / 30);
   renderer.draw(sim);
+  return true;
 }
 
 function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000 || 0);
+  // Clamped at both ends: a long pause, and a first timestamp earlier than
+  // the performance.now() run() stored.
+  const dt = Math.min(0.1, Math.max(0, (now - last) / 1000));
   last = now;
   sim.step(dt);
   renderer.draw(sim);
@@ -73,10 +92,27 @@ function run() {
   raf = requestAnimationFrame(frame);
 }
 
+function rebuild() {
+  if (build()) run();
+}
+
+// A pixel ratio change at the same CSS size (a window moved to another
+// screen) fires no resize event; this media query does.
+function watchPixelRatio() {
+  matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`).addEventListener(
+    'change',
+    () => {
+      rebuild();
+      watchPixelRatio();
+    },
+    { once: true },
+  );
+}
+
 async function main() {
   const rt = parseRuntime(await loadRuntime());
   // A set this system has too few glyphs for is drawn as FALLBACK.
-  const px = cellSize().px;
+  const px = geometry().px;
   const missing = rt.sets.filter((n) => usableGlyphs(SETS[n], px).length < MIN_GLYPHS);
   sets = rt.sets.map((n) => (missing.includes(n) ? FALLBACK : SETS[n]));
 
@@ -93,18 +129,17 @@ async function main() {
   let resizeTimer = 0;
   addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      build();
-      run();
-    }, 150);
+    resizeTimer = setTimeout(rebuild, 150);
   });
+  watchPixelRatio();
   reduced.addEventListener('change', run);
 
-  // A tap or click starts a head where it landed.
+  // A tap or click starts a head where it landed (not in the still frame).
   canvasEl.addEventListener('pointerdown', (e) => {
     if (reduced.matches) return;
-    const { css } = cellSize();
-    sim.start(Math.min(sim.cols - 1, Math.floor(e.clientX / css)), Math.floor(e.clientY / css));
+    const col = Math.floor((e.clientX * geom.dpr) / geom.px);
+    const row = Math.floor((e.clientY * geom.dpr) / geom.px);
+    sim.start(Math.min(sim.cols - 1, Math.max(0, col)), Math.min(sim.rows - 1, Math.max(0, row)));
   });
 }
 

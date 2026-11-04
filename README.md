@@ -29,9 +29,10 @@ docker run --rm --read-only --tmpfs /tmp -p 8080:8080 \
 
 `phw-glyph-rain` shows which switches reached the container when it
 started: env `PHW_GLYPHS=music` → musical symbols, a file
-`/etc/phw/glyphs` containing `runes` (e.g. a secret mounted as a file) →
-runes, both → the two mixed. The values aren't secret, and the page and the
-log only ever say whether a switch matched, never what it held.
+`/etc/phw/glyphs` containing exactly `runes` (one LF or CRLF after it is
+fine; e.g. a secret mounted as a file) → runes, both → the two mixed. The
+values aren't secret, and the page and the log only ever say whether a
+switch matched, never what it held.
 
 ```sh
 printf 'runes\n' > glyphs
