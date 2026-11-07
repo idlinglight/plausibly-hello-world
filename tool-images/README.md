@@ -35,4 +35,4 @@ moved to `nginx/nginx-unprivileged` and brought 1.3.2-r1. The fix was most
 likely available under that name before the rule was written: upstream's
 2026-10-26 build would have been on Alpine 3.24.3, which shipped 1.3.2-r1.
 That build couldn't be inspected any more. The `nginxinc/` name we pinned
-was no longer updated (`.github/workflows/image-scan.md`, "When it fails").
+was no longer updated (`.github/workflows/image-scan.md`, "Base age").

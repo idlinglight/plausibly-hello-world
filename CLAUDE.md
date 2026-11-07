@@ -40,7 +40,7 @@ tool-images/          pin holders for images CI runs from run: steps, never
     _discover-images.yml    reusable: lists images/*/ (shared name rule)
     image-<name>.yml        thin caller per image (paths-filtered; notes: _build-image.md)
     build-image-branch.yml  on demand: one image or all, at any ref (sha- tags)
-    image-scan.yml          weekly CVE scan of every :latest; scanner-age on PRs
+    image-scan.yml          weekly CVE scan of every :latest; base age; scanner-age on PRs
     checks.yml              synced copies match shared/; every unit test
 ```
 
@@ -470,8 +470,9 @@ rebuilds an image, and no comment needs a rebuild to stay true.
   digest-pinned container, fails on **fixable** HIGH/CRITICAL. If its summary
   says the upstream tag still points at the pinned digest, the fix waits on
   upstream rebuilding — a digest bump can't help yet, and `RUN` is not allowed.
-  A tag that hasn't moved for weeks can mean upstream publishes under a new
-  name (`image-scan.md`, "When it fails").
+  The hint gives the upstream build's date. A base tag whose upstream build
+  is over 14 days old is a warning in every run, with or without a CVE: it
+  can mean upstream publishes under a new name (`image-scan.md`, "Base age").
 - **Ignore rules** live in `tool-images/grype/grype.yaml`: each pinned
   to vulnerability + package + exact installed version (so it stops matching
   on its own), with a short `reason`; the analysis, sources and the owner's
