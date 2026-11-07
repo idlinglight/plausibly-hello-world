@@ -1,7 +1,7 @@
 # Build context: this folder. Image contract (base, COPY-only, runtime,
 # endpoints): CLAUDE.md "Image contract". The base is pinned by its index
 # digest (all platforms); the tag beside it names the line it comes from.
-FROM nginxinc/nginx-unprivileged:1.30-alpine-slim@sha256:5d8bb9437d74a600ec5dbf90c035451c724dc33eac8d3a71078f6f8612c345f6
+FROM nginx/nginx-unprivileged:1.30-alpine-slim@sha256:016193c18ef1ce19dc2229d3305f69af1b05e0bc0e8fe6ee724a58bd305f3855
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
