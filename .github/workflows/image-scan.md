@@ -29,17 +29,50 @@ CVE scan of every published image. Editing this file triggers nothing; see
 Merge the pending Dependabot digest bump, else bump the digest by hand. If
 the summary says the upstream tag still points at the pinned digest, the
 fix waits on upstream rebuilding: a digest bump can't help yet, and `RUN apk
-upgrade` isn't allowed (COPY-only). Upstream (GitHub
-`nginx/docker-nginx-unprivileged`) rebuilt its images every Monday at 00:00
-UTC as of 2026-11. If the tag hasn't moved for weeks, check that upstream
-still publishes under the name we pin: on 2026-10-20 it moved from
-`nginxinc/nginx-unprivileged` to `nginx/nginx-unprivileged`, and Docker Hub
-shows the old name as archived. Until we switched (2026-11-07), the scan kept
-reporting "still the pinned digest", and Dependabot found nothing to bump.
-Accepted risks become narrow, reasoned
+upgrade` isn't allowed (COPY-only). The hint gives that build's date and
+age. If it adds "No upstream build for over N days", see "Base age" below
+before waiting. Accepted risks become narrow, reasoned
 ignore rules (`tool-images/grype/grype.yaml`, analysis in
 `tool-images/README.md`); every ignored match is listed in the summary with
 its reason.
+
+## Base age (`base-age`)
+
+On every run, this job reads the base tags from `images/*/Dockerfile`. For
+each tag, it looks up the digest the tag points to upstream now and that
+build's date (the linux/amd64 config's `created`). It shows them in a
+summary table (one row per tag: how many images pin it, and how many of
+those are on the current digest). It passes the result to the scan jobs
+for their base hint. A build older than `BASE_STALE_DAYS` (14) is a
+warning, both here and in each scan's hint. So is a tag that doesn't
+resolve. The job never fails the run, and the scan runs whatever its
+result. Without the lookup, the hint says "could not resolve".
+
+**Why**: a base can stop getting updates without anything breaking.
+Upstream (GitHub `nginx/docker-nginx-unprivileged`) moved its Docker Hub
+images from `nginxinc/nginx-unprivileged` to `nginx/nginx-unprivileged` on
+2026-10-20, and Docker Hub shows the old name as archived (last push
+2026-10-19). The tag we pinned never moved again: Dependabot found nothing
+to bump, and the scan's hint kept saying "still the pinned digest", i.e.
+"wait". That happened on 2026-10-29 (zlib, answered with an ignore rule
+although the fix was most likely already available under the new name) and
+on 2026-11-06 (musl). We switched on 2026-11-07 (#26).
+
+**Why 14 days**: upstream rebuilt its images every Monday at 00:00 UTC as
+of 2026-11. At the Friday scan, a current tag is about 4 days old, 11 after
+one missed build, and 18 after two. 14 tolerates one missed build. With
+this check, the archived tag would have been flagged at the 2026-11-06 scan
+(18 days), not yet at 2026-10-30 (11).
+
+**On the warning**: look at where upstream's workflows push now (the image
+names in its build workflows) and at the repository's status on Docker Hub.
+If upstream moved, switch the name: the Dockerfiles, the base lint in
+`_build-image.yml`, `dependabot.yml` and CLAUDE.md ("Base"), as in #26. If
+upstream only paused (failed builds, a release in progress), wait and keep
+an eye on the scan.
+
+**Docker Hub requests**: two manifest requests per base tag per run,
+anonymous. The scan jobs don't query Docker Hub themselves.
 
 ## Scanner choice and isolation
 

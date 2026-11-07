@@ -22,6 +22,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # A base tag whose current upstream build is older than this many days is
+  # flagged by base-age (a warning) and in each scan's base hint.
+  BASE_STALE_DAYS: 14
+
 jobs:
   # Pull requests: the pinned scanner (its release and the pinned digest's
   # build) must be at least 3 days old, before the scan runs it (why a check
@@ -75,10 +80,84 @@ jobs:
       contents: read
     uses: ./.github/workflows/_discover-images.yml
 
+  # Once per base tag in images/*/Dockerfile: the digest the tag points to
+  # upstream now and that build's date (linux/amd64 config `created`), as
+  # JSON for the scan's base hint and as a summary table. A build older than
+  # BASE_STALE_DAYS, or a tag that doesn't resolve, is a warning; this job
+  # never fails the run (why: image-scan.md, "Base age").
+  base-age:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      bases: ${{ steps.age.outputs.bases }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: images/*/Dockerfile
+          sparse-checkout-cone-mode: false
+
+      - id: age
+        name: Upstream build age per base tag
+        run: |
+          set -euo pipefail
+          declare -A pins   # base tag -> "image=pin " per Dockerfile
+          for df in images/*/Dockerfile; do
+            img=${df#images/}; img=${img%/Dockerfile}
+            ref=$(awk 'toupper($1) == "FROM" { print $2; exit }' "$df")
+            if [ -n "$ref" ]; then pins[${ref%@*}]+="$img=${ref#*@} "; fi
+          done
+          bases='{}'
+          {
+            echo "### Base images"
+            echo
+            echo "| Base tag | Upstream digest | Built (linux/amd64) | Age | Images pinning it |"
+            echo "| --- | --- | --- | ---: | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          mapfile -t tags < <(printf '%s\n' "${!pins[@]}" | sed '/^$/d' | sort)
+          for tag in "${tags[@]}"; do
+            upstream='' built='' age='' stale=false
+            if m=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' 2>/dev/null); then
+              upstream=$(jq -r '.digest // empty' <<<"$m")
+              amd64=$(jq -r 'if .manifests then ([.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")][0].digest // empty) else (.digest // empty) end' <<<"$m")
+              if [ -n "$amd64" ]; then
+                built=$(docker buildx imagetools inspect "${tag%:*}@$amd64" --format '{{json .Image}}' 2>/dev/null | jq -r '.created // empty' || true)
+              fi
+            fi
+            # Age in whole days; a missing, unparsable or pre-2000 date
+            # (an epoch-zero reproducible build) leaves it unknown.
+            if t=$(jq -rn --arg c "$built" '$c | sub("\\.[0-9]+"; "") | fromdateiso8601' 2>/dev/null) && (( t > 946684800 )); then
+              age=$(( ($(date -u +%s) - t) / 86400 ))
+              if (( age > BASE_STALE_DAYS )); then stale=true; fi
+            fi
+            bases=$(jq -c --arg t "$tag" --arg u "$upstream" --arg b "$built" --arg a "$age" --argjson s "$stale" \
+              '.[$t] = {upstream: $u, built: $b, age: (if $a == "" then null else ($a | tonumber) end), stale: $s}' <<<"$bases")
+            n=0 current=0
+            for e in ${pins[$tag]}; do
+              n=$((n + 1))
+              if [ "${e#*=}" = "$upstream" ]; then current=$((current + 1)); fi
+            done
+            if [ -z "$upstream" ]; then
+              echo "::warning title=Base not resolved::$tag: could not resolve the tag upstream"
+              echo "| \`$tag\` | could not resolve | – | – | $n |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            flag=''
+            if [ "$stale" = true ]; then flag=" (**over $BASE_STALE_DAYS**)"; fi
+            echo "| \`$tag\` | \`${upstream:0:19}…\` | ${built%%T*} | ${age:-?}${age:+ d}$flag | $n, $current of them on the current digest |" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$stale" = true ]; then
+              echo "::warning title=Base not rebuilt::$tag: upstream's current build is from ${built%%T*}, $age days ago (over $BASE_STALE_DAYS) — check that upstream still publishes under this name (image-scan.md, \"Base age\")"
+            fi
+          done
+          echo "bases=$bases" >> "$GITHUB_OUTPUT"
+
   scan:
     # After scanner-age on pull requests (skipped elsewhere): a scanner too
-    # new to pin is never run.
-    needs: [discover, scanner-age]
+    # new to pin is never run. base-age only feeds the base hint: the scan
+    # runs whatever its result.
+    needs: [discover, scanner-age, base-age]
     if: >-
       !cancelled() && needs.discover.result == 'success' && needs.discover.outputs.images != '[]'
       && (needs.scanner-age.result == 'success' || needs.scanner-age.result == 'skipped')
@@ -223,20 +302,32 @@ jobs:
           TAG: ${{ steps.probe.outputs.tag }}
           DIGEST: ${{ steps.probe.outputs.digest }}
           AMD64: ${{ steps.probe.outputs.amd64 }}
+          BASES: ${{ needs.base-age.outputs.bases }}
         run: |
           set -euo pipefail
           j="$RUNNER_TEMP/scan/grype.json"
           # Is a fix even available to us? Compare the Dockerfile's pinned
-          # base digest with what its tag points to upstream right now.
+          # base digest with what its tag points to upstream right now
+          # (base-age's lookup; empty if that job failed).
           base=$(awk 'toupper($1) == "FROM" { print $2; exit }' "images/$IMAGE/Dockerfile")
           base_tag=${base%@*}; base_pin=${base#*@}
-          upstream=$(docker buildx imagetools inspect "$base_tag" 2>/dev/null | awk '$1 == "Digest:" { print $2; exit }' || true)
+          info=$(jq -c --arg t "$base_tag" '.[$t] // {}' <<<"${BASES:-null}" 2>/dev/null || echo '{}')
+          upstream=$(jq -r '.upstream // ""' <<<"$info")
+          built=$(jq -r '(.built // "" | split("T")[0]) // ""' <<<"$info")
+          age=$(jq -r '.age // ""' <<<"$info")
+          stale=$(jq -r '.stale // false' <<<"$info")
+          when=''
+          if [ -n "$built" ] && [ -n "$age" ]; then when=", built $built ($age days ago)"
+          elif [ -n "$built" ]; then when=", built $built"; fi
           if [ -z "$upstream" ]; then
             base_hint="could not resolve \`$base_tag\` upstream"
           elif [ "$upstream" = "$base_pin" ]; then
-            base_hint="\`$base_tag\` upstream is still the pinned digest — a fix needs a new upstream build (or a deliberate channel move)"
+            base_hint="\`$base_tag\` upstream is still the pinned digest$when — a fix needs a new upstream build (or a deliberate channel move)"
           else
-            base_hint="\`$base_tag\` upstream has a newer digest \`$upstream\` — expect a Dependabot bump (after its 3-day cooldown) or bump manually"
+            base_hint="\`$base_tag\` upstream has a newer digest \`$upstream\`$when — expect a Dependabot bump (after its 3-day cooldown) or bump manually"
+          fi
+          if [ "$stale" = true ]; then
+            base_hint+=". No upstream build for over $BASE_STALE_DAYS days: check that upstream still publishes under this name (image-scan.md, \"Base age\")"
           fi
           # "fixable" = the distro/ecosystem has a fixed version
           defs='
