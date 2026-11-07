@@ -28,8 +28,15 @@ CVE scan of every published image. Editing this file triggers nothing; see
 
 Merge the pending Dependabot digest bump, else bump the digest by hand. If
 the summary says the upstream tag still points at the pinned digest, the
-fix waits on nginxinc rebuilding: a digest bump can't help yet, and `RUN apk
-upgrade` isn't allowed (COPY-only). Accepted risks become narrow, reasoned
+fix waits on upstream rebuilding: a digest bump can't help yet, and `RUN apk
+upgrade` isn't allowed (COPY-only). Upstream (GitHub
+`nginx/docker-nginx-unprivileged`) rebuilt its images every Monday at 00:00
+UTC as of 2026-11. If the tag hasn't moved for weeks, check that upstream
+still publishes under the name we pin: on 2026-10-20 it moved from
+`nginxinc/nginx-unprivileged` to `nginx/nginx-unprivileged`, and Docker Hub
+shows the old name as archived. Until we switched (2026-11-07), the scan kept
+reporting "still the pinned digest", and Dependabot found nothing to bump.
+Accepted risks become narrow, reasoned
 ignore rules (`tool-images/grype/grype.yaml`, analysis in
 `tool-images/README.md`); every ignored match is listed in the summary with
 its reason.

@@ -49,8 +49,10 @@ tool-images/          pin holders for images CI runs from run: steps, never
 Every image under `images/` must satisfy this — CI lints and smoke-tests it,
 and deployments can rely on it without per-image knowledge:
 
-- **Base**: `nginxinc/nginx-unprivileged:<stable>-alpine-slim`, digest-pinned
+- **Base**: `nginx/nginx-unprivileged:<stable>-alpine-slim`, digest-pinned
   (`tag@sha256:<index digest>`). Stable channel only (even minor, e.g. 1.30).
+  Docker Hub's `nginxinc/nginx-unprivileged` (the same images) is archived:
+  its last push was on 2026-10-19, after which upstream moved to `nginx/`.
 - **Runtime**: uid **101** (non-root), listens on **8080** (IPv4), works with a
   read-only root filesystem plus a writable `/tmp` (`docker run --read-only
   --tmpfs /tmp`; k8s: `readOnlyRootFilesystem` + an emptyDir on `/tmp`).
@@ -467,7 +469,9 @@ rebuilds an image, and no comment needs a rebuild to stay true.
 - **Weekly scan** (Friday evening, after Dependabot's run): Grype as a
   digest-pinned container, fails on **fixable** HIGH/CRITICAL. If its summary
   says the upstream tag still points at the pinned digest, the fix waits on
-  nginxinc rebuilding — a digest bump can't help yet, and `RUN` is not allowed.
+  upstream rebuilding — a digest bump can't help yet, and `RUN` is not allowed.
+  A tag that hasn't moved for weeks can mean upstream publishes under a new
+  name (`image-scan.md`, "When it fails").
 - **Ignore rules** live in `tool-images/grype/grype.yaml`: each pinned
   to vulnerability + package + exact installed version (so it stops matching
   on its own), with a short `reason`; the analysis, sources and the owner's
