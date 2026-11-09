@@ -57,8 +57,8 @@ jobs:
           mapfile -t froms < <(awk 'toupper($1) == "FROM" { print $2 }' "$df")
           if [ "${#froms[@]}" -ne 1 ]; then
             err "expected exactly one FROM, found ${#froms[@]}"
-          elif [[ ! "${froms[0]}" =~ ^nginxinc/nginx-unprivileged:([0-9]+)\.([0-9]+)(\.[0-9]+)?-alpine-slim@sha256:[0-9a-f]{64}$ ]]; then
-            err "base must be nginxinc/nginx-unprivileged:<stable>-alpine-slim@sha256:<digest>, got '${froms[0]}'"
+          elif [[ ! "${froms[0]}" =~ ^nginx/nginx-unprivileged:([0-9]+)\.([0-9]+)(\.[0-9]+)?-alpine-slim@sha256:[0-9a-f]{64}$ ]]; then
+            err "base must be nginx/nginx-unprivileged:<stable>-alpine-slim@sha256:<digest>, got '${froms[0]}'"
           elif (( 10#${BASH_REMATCH[2]} % 2 )); then
             err "nginx ${BASH_REMATCH[1]}.${BASH_REMATCH[2]} is a mainline (odd) minor — stable channel only"
           fi

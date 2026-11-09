@@ -14,7 +14,7 @@ files that run CI".
 | `_build-image.yml` | called | verify (lint, build, smoke test); publish (push, publish-skip) | [_build-image.md](_build-image.md) |
 | `build-image-branch.yml` | dispatch | one image or all, at any ref: test tags | [build-image-branch.md](build-image-branch.md) |
 | `_discover-images.yml` | called | the image folders as a JSON list | [_discover-images.md](_discover-images.md) |
-| `image-scan.yml` | Fridays 19:30 Vienna; dispatch; PRs touching it or the scanner pin | CVE scan of every published image; `scanner-age` | [image-scan.md](image-scan.md) |
+| `image-scan.yml` | Fridays 19:30 Vienna; dispatch; PRs touching it or the scanner pin | CVE scan of every published image; `base-age`; `scanner-age` | [image-scan.md](image-scan.md) |
 | `checks.yml` | PRs and pushes to main touching `shared/` or `images/` | synced copies match `shared/`; every unit test | [checks.md](checks.md) |
 
 Also: [../dependabot.md](../dependabot.md) (Dependabot), and

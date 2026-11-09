@@ -28,19 +28,11 @@ stops matching on its own once the package moves; its `reason` is shown in
 every scan summary. Delete a rule once its version is gone from all images
 (CLAUDE.md, "Ignore rules").
 
-### CVE-2026-85091 (zlib 1.3.2-r0)
-
-Decided by the repository owner on 2026-10-29.
-
-- **The bug** is in zlib's gzFile API: `gz_vacate()`, reached through
-  non-blocking `gzwrite`/`gzprintf`.
-- **Why it doesn't apply here**: nginx uses only the deflate/inflate stream
-  API, and the nginx 1.30.6 binary doesn't import `gzwrite`, so no request
-  path reaches the bug. The only other zlib users in the image are
-  apk-tools/libapk, which never run.
-- **Fix status**: fixed in Alpine 1.3.2-r1. As of 2026-10-29, upstream
-  `nginx-unprivileged:1.30-alpine-slim` hadn't been rebuilt with it (still
-  the pinned digest). The rule stops matching once a base bump brings
-  1.3.2-r1.
-- **Sources**: https://security.alpinelinux.org/vuln/CVE-2026-85091,
-  https://www.vulncheck.com/advisories/zlib-1.3.1.2-through-1.3.2-heap-buffer-overflow-via-gz-vacate
+There are no rules at the moment. Past rules and their analyses are in
+this file's git history. The last one, CVE-2026-85091 (zlib 1.3.2-r0,
+decided on 2026-10-29), was removed on 2026-11-07. The base image had
+moved to `nginx/nginx-unprivileged` and brought 1.3.2-r1. The fix was most
+likely available under that name before the rule was written: upstream's
+2026-10-26 build would have been on Alpine 3.24.3, which shipped 1.3.2-r1.
+That build couldn't be inspected any more. The `nginxinc/` name we pinned
+was no longer updated (`.github/workflows/image-scan.md`, "Base age").
