@@ -467,9 +467,14 @@ rebuilds an image, and no comment needs a rebuild to stay true.
   branch: `gh workflow run build-image-branch.yml --ref <branch> -f
   image=snake`.
 - **Weekly scan** (Friday evening, after Dependabot's run): Grype as a
-  digest-pinned container, fails on **fixable** HIGH/CRITICAL. If its summary
+  digest-pinned container, one job for all images (a finding is listed
+  once, with its images), fails on **fixable** HIGH/CRITICAL. If its summary
   says the upstream tag still points at the pinned digest, the fix waits on
   upstream rebuilding — a digest bump can't help yet, and `RUN` is not allowed.
+  If upstream has a newer digest, a failing scan scans that base too and
+  says whether a bump would fix the findings: "fixable" only means the
+  distro has a fixed package, not that any base image carries it
+  (`image-scan.md`, "When it fails").
   The hint gives the upstream build's date. A base tag whose upstream build
   is over 14 days old is a warning in every run, with or without a CVE: it
   can mean upstream publishes under a new name (`image-scan.md`, "Base age").
