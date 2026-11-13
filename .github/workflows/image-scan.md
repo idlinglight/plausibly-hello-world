@@ -36,6 +36,17 @@ ignore rules (`tool-images/grype/grype.yaml`, analysis in
 `tool-images/README.md`); every ignored match is listed in the summary with
 its reason.
 
+A newer upstream digest doesn't have to carry the fix, whatever the hint
+says: the scan only compares digests. "Fixable" means Alpine's package
+repository has a fixed version. The nginx image has the packages of the
+`alpine` image it was built on (observed 2026-11-13), so the fix reaches it
+only after Alpine publishes a new image and nginx rebuilds on that. Check
+before bumping by hand: `docker run --rm --entrypoint apk <base>@<digest>
+info -v` lists the packages. Seen on 2026-11-13 with zlib 1.4-r0: in Alpine
+3.24's repository since 2026-11-06, in neither upstream's 2026-11-12 build
+nor `alpine:3.24`. It was answered with an ignore rule, as the finding
+didn't apply.
+
 ## Base age (`base-age`)
 
 On every run, this job reads the base tags from `images/*/Dockerfile`. For
