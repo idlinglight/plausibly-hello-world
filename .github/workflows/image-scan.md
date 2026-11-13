@@ -12,8 +12,9 @@ CVE scan of every published image. Editing this file triggers nothing; see
   notifies the repository owner, as their notification settings say: that
   is the alert (CLAUDE.md, "Who hears about a failed scheduled scan").
 - **Schedule**: Fridays 19:30 Europe/Vienna (`timezone` on `schedule`, per
-  GitHub's docs as of 2026-10-29; DST-safe). That is 30 min after
-  Dependabot's weekly run (19:00), so a fix-carrying bump PR is usually
+  GitHub's docs as of 2026-10-29; DST-safe). That is after Dependabot's
+  runs of that day (base images on weekdays at 16:05, the rest Fridays
+  19:00; `.github/dependabot.md`), so a fix-carrying bump PR is usually
   already open when the scan reports.
 - **Dispatch**: `-f tag=<tag>` scans that tag of every image (default
   `latest`).

@@ -6,8 +6,8 @@ digest-pinned (the workflow checks).
 
 **Why Dockerfiles**: Dependabot's github-actions ecosystem only sees
 `uses:` lines, so an image referenced from a `run:` step would never be
-bumped. As a `FROM` line it gets the same weekly docker-ecosystem PRs as
-the image folders, with the cooldown where the registry allows it.
+bumped. As a `FROM` line it gets weekly docker-ecosystem PRs, as the
+image folders get theirs, with the cooldown where the registry allows it.
 
 **Why here and not under `.github/`**: Dependabot can't open PRs that
 change files under `.github/` for any ecosystem but github-actions

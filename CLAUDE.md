@@ -505,9 +505,11 @@ rebuilds an image, and no comment needs a rebuild to stay true.
   `scanner-age` job checks the scanner's release and digest build dates on
   every PR that changes the scanner pin or the scan.
 - Actions are SHA-pinned with a `# vX.Y.Z` comment; images digest-pinned.
-- Dependabot version updates: weekly, **Friday 19:00 Europe/Vienna**, 3-day
-  cooldown for every ecosystem. Per-dependency rules: `.github/dependabot.yml`;
-  what is off and why, review notes per bump kind: `.github/dependabot.md`.
+- Dependabot version updates: base images on **weekdays at 16:05
+  Europe/Vienna** (a trial since 2026-11-13), tool-image pins and actions
+  weekly, **Friday 19:00**; 3-day cooldown for every ecosystem.
+  Per-dependency rules: `.github/dependabot.yml`; what is off and why, the
+  trial, review notes per bump kind: `.github/dependabot.md`.
 - Dependabot alerts and security-update PRs are deliberately off
   (security-update PRs skip the cooldown); base images never get alerts
   anyway — the weekly scan covers that gap.

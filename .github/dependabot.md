@@ -14,13 +14,33 @@ CLAUDE.md, "Supply-chain policy". Workflow notes:
   the cooldown and bump straight to the newest version, which
   systematically breaks the 3-day rule). Base images never get alerts at
   all; the weekly scan covers that (`workflows/image-scan.md`).
+- **Schedules**: base images (`/images/*`) on weekdays at 16:05
+  Europe/Vienna (Dependabot's `daily` is Monday to Friday; the time follows
+  Vienna's clock through summer time); tool-image pins and actions weekly,
+  Fridays 19:00. The weekday run is a trial since 2026-11-13 (owner): until
+  then base images were weekly too. With the weekly run, a base tag
+  re-pushed less than 3 days before Friday 19:00 waited another week
+  (2026-11-13: upstream's extra build of Thursday 2026-11-12). Now a bump
+  comes on the first weekday after the tag is 3 days old. What to expect:
+  upstream rebuilt on Mondays at 00:00 UTC as of 2026-11, and every
+  re-push restarts the 3 days, so the regular bump should arrive on
+  Thursdays at about 16:05 (before: Fridays 19:00), and a bump for an
+  extra build only if the next Monday build doesn't come first. To watch:
+  whether in-week PRs appear at all and get merged in the week. Going
+  back is the `schedule` of the first docker entry.
+- **Why two docker entries**: the tool-image pins stay weekly. grype has
+  no cooldown (ghcr.io, below), so a weekday run would open its PR the day
+  after each release, held red by `scanner-age` for up to 3 days; a
+  BuildKit bump republishes every image. Two entries of one ecosystem are
+  allowed as long as their directories differ.
 - **Cooldown** is supported for github-actions (default-days only, no
   semver-*-days; GitHub's docs re-checked 2026-10-29). For docker it works
   where the registry gives publication dates: docker.io yes, ghcr.io no
   (the grype pin; `scanner-age` in `workflows/image-scan.md`).
 - **One PR per dependency**: the docker updates are grouped by dependency
-  name, so a base-digest bump for every image folder arrives as one PR,
-  while nginx, BuildKit and grype stay separate PRs. github-actions has no
+  name in both docker entries, so a base-digest bump for every image
+  folder arrives as one PR, while nginx, BuildKit and grype stay separate
+  PRs. github-actions has no
   groups: one PR per action.
 - **`.github/` is out of reach** for every ecosystem but github-actions:
   creating a PR that changes files under `.github/` fails with 400 "The
