@@ -2,13 +2,4 @@
 # Each rule names vulnerability + package + exact installed version, so it
 # stops matching once the package moves; `reason` shows in every scan
 # summary. Each rule's analysis, sources and decision: tool-images/README.md.
-ignore:
-  - vulnerability: CVE-2026-4738
-    package:
-      name: zlib
-      version: 1.3.2-r1
-      type: apk
-    reason: >-
-      contrib/infback9 only (the Deflate64 decoder), which isn't built into
-      libz; nginx uses the deflate/inflate stream functions; apk-tools never
-      runs. Owner decision 2026-11-13.
+ignore: []
