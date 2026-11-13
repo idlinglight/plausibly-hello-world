@@ -28,8 +28,10 @@ CVE scan of every published image. Editing this file triggers nothing; see
   image is matched against the same DB. Every image is still scanned: they
   can differ, as each is published on its own. The summary lists a finding
   once, with the images that have it, and the run fails once. An image
-  that can't be resolved (a refused token, an unexpected registry answer)
-  doesn't stop the others; it fails the run in the report. Before, a
+  that can't be resolved (a refused token, an unexpected registry answer),
+  pulled or scanned doesn't stop the others: it is listed as not scanned
+  and fails the run in the report, which also runs after a failed pull or
+  scan step. Before, a
   finding in the shared base failed one job per image, and stopping at the
   first failure would have saved nothing: the jobs started together.
 
@@ -56,9 +58,12 @@ apply.
 
 So when the gate fails and a base tag has a newer digest upstream than the
 Dockerfiles pin, the scan pulls that digest (linux/amd64) and scans it
-too, with the same rules. The hint then says whether it still has the
-gate's findings (same vulnerability, package and version): all of them (a
-bump wouldn't help), some, or none (merge the bump). If that base can't be
+too, with the same rules. The hint then says whether that base would pass
+the gate: it has no fixable HIGH/CRITICAL finding (merge the bump), still
+has all of the images' ones (a bump wouldn't help), or has some of them or
+others of its own (a bump alone wouldn't pass the scan). Findings are
+compared by vulnerability and package, not by version: a newer package
+revision that is still vulnerable counts as still there. If that base can't be
 pulled or scanned, the hint says it wasn't scanned: check by hand before
 bumping, `docker run --rm --entrypoint apk <base>@<digest> info -v` lists
 its packages. Without a failing gate the newer digest isn't looked at.
@@ -115,10 +120,12 @@ fails.
   aren't on the repository's Actions allowlist anyway. Grype/Anchore: no
   known incident as of 2026-10-29.
 - **Isolation**: the only action in the scan job is `actions/checkout`.
-  Each image is pulled on the host and handed to the scanner as a
-  read-only tarball, one scanner container per image; the scanner container gets its config (read-only), a DB cache
-  folder and network for the DB download: no credentials, no docker
-  socket, no workspace.
+  The scanner runs in containers without credentials, the docker socket
+  or the workspace. One downloads the DB (`grype db update`): it has
+  network and the DB cache folder, and sees no image. Then one container
+  per image scans it: the image is pulled on the host and handed over as
+  a read-only tarball, with the config (read-only) and that DB, and
+  without network (`--network none`; the scans don't update the DB).
 - **Only linux/amd64** is scanned: arm64 is built from the same base index
   digest, i.e. the same Alpine package set. The amd64 manifest (not the
   index) is pulled, so `docker save` works with the classic and the
