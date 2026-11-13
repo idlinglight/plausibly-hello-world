@@ -1,23 +1,19 @@
 # Dependabot version updates. Notes: dependabot.md, beside this file.
 version: 2
 updates:
-  # Base images (images/*/Dockerfile) and the tool-image pins
-  # (tool-images/*/Dockerfile, never built).
+  # Base images (images/*/Dockerfile).
   - package-ecosystem: docker
     directories:
       - /images/*          # a glob: new folders join on their own
-      - /tool-images/*
     schedule:
-      interval: weekly
-      day: friday
-      time: "19:00"
+      interval: daily
+      time: "16:05"
       timezone: Europe/Vienna
     cooldown:
       default-days: 3
     groups:
       # One PR per dependency across ALL folders: a base-digest bump for
-      # N image folders arrives as one PR (and one review), while nginx,
-      # buildkit and grype bumps stay separate PRs.
+      # N image folders arrives as one PR (and one review).
       docker:
         group-by: dependency-name
     ignore:
@@ -28,6 +24,22 @@ updates:
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+
+  # The tool-image pins (tool-images/*/Dockerfile, never built).
+  - package-ecosystem: docker
+    directories:
+      - /tool-images/*
+    schedule:
+      interval: weekly
+      day: friday
+      time: "19:00"
+      timezone: Europe/Vienna
+    cooldown:
+      default-days: 3
+    groups:
+      # One PR per dependency: buildkit and grype bumps stay separate PRs.
+      docker:
+        group-by: dependency-name
 
   # Actions are SHA-pinned with version comments; Dependabot bumps both.
   - package-ecosystem: github-actions
