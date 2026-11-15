@@ -5,14 +5,14 @@ But still nice enough to look at to keep deployed on "medium" timescales.
 
 | Image | What it shows | Live |
 | --- | --- | --- |
-| `ghcr.io/idlinglight/phw-gradient-ripple` | A slowly drifting gradient; clicks and taps make water ripples. | [gradient.phw.salient.at](https://gradient.phw.salient.at) |
-| `ghcr.io/idlinglight/phw-snake` | A small snake game that plays itself until someone takes over (keys, swipes, taps). | [snake.phw.salient.at](https://snake.phw.salient.at) |
-| `ghcr.io/idlinglight/phw-europe-quiz` | A map quiz: find Europe's countries by name, then by their capitals (click or tap; zoom and pan). | [europe-quiz.phw.salient.at](https://europe-quiz.phw.salient.at) |
-| `ghcr.io/idlinglight/phw-vienna-districts` | A map quiz in German: find Vienna's 23 districts by name, then by number (click or tap; zoom and pan). | [vienna-districts.phw.salient.at](https://vienna-districts.phw.salient.at) |
-| `ghcr.io/idlinglight/phw-japan-quiz` | A map quiz: find Japan's main islands, its 8 regions and 47 prefectures, then the prefectures by their capitals, each name also in kanji and hiragana; the asked name links to its Wikipedia article (click or tap; zoom and pan). | [japan-quiz.phw.salient.at](https://japan-quiz.phw.salient.at) |
-| `ghcr.io/idlinglight/phw-world-quiz` | A map quiz on Buckminster Fuller's Dymaxion (Airocean) projection: find the world's 197 countries by name, then by their capitals, first without the smallest states, then with all of them; the asked name links to its Wikipedia article (click or tap; zoom and pan; pick a round on the card). | [world-quiz.phw.salient.at](https://world-quiz.phw.salient.at) |
-| `ghcr.io/idlinglight/phw-south-america-quiz` | A map quiz: find South America's countries and French Guiana by name, then by their capitals (click or tap; zoom and pan). | [south-america-quiz.phw.salient.at](https://south-america-quiz.phw.salient.at) |
-| `ghcr.io/idlinglight/phw-east-asia-quiz` | A map quiz: find the countries of East and Southeast Asia by name, then by their capitals (click or tap; zoom and pan). | [east-asia-quiz.phw.salient.at](https://east-asia-quiz.phw.salient.at) |
+| `ghcr.io/idlinglight/phw-gradient-ripple` | A slowly drifting gradient; clicks and taps make water ripples. | [gradient-ripple.demo.salient.at](https://gradient-ripple.demo.salient.at) |
+| `ghcr.io/idlinglight/phw-snake` | A small snake game that plays itself until someone takes over (keys, swipes, taps). | [snake.demo.salient.at](https://snake.demo.salient.at) |
+| `ghcr.io/idlinglight/phw-europe-quiz` | A map quiz: find Europe's countries by name, then by their capitals (click or tap; zoom and pan). | [europe.quiz.salient.at](https://europe.quiz.salient.at) |
+| `ghcr.io/idlinglight/phw-vienna-districts` | A map quiz in German: find Vienna's 23 districts by name, then by number (click or tap; zoom and pan). | [bezirks.quiz.salient.at](https://bezirks.quiz.salient.at) |
+| `ghcr.io/idlinglight/phw-japan-quiz` | A map quiz: find Japan's main islands, its 8 regions and 47 prefectures, then the prefectures by their capitals, each name also in kanji and hiragana; the asked name links to its Wikipedia article (click or tap; zoom and pan). | [japan.quiz.salient.at](https://japan.quiz.salient.at) |
+| `ghcr.io/idlinglight/phw-world-quiz` | A map quiz on Buckminster Fuller's Dymaxion (Airocean) projection: find the world's 197 countries by name, then by their capitals, first without the smallest states, then with all of them; the asked name links to its Wikipedia article (click or tap; zoom and pan; pick a round on the card). | [world.quiz.salient.at](https://world.quiz.salient.at) |
+| `ghcr.io/idlinglight/phw-south-america-quiz` | A map quiz: find South America's countries and French Guiana by name, then by their capitals (click or tap; zoom and pan). | [south-america.quiz.salient.at](https://south-america.quiz.salient.at) |
+| `ghcr.io/idlinglight/phw-east-asia-quiz` | A map quiz: find the countries of East and Southeast Asia by name, then by their capitals (click or tap; zoom and pan). | [east-asia.quiz.salient.at](https://east-asia.quiz.salient.at) |
 | `ghcr.io/idlinglight/phw-glyph-rain` | Glyphs raining down and fading, Egyptian hieroglyphs by default; two switches read at startup change the set (below). Meant to run behind an auth layer, so there's no public instance. | — |
 
 The live instances are run by the repo owner and may lag `main`:
