@@ -446,8 +446,9 @@ rebuilds an image, and no comment needs a rebuild to stay true.
   first publish creates `phw-<name>` already public and linked to this repo
   (observed 2026-10-31): nothing to set in the package settings. The
   README's "Live" column lists the owner's public instances
-  (`<short>.phw.salient.at`); the owner fills it in after deploying, so a
-  new image's row leaves it empty until then. Hostnames only there: no
+  (`<short>.quiz.salient.at` for map quizzes, `<short>.demo.salient.at`
+  for the rest); the owner fills it in after deploying, so a new image's
+  row leaves it empty until then. Hostnames only there: no
   hosting provider or deploy details in the repo.
 - PRs run **verify** (lint, build both platforms, smoke test) — base-image
   and BuildKit bumps are proven before merge. A push to main verifies and
