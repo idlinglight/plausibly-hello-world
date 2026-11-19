@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { COUNTRIES, MAP } from '../site/countries.js';
 import config from '../site/config.js';
 import { checkTexts } from '../site/contract.js';
+import { wikipediaUrl } from '../site/wiki.js';
 
 const ids = COUNTRIES.map((c) => c.id);
 const byId = Object.fromEntries(COUNTRIES.map((c) => [c.id, c]));
@@ -67,6 +68,19 @@ check('config: rounds countries, capitals (<html data-round>; misclick labels)',
   assert.equal(config.rounds[1].ask(byId.SGP), 'Singapore');
   assert.equal(config.rounds[0].done({ total: 18, misses: 1 }), 'All 18 countries found · 1 misclick. Now the capitals: find each one\'s country.');
   assert.equal(config.rounds[1].done({ total: 18, misses: 0 }), 'All 18 capitals found · no misclicks. Countries again, in a new order.');
+});
+
+check('links: the capitals round links the capital\'s English Wikipedia article, the countries round nothing', () => {
+  // checkTexts (above) has called link for every asked capital: an https URL each
+  assert.deepEqual(config.rounds.map((r) => [r.key, typeof r.link]), [['countries', 'undefined'], ['capitals', 'function']]);
+  const link = config.rounds[1].link;
+  assert.equal(link({ capital: 'Shown', capitalWiki: 'Title B' }), wikipediaUrl('en', 'Title B'), 'the title, not the shown name');
+  assert.equal(link(byId.BRN), 'https://en.wikipedia.org/wiki/Bandar_Seri_Begawan');
+  assert.equal(link(byId.SGP), 'https://en.wikipedia.org/wiki/Singapore');
+  assert.equal(new Set(COUNTRIES.map((c) => c.capitalWiki)).size, 18);
+  // a title as mapgen.wiki_title_error wants it (build_map.py stops otherwise): spaces, no underscore
+  for (const c of COUNTRIES) assert.match(c.capitalWiki, /^[^_\s]+( [^_\s]+)*$/, c.id);
+  assert.equal(config.text.link('Hanoi'), 'Hanoi on Wikipedia (opens a new tab)');
 });
 
 check('index.html: data-quiz names this image; map.svg has a shape per country', () => {

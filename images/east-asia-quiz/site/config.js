@@ -3,7 +3,12 @@
 // tools/build_map.py) and every text the engine shows. Static text (title,
 // help, button labels before the script runs) is in index.html. Contract:
 // shared/map-quiz/README.md.
+//
+// In the capitals round the asked capital links to its English Wikipedia
+// article (titles from countries.js: capitalWiki). The countries round has
+// no link.
 import { MAP, COUNTRIES } from './countries.js';
+import { wikipediaUrl } from './wiki.js';
 
 const misclicks = (n) => (n ? ` · ${n} misclick${n === 1 ? '' : 's'}` : ' · no misclicks');
 
@@ -25,6 +30,7 @@ export default {
       prompt: 'Find the country whose capital is',
       ask: (c) => c.capital,
       miss: (c) => `${c.name} · ${c.capital}`,
+      link: (c) => wikipediaUrl('en', c.capitalWiki),
       done: ({ total, misses }) => `All ${total} capitals found${misclicks(misses)}. Countries again, in a new order.`,
     },
   ],
@@ -41,6 +47,7 @@ export default {
       label: `Switch to ${other} theme`,
       title: override ? `Back to the system setting (${other})` : `Switch to the ${other} theme`,
     }),
+    link: (asked) => `${asked} on Wikipedia (opens a new tab)`,
   },
   // Japan reaches the window's top-right corner, where the card sits in
   // landscape: fit the full view left of the card and the controls. The

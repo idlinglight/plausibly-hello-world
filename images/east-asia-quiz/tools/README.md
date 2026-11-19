@@ -6,12 +6,13 @@ copies `site/` only); its outputs are committed:
 - `site/map.svg`: one `<path id="<ADM0_A3>">` per quiz country inside
   `<g id="countries">`, plus `<path id="land">` (all context land, merged).
   No styling in the file: the engine's `style.css` does that.
-- `site/countries.js`: names, capitals, projected marker points, and the
-  map's window/extent (`MAP`). `site/config.js` (hand-written) hands it
+- `site/countries.js`: names, capitals, the capitals' Wikipedia titles,
+  projected marker points, and the map's window/extent (`MAP`). `site/config.js` (hand-written) hands it
   and the English texts to the shared map-quiz engine.
 
 Both carry a "generated, don't edit" header. Edit `countries.json` (codes,
-names, capitals, marker points: the single source of truth) or
+names, capitals, the capitals' Wikipedia titles, marker points: the
+single source of truth) or
 `build_map.py`, then regenerate.
 
 `build_map.py` is this image's adapter: Natural Earth, the fix-ups, the
@@ -135,6 +136,42 @@ Singapore, Thailand, Timor-Leste, Vietnam, Palau. Choices:
 - **Singapore**: capital Singapore. Same-name capitals are asked like
   europe-quiz asks Luxembourg or Monaco ("Find the country whose capital
   is Singapore").
+
+## Wikipedia titles
+
+In the capitals round the card links the asked capital to its English
+Wikipedia article (the link is built in `site/config.js`); the countries
+round has no link (owner's request, 2026-11-19: the capitals are the
+ones to look up). `countries.json` holds the title as `capital_wiki` on
+all 18 entries, stored exactly as the article is titled (spaces, no
+redirect); `build_map.py` passes it into `countries.js` (`capitalWiki`)
+and stops if one is missing, malformed (`mapgen.wiki_title_error`) or
+duplicated; `data.test.mjs` checks the links.
+
+Checked on 2026-11-19 against the live English Wikipedia and Wikidata
+with `wiki_titles.py`, by hand: it needs the network, so neither the
+build nor CI runs it (the shared part is
+`shared/map-quiz/tools/wikicheck.py`):
+
+```sh
+python3 -I images/east-asia-quiz/tools/wiki_titles.py /tmp/ne/ne_50m_admin_0_countries.geojson            # check; exit 1 on a failure
+python3 -I images/east-asia-quiz/tools/wiki_titles.py /tmp/ne/ne_50m_admin_0_countries.geojson --suggest  # propose titles from Wikidata
+```
+
+Each title must exist, be canonical (Wikipedia neither normalises nor
+redirects it), not be a disambiguation page, and belong to an item
+Wikidata records as a current capital of the country (the P36 of Natural
+Earth's `WIKIDATAID` of the feature, or the city's P1376; not
+deprecated, no end date). Result: 18 of 18 verified, each by its
+country's P36, and each title is the capital's name as the quiz shows
+it. Notes:
+
+- **Singapore** is its own capital on Wikidata, so the link goes to the
+  state's article.
+- **Jakarta**, **Kuala Lumpur**, **Ngerulmud**: Wikidata's current
+  capitals agree with the choices under "Names and capitals". When
+  Indonesia's capital moves, the check fails for Jakarta once Wikidata
+  follows.
 
 ## Rings
 

@@ -48,7 +48,10 @@ Pipeline:
      the window, where context is only seen small); quiz arcs keep every
      vertex.
   7. Write map.svg (one <path> per country, relative commands, no styling)
-     and countries.js (names, capitals, projected marker points).
+     and countries.js (names, capitals, the capitals' Wikipedia titles,
+     projected marker points). The titles are passed through;
+     tools/wiki_titles.py checks them against Wikipedia by hand (online),
+     never this build.
 """
 import argparse
 import json
@@ -196,6 +199,15 @@ def load_countries():
             fail(f"countries.json: empty or padded {key}")
         if len(set(vals)) != len(vals):
             fail(f"countries.json: duplicate {key}")
+    # Every capital is asked, and the capitals round links its article
+    # (tools/README.md, "Wikipedia titles").
+    for c in cl:
+        bad = mapgen.wiki_title_error(c.get("capital_wiki"))
+        if bad:
+            fail(f"countries.json: {c['id']}: capital_wiki (an English Wikipedia article title) "
+                 f"{'missing' if 'capital_wiki' not in c else bad}")
+    if len({c["capital_wiki"] for c in cl}) != len(cl):
+        fail("countries.json: duplicate capital_wiki")
     for c in cl:
         m = c.get("marker")
         if m is not None and not (len(m) == 2 and -180 <= m[0] <= 180 and -90 <= m[1] <= 90):
@@ -444,7 +456,8 @@ def build(ne_path):
         "//",
         "// MAP: the window (full view) is 0 0 width height in map units; extent",
         "// [x, y, w, h] is map.svg's viewBox, the context drawn around it.",
-        "// COUNTRIES: the quiz set in countries.json order; marker: [x, y] in map",
+        "// COUNTRIES: the quiz set in countries.json order; capitalWiki: the title",
+        "// of the capital's English Wikipedia article; marker: [x, y] in map",
         "// units, size: the larger side of the country's bounding box (map units),",
         "// for markered countries only.",
         "",
@@ -454,7 +467,8 @@ def build(ne_path):
     ]
     for c in countries:
         parts = [f"id: {mapgen.js_string(c['id'])}", f"name: {mapgen.js_string(c['name'])}",
-                 f"capital: {mapgen.js_string(c['capital'])}"]
+                 f"capital: {mapgen.js_string(c['capital'])}",
+                 f"capitalWiki: {mapgen.js_string(c['capital_wiki'])}"]
         if c["id"] in markers:
             mx, my = markers[c["id"]]
             parts.append(f"marker: [{r1(mx):g}, {r1(my):g}]")
