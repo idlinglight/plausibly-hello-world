@@ -2,29 +2,30 @@
 //
 // MAP: the window (full view) is 0 0 width height in map units; extent
 // [x, y, w, h] is map.svg's viewBox, the context drawn around it.
-// COUNTRIES: the quiz set in countries.json order; marker: [x, y] in map
+// COUNTRIES: the quiz set in countries.json order; capitalWiki: the title
+// of the capital's English Wikipedia article; marker: [x, y] in map
 // units, size: the larger side of the country's bounding box (map units),
 // for markered countries only.
 
 export const MAP = { width: 1000, height: 1068.7, extent: [-450, -480.9, 1900, 2030.5] };
 
 export const COUNTRIES = [
-  { id: "BRN", name: "Brunei", capital: "Bandar Seri Begawan", marker: [549.5, 804.7], size: 20.3 },
-  { id: "KHM", name: "Cambodia", capital: "Phnom Penh" },
-  { id: "CHN", name: "China", capital: "Beijing" },
-  { id: "IDN", name: "Indonesia", capital: "Jakarta" },
-  { id: "JPN", name: "Japan", capital: "Tokyo" },
-  { id: "LAO", name: "Laos", capital: "Vientiane" },
-  { id: "MYS", name: "Malaysia", capital: "Kuala Lumpur" },
-  { id: "MNG", name: "Mongolia", capital: "Ulaanbaatar" },
-  { id: "MMR", name: "Myanmar", capital: "Naypyidaw" },
-  { id: "PRK", name: "North Korea", capital: "Pyongyang" },
-  { id: "PLW", name: "Palau", capital: "Ngerulmud", marker: [861.4, 734.5], size: 5.9 },
-  { id: "PHL", name: "Philippines", capital: "Manila" },
-  { id: "SGP", name: "Singapore", capital: "Singapore", marker: [374.4, 854.1], size: 5.6 },
-  { id: "KOR", name: "South Korea", capital: "Seoul" },
-  { id: "TWN", name: "Taiwan", capital: "Taipei" },
-  { id: "THA", name: "Thailand", capital: "Bangkok" },
-  { id: "TLS", name: "Timor-Leste", capital: "Dili", marker: [732.7, 1005], size: 52.6 },
-  { id: "VNM", name: "Vietnam", capital: "Hanoi" },
+  { id: "BRN", name: "Brunei", capital: "Bandar Seri Begawan", capitalWiki: "Bandar Seri Begawan", marker: [549.5, 804.7], size: 20.3 },
+  { id: "KHM", name: "Cambodia", capital: "Phnom Penh", capitalWiki: "Phnom Penh" },
+  { id: "CHN", name: "China", capital: "Beijing", capitalWiki: "Beijing" },
+  { id: "IDN", name: "Indonesia", capital: "Jakarta", capitalWiki: "Jakarta" },
+  { id: "JPN", name: "Japan", capital: "Tokyo", capitalWiki: "Tokyo" },
+  { id: "LAO", name: "Laos", capital: "Vientiane", capitalWiki: "Vientiane" },
+  { id: "MYS", name: "Malaysia", capital: "Kuala Lumpur", capitalWiki: "Kuala Lumpur" },
+  { id: "MNG", name: "Mongolia", capital: "Ulaanbaatar", capitalWiki: "Ulaanbaatar" },
+  { id: "MMR", name: "Myanmar", capital: "Naypyidaw", capitalWiki: "Naypyidaw" },
+  { id: "PRK", name: "North Korea", capital: "Pyongyang", capitalWiki: "Pyongyang" },
+  { id: "PLW", name: "Palau", capital: "Ngerulmud", capitalWiki: "Ngerulmud", marker: [861.4, 734.5], size: 5.9 },
+  { id: "PHL", name: "Philippines", capital: "Manila", capitalWiki: "Manila" },
+  { id: "SGP", name: "Singapore", capital: "Singapore", capitalWiki: "Singapore", marker: [374.4, 854.1], size: 5.6 },
+  { id: "KOR", name: "South Korea", capital: "Seoul", capitalWiki: "Seoul" },
+  { id: "TWN", name: "Taiwan", capital: "Taipei", capitalWiki: "Taipei" },
+  { id: "THA", name: "Thailand", capital: "Bangkok", capitalWiki: "Bangkok" },
+  { id: "TLS", name: "Timor-Leste", capital: "Dili", capitalWiki: "Dili", marker: [732.7, 1005], size: 52.6 },
+  { id: "VNM", name: "Vietnam", capital: "Hanoi", capitalWiki: "Hanoi" },
 ];

@@ -175,7 +175,8 @@ a one-handed pinch about the centre; on in world-quiz). `rounds[].link`
 to a page about it, opened in a new tab: marked by an icon after it,
 underlined only on hover and keyboard focus (https only, no prefetch, the
 live region moves to an sr-only copy; on in world-quiz and japan-quiz:
-the English Wikipedia article, a capital round's the capital's).
+the English Wikipedia article, a capital round's the capital's; in
+east-asia-quiz in the capitals round only).
 
 ### Per-image notes
 
@@ -369,14 +370,18 @@ the English Wikipedia article, a capital round's the capital's).
   ASCII (Myanmar for its Myanmar/Burma, Tokyo; Taiwan, Taipei by their
   common names); Indonesia's capital is Jakarta until the presidential
   decree moving it to Nusantara (source, re-check note in
-  `tools/README.md`). Rounds as europe-quiz (`countries`, `capitals`).
+  `tools/README.md`). Rounds as europe-quiz (`countries`, `capitals`);
+  in `capitals` the asked capital links to its English Wikipedia article
+  (asked for by the owner for the capitals, 2026-11-19; the countries
+  round has no link; `capital_wiki` on all 18 in `tools/countries.json`,
+  checked by hand online with `tools/wiki_titles.py`).
   Rings for Singapore, Palau, Brunei and Timor-Leste (its ring shows on
   phones only); Palau's Tobi is dropped (it would size Palau's ring to
   hide). `config.view`: `besideHud` (Japan reaches the top-right corner),
   default `maxScale`. LAEA 20°N 110°E, no remote parts. Data:
   `tools/build_map.py` (adapter over mapgen) and `tools/countries.json`
-  (codes, names, capitals, marker points) turn the Natural Earth 50m
-  file europe-quiz pins into `site/map.svg` and `site/countries.js`;
+  (codes, names, capitals, their Wikipedia titles, marker points) turn
+  the Natural Earth 50m file europe-quiz pins into `site/map.svg` and `site/countries.js`;
   fix-ups, point checks and choices in `tools/README.md`. Checks: `node
   tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
   as for europe-quiz.

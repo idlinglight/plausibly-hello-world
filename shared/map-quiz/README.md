@@ -596,9 +596,9 @@ a capital, a current capital of the expected item (P36 / P1376). It is
 run by hand (CI runs only `wikicheck_test.py`, its logic on canned
 answers) through a thin per-image entry point
 (`images/<name>/tools/wiki_titles.py <pinned input>`, `--suggest`
-proposes titles from Wikidata); world-quiz and japan-quiz have one, each
-`tools/README.md` ("Wikipedia titles") the method, date and special
-cases.
+proposes titles from Wikidata); world-quiz, japan-quiz and east-asia-quiz
+have one, each `tools/README.md` ("Wikipedia titles") the method, date
+and special cases.
 
 ## Adding a map image
 
