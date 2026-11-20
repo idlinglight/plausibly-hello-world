@@ -1,3 +1,3 @@
 # Pin holder, never built: the scanner image the CVE scan runs.
 # Why a Dockerfile, and what a bump runs: tool-images/README.md.
-FROM ghcr.io/anchore/grype:v0.121.3@sha256:13113eeceab017260370cf540e1d25442c59665fd07d1b09b66d63bb0c282887
+FROM ghcr.io/anchore/grype:v0.122.1@sha256:661583704a253c0448ed63998b5ea2cd9d5a76ee71eedc4aed439b8ce3e93a1c
