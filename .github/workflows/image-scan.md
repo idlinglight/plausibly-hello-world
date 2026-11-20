@@ -149,7 +149,9 @@ On PRs touching the scan or the scanner pin, the pinned grype must be at
 least 3 days old: both its GitHub release and the pinned digest's build
 (the linux/amd64 config's `created`), so a re-pushed old tag is held too.
 The scan waits for it, so a scanner too new to pin never runs. It
-says when to re-run.
+says when to re-run: in UTC and on Vienna's clock (the owner's, as the
+schedule's `timezone`; added 2026-11-20 after a re-run time worked out
+wrongly by hand).
 
 Why a check of its own: Dependabot's cooldown can't see release dates on
 ghcr.io ("No verified registry publication date source for ghcr.io;

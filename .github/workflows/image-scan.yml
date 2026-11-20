@@ -55,6 +55,9 @@ jobs:
             echo "::error file=$pin::expected a vX.Y.Z tag on the FROM line, got '$tag'"; exit 1
           fi
           at() { jq -rn --argjson t "$1" '$t | todate'; }
+          # The same instant on Vienna's clock, for the time to re-run at;
+          # nothing without the zone's data (date would print UTC instead).
+          local_at() { [[ ! -e /usr/share/zoneinfo/Europe/Vienna ]] || TZ=Europe/Vienna date -d "@$1" '+ = %a %-d %b %H:%M %Z'; }
           released=$(gh api "repos/anchore/grype/releases/tags/$tag" --jq '.published_at | fromdateiso8601')
           # The pinned digest's build time (linux/amd64 config): a re-pushed
           # old tag has an old release but a new build.
@@ -69,7 +72,7 @@ jobs:
           newest=$(( released > built ? released : built ))
           ready=$(( newest + 3 * 86400 ))
           if (( $(date -u +%s) < ready )); then
-            echo "::error file=$pin::grype $tag: released $(at "$released"), pinned digest built $(at "$built"); too new to pin before $(at "$ready") (re-run this job then)"
+            echo "::error file=$pin::grype $tag: released $(at "$released"), pinned digest built $(at "$built"); too new to pin before $(at "$ready")$(local_at "$ready") (re-run this job then)"
             exit 1
           fi
           echo "grype $tag: released $(at "$released"), pinned digest built $(at "$built"): ok"

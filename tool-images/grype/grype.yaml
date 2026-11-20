@@ -12,3 +12,75 @@ ignore:
       contrib/infback9 only (the Deflate64 decoder), which isn't built into
       libz; nginx uses the deflate/inflate stream functions; apk-tools never
       runs. Owner decision 2026-11-13.
+  - vulnerability: CVE-2026-107496
+    package:
+      name: libcrypto3
+      version: 3.5.9-r0
+      type: apk
+    reason: >-
+      CMS_encrypt() only (endless loop on a crafted EC certificate); nginx
+      doesn't call the CMS functions, and serves plain HTTP: no TLS in use. Rated Low by OpenSSL.
+      Owner decision 2026-11-20.
+  - vulnerability: CVE-2026-107496
+    package:
+      name: libssl3
+      version: 3.5.9-r0
+      type: apk
+    reason: >-
+      CMS_encrypt() only (endless loop on a crafted EC certificate); nginx
+      doesn't call the CMS functions, and serves plain HTTP: no TLS in use. Rated Low by OpenSSL.
+      Owner decision 2026-11-20.
+  - vulnerability: CVE-2026-88823
+    package:
+      name: libcrypto3
+      version: 3.5.9-r0
+      type: apk
+    reason: >-
+      AES-GCM-SIV only (AAD handling); nginx doesn't use that cipher, and
+      serves plain HTTP: no TLS in use. Rated Low by OpenSSL.
+      Owner decision 2026-11-20.
+  - vulnerability: CVE-2026-88823
+    package:
+      name: libssl3
+      version: 3.5.9-r0
+      type: apk
+    reason: >-
+      AES-GCM-SIV only (AAD handling); nginx doesn't use that cipher, and
+      serves plain HTTP: no TLS in use. Rated Low by OpenSSL.
+      Owner decision 2026-11-20.
+  - vulnerability: CVE-2026-95691
+    package:
+      name: libcrypto3
+      version: 3.5.9-r0
+      type: apk
+    reason: >-
+      OpenSSL's own QUIC client only; nginx is a server with its own QUIC
+      code, and serves plain HTTP: no TLS or QUIC in use. Rated Low by OpenSSL.
+      Owner decision 2026-11-20.
+  - vulnerability: CVE-2026-95691
+    package:
+      name: libssl3
+      version: 3.5.9-r0
+      type: apk
+    reason: >-
+      OpenSSL's own QUIC client only; nginx is a server with its own QUIC
+      code, and serves plain HTTP: no TLS or QUIC in use. Rated Low by OpenSSL.
+      Owner decision 2026-11-20.
+  - vulnerability: CVE-2026-95692
+    package:
+      name: libcrypto3
+      version: 3.5.9-r0
+      type: apk
+    reason: >-
+      AES-GCM-SIV only (IV length); nginx doesn't use that cipher, and
+      serves plain HTTP: no TLS in use. Rated Low by OpenSSL.
+      Owner decision 2026-11-20.
+  - vulnerability: CVE-2026-95692
+    package:
+      name: libssl3
+      version: 3.5.9-r0
+      type: apk
+    reason: >-
+      AES-GCM-SIV only (IV length); nginx doesn't use that cipher, and
+      serves plain HTTP: no TLS in use. Rated Low by OpenSSL.
+      Owner decision 2026-11-20.
