@@ -1,0 +1,28 @@
+{
+  "about": [
+    "The quiz data of images/germany-quiz: the single source of truth for the 16 Länder, their names, capitals and Wikipedia titles. tools/build_map.py reads it; the geometry choices live there (tools/README.md).",
+    "states: in the usual alphabetical order of the Länder. id: the state's answer id and the id of its <path> in site/map.svg (ASCII: ü as ue). iso: ISO 3166-2:DE, matched against Natural Earth's iso_3166_2.",
+    "name: the common short German name (Bayern, not Freistaat Bayern; Bremen, not Freie Hansestadt Bremen). capital: the Landeshauptstadt, by its common name (München, Hannover); Berlin, Hamburg and Bremen are city states whose capital is the city of the same name (the capitals round asks all 16).",
+    "wiki: the German Wikipedia article title of each state, exactly as the article is titled (Freie Hansestadt Bremen for the state; Berlin and Hamburg are one article each for city and state). capital_wiki: the capital's article, on every state (the capitals round links it; Berlin and Hamburg: the same article as wiki, Bremen: the city's, Bremen). build_map.py requires them and passes them into states.js (wiki, capitalWiki); tools/wiki_titles.py checks them online, by hand. Method and special cases: tools/README.md, Wikipedia titles.",
+    "ne_name: Natural Earth's name for the feature matched by iso (ne_10m_admin_1_states_provinces, iso_3166_2); build_map.py checks it.",
+    "point: a lon/lat point inside the state (its capital's centre, roughly), checked against the drawn geometry on every build."
+  ],
+  "states": [
+    {"id": "baden-wuerttemberg", "iso": "DE-BW", "name": "Baden-Württemberg", "capital": "Stuttgart", "wiki": "Baden-Württemberg", "capital_wiki": "Stuttgart", "ne_name": "Baden-Württemberg", "point": [9.18, 48.78]},
+    {"id": "bayern", "iso": "DE-BY", "name": "Bayern", "capital": "München", "wiki": "Bayern", "capital_wiki": "München", "ne_name": "Bayern", "point": [11.58, 48.14]},
+    {"id": "berlin", "iso": "DE-BE", "name": "Berlin", "capital": "Berlin", "wiki": "Berlin", "capital_wiki": "Berlin", "ne_name": "Berlin", "point": [13.40, 52.52]},
+    {"id": "brandenburg", "iso": "DE-BB", "name": "Brandenburg", "capital": "Potsdam", "wiki": "Brandenburg", "capital_wiki": "Potsdam", "ne_name": "Brandenburg", "point": [13.06, 52.40]},
+    {"id": "bremen", "iso": "DE-HB", "name": "Bremen", "capital": "Bremen", "wiki": "Freie Hansestadt Bremen", "capital_wiki": "Bremen", "ne_name": "Bremen", "point": [8.81, 53.08]},
+    {"id": "hamburg", "iso": "DE-HH", "name": "Hamburg", "capital": "Hamburg", "wiki": "Hamburg", "capital_wiki": "Hamburg", "ne_name": "Hamburg", "point": [9.99, 53.55]},
+    {"id": "hessen", "iso": "DE-HE", "name": "Hessen", "capital": "Wiesbaden", "wiki": "Hessen", "capital_wiki": "Wiesbaden", "ne_name": "Hessen", "point": [8.24, 50.08]},
+    {"id": "mecklenburg-vorpommern", "iso": "DE-MV", "name": "Mecklenburg-Vorpommern", "capital": "Schwerin", "wiki": "Mecklenburg-Vorpommern", "capital_wiki": "Schwerin", "ne_name": "Mecklenburg-Vorpommern", "point": [11.40, 53.63]},
+    {"id": "niedersachsen", "iso": "DE-NI", "name": "Niedersachsen", "capital": "Hannover", "wiki": "Niedersachsen", "capital_wiki": "Hannover", "ne_name": "Niedersachsen", "point": [9.74, 52.37]},
+    {"id": "nordrhein-westfalen", "iso": "DE-NW", "name": "Nordrhein-Westfalen", "capital": "Düsseldorf", "wiki": "Nordrhein-Westfalen", "capital_wiki": "Düsseldorf", "ne_name": "Nordrhein-Westfalen", "point": [6.78, 51.23]},
+    {"id": "rheinland-pfalz", "iso": "DE-RP", "name": "Rheinland-Pfalz", "capital": "Mainz", "wiki": "Rheinland-Pfalz", "capital_wiki": "Mainz", "ne_name": "Rheinland-Pfalz", "point": [8.25, 49.99]},
+    {"id": "saarland", "iso": "DE-SL", "name": "Saarland", "capital": "Saarbrücken", "wiki": "Saarland", "capital_wiki": "Saarbrücken", "ne_name": "Saarland", "point": [7.00, 49.23]},
+    {"id": "sachsen", "iso": "DE-SN", "name": "Sachsen", "capital": "Dresden", "wiki": "Sachsen", "capital_wiki": "Dresden", "ne_name": "Sachsen", "point": [13.74, 51.05]},
+    {"id": "sachsen-anhalt", "iso": "DE-ST", "name": "Sachsen-Anhalt", "capital": "Magdeburg", "wiki": "Sachsen-Anhalt", "capital_wiki": "Magdeburg", "ne_name": "Sachsen-Anhalt", "point": [11.63, 52.13]},
+    {"id": "schleswig-holstein", "iso": "DE-SH", "name": "Schleswig-Holstein", "capital": "Kiel", "wiki": "Schleswig-Holstein", "capital_wiki": "Kiel", "ne_name": "Schleswig-Holstein", "point": [10.12, 54.32]},
+    {"id": "thueringen", "iso": "DE-TH", "name": "Thüringen", "capital": "Erfurt", "wiki": "Thüringen", "capital_wiki": "Erfurt", "ne_name": "Thüringen", "point": [11.03, 50.98]}
+  ]
+}

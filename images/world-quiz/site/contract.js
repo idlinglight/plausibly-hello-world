@@ -21,6 +21,10 @@ const num = (v) => typeof v === 'number' && Number.isFinite(v);
 
 const LANG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/; // a BCP 47 tag, e.g. ja, ja-Hira
 
+// A ring's full radius, CSS px: main.js draws rings at most this large;
+// view.ringMin, the smallest radius it shrinks them to, may not exceed it.
+export const MARKER_R = 7;
+
 function checkMarker(m, size, where) {
   if (m !== undefined && !(Array.isArray(m) && m.length === 2 && m.every(num) && num(size) && size >= 0))
     bad(`${where}: marker [x, y] (map units) needs a size`);
@@ -95,8 +99,9 @@ export function checkConfig(config) {
   }
   if (view !== undefined && !(view && typeof view === 'object' && (view.maxScale === undefined || (num(view.maxScale) && view.maxScale > 0)) &&
       (view.besideHud === undefined || typeof view.besideHud === 'boolean') &&
-      (view.panToCentre === undefined || typeof view.panToCentre === 'boolean')))
-    bad('view: { maxScale: CSS px per map unit, > 0; besideHud: boolean; panToCentre: boolean }');
+      (view.panToCentre === undefined || typeof view.panToCentre === 'boolean') &&
+      (view.ringMin === undefined || (num(view.ringMin) && view.ringMin > 0 && view.ringMin <= MARKER_R))))
+    bad(`view: { maxScale: CSS px per map unit, > 0; besideHud: boolean; panToCentre: boolean; ringMin: CSS px, > 0, at most ${MARKER_R} }`);
   const blocking = new Set();
   if (blockingOverlays !== undefined) {
     // overlay ids in map.svg (main.js checks they are <path>s in #overlays)

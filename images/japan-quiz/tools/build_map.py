@@ -12,8 +12,8 @@ the output folder differ (nothing is written). Details: tools/README.md.
 
 This file is japan-quiz's adapter: Natural Earth, the fix-ups, the split
 into map pieces, the window and the quiz data. The geometry (projection,
-clipping, shared borders, simplification, lines, SVG) is the shared
-map-quiz core, shared/map-quiz/tools/mapgen.
+clipping, shared borders, simplification, lines, SVG) and the relief
+shading are the shared map-quiz core, shared/map-quiz/tools/mapgen.
 
 Pipeline:
   1. tools/prefectures.json (47 prefectures, 4 islands, 8 regions; names,
@@ -55,11 +55,12 @@ Pipeline:
      between prefectures, without the region borders) and borders-regions
      (land borders between regions). The engine shows per round the ones
      it lists.
-  9. Shaded relief (RELIEF_*): NOAA ETOPO 2022, a 30" ERDDAP subset
-     (sha256-verified), hill-shaded on a RELIEF_PPU pixel grid over the
-     window (each pixel centre back to lon/lat by the inverse projection,
-     elevation bilinear), light from the top left, shadow + steepness
-     darken, slopes facing the light lighten; only on the pieces (a
+  9. Shaded relief (RELIEF_*, mapgen.shaded_relief): NOAA ETOPO 2022, a
+     30" ERDDAP subset (sha256-verified), hill-shaded on a RELIEF_PPU pixel
+     grid over the window (each pixel centre back to lon/lat by the
+     inverse projection, elevation bilinear), light from the top left,
+     shadow + steepness darken, slopes facing the light lighten; only on
+     the pieces (a
      coverage mask from their drawn rings, so it ends at the coast):
      site/relief.png, a palette PNG (transparent, black or white with
      alpha), drawn as <image id="relief"> first in <g id="overlays">.
@@ -69,15 +70,11 @@ Pipeline:
      pieces, texts and Wikipedia titles) and relief.png.
 """
 import argparse
-import array
 import json
-import math
 import os
 import re
-import struct
 import sys
 import unicodedata
-import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
@@ -525,219 +522,29 @@ def load_lakes(path, pieces, notes):
 
 # ------------------------------------------------------------------ relief
 def load_dem(path, notes):
-    """The ETOPO subset: elevations in metres (sea and nodata as 0, so the
-    coast doesn't shade against the sea floor), rows from north to south."""
+    """The ETOPO subset (mapgen.read_esri_ascii: sea and nodata as 0 m, so
+    the coast doesn't shade against the sea floor)."""
     raw = mapgen.read_pinned(path, ETOPO_SHA256, ETOPO_BYTES, ETOPO_URL)
-    parts = raw.split(b"\n", 6)
-    hdr = {}
-    for ln in parts[:6]:
-        k, v = ln.split()
-        hdr[k.decode("ascii").lower()] = float(v)
-    nc, nr, cs = int(hdr["ncols"]), int(hdr["nrows"]), hdr["cellsize"]
-    if (nc, nr) != ETOPO_GRID:
-        fail(f"{ETOPO_FILE}: {nc} x {nr} cells, expected {ETOPO_GRID}")
-    z = array.array("f", [v if v > 0 else 0.0 for v in map(float, parts[6].split())])
-    if len(z) != nc * nr:
-        fail(f"{ETOPO_FILE}: {len(z)} values, expected {nc * nr}")
-    notes.append(f"relief: ETOPO 2022 {nc} x {nr} cells of {cs * 3600:g}\", max {max(z):.0f} m")
-    return {"z": z, "nc": nc, "nr": nr, "cs": cs, "lat_top": hdr["yllcenter"] + (nr - 1) * cs,
-            "lon_left": hdr["xllcenter"]}
-
-
-def laea_inverse(p):
-    """The inverse of a mapgen.LambertAzimuthalEqualArea p: (easting,
-    northing) -> (lon, lat). Snyder (1987) eqs. 24-26 + 24-28, and 3-18 for
-    the authalic -> geodetic latitude."""
-    e2 = p.e2
-    c2 = e2 / 3 + 31 * e2 ** 2 / 180 + 517 * e2 ** 3 / 5040
-    c4 = 23 * e2 ** 2 / 360 + 251 * e2 ** 3 / 3780
-    c6 = 761 * e2 ** 3 / 45360
-    sb1, cb1 = math.sin(p.b1), math.cos(p.b1)
-
-    def inv(e, n):
-        x, y = e - p.fe, n - p.fn
-        rho = math.hypot(x / p.d, p.d * y)
-        if rho < 1e-9:
-            return math.degrees(p.lon0), math.degrees(p.lat0)
-        ce = 2 * math.asin(rho / (2 * p.rq))
-        sce, cce = math.sin(ce), math.cos(ce)
-        beta = math.asin(cce * sb1 + p.d * y * sce * cb1 / rho)
-        lam = p.lon0 + math.atan2(x * sce, p.d * rho * cb1 * cce - p.d * p.d * y * sb1 * sce)
-        phi = beta + c2 * math.sin(2 * beta) + c4 * math.sin(4 * beta) + c6 * math.sin(6 * beta)
-        return math.degrees(lam), math.degrees(phi)
-
-    return inv
-
-
-def png_palette(w, h, pix, plte, trns):
-    """An 8-bit palette PNG, deterministic (no time or text chunks). Row
-    filters by the usual heuristic (least sum of absolute values; none,
-    sub, up, Paeth), computed only where the row or the one above has a
-    non-zero pixel (the rest filters to zeros either way)."""
-    def chunk(tag, data):
-        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF)
-
-    def cost(seg):
-        return sum(v if v < 128 else 256 - v for v in seg)
-
-    raw = bytearray()
-    prev = bytes(w)
-    zero = bytes(w)
-    for y in range(h):
-        row = bytes(pix[y * w:(y + 1) * w])
-        if row == zero and prev == zero:
-            raw += b"\0" + row
-            prev = row
-            continue
-        lo = min(w - len(row.lstrip(b"\0")), w - len(prev.lstrip(b"\0")))
-        hi = min(w, max(len(row.rstrip(b"\0")), len(prev.rstrip(b"\0"))) + 1)
-        seg0 = row[lo:hi]
-        sub = bytes((row[i] - (row[i - 1] if i else 0)) & 255 for i in range(lo, hi))
-        up = bytes((row[i] - prev[i]) & 255 for i in range(lo, hi))
-        pa = bytearray(hi - lo)
-        for i in range(lo, hi):
-            a = row[i - 1] if i else 0
-            b = prev[i]
-            c = prev[i - 1] if i else 0
-            pp = a + b - c
-            da, db, dc = abs(pp - a), abs(pp - b), abs(pp - c)
-            pa[i - lo] = (row[i] - (a if da <= db and da <= dc else (b if db <= dc else c))) & 255
-        best = min(((cost(seg0), 0, seg0), (cost(sub), 1, sub), (cost(up), 2, up), (cost(pa), 4, bytes(pa))),
-                   key=lambda t: (t[0], t[1]))
-        raw.append(best[1])
-        raw += row if best[1] == 0 else bytes(lo) + best[2] + bytes(w - hi)
-        prev = row
-    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 3, 0, 0, 0))
-            + chunk(b"PLTE", plte) + chunk(b"tRNS", trns) + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
-            + chunk(b"IEND", b""))
-
-
-def png_parts(data):
-    """(IHDR, PLTE, tRNS, decompressed IDAT) of a PNG: what its pixels are,
-    whatever zlib compressed them (--check compares these when the bytes
-    differ, e.g. under another zlib build)."""
-    parts, pos, idat = {}, 8, b""
-    while pos < len(data):
-        n = struct.unpack(">I", data[pos:pos + 4])[0]
-        tag, body = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + n]
-        if tag == b"IDAT":
-            idat += body
-        else:
-            parts[tag] = body
-        pos += 12 + n
-    return parts.get(b"IHDR"), parts.get(b"PLTE"), parts.get(b"tRNS"), zlib.decompress(idat)
+    dem = mapgen.read_esri_ascii(raw, ETOPO_GRID, ETOPO_FILE)
+    notes.append(f"relief: ETOPO 2022 {dem['nc']} x {dem['nr']} cells of {dem['cs'] * 3600:g}\", "
+                 f"max {dem['max']:.0f} m")
+    return dem
 
 
 def relief(res, window, project, dem, piece_ids, notes):
-    """site/relief.png over the window (0 0 width height) and its <image>."""
-    inv = laea_inverse(project)
-    worst = 0.0
-    for lon, lat in ((122.94, 24.26), (145.82, 45.52), (139.70, 35.69), (128.0, 33.0), (LON0, LAT0)):
-        lo, la = inv(*project(lon, lat))
-        worst = max(worst, abs(lo - lon), abs(la - lat))
+    """site/relief.png over the window (0 0 width height), on the pieces
+    only, and its <image> (mapgen.shaded_relief)."""
+    inv = mapgen.laea_inverse(project)
+    worst = mapgen.inverse_error(project, inv, ((122.94, 24.26), (145.82, 45.52), (139.70, 35.69), (128.0, 33.0),
+                                                (LON0, LAT0)))
     if worst > 1e-6:  # ~0.1 m (the latitude series is good to ~1e-8°)
         fail(f"relief: inverse projection off by {worst:g}°")
-    ppu = RELIEF_PPU
-    pw, ph = int(round(window.width * ppu)), int(math.ceil(window.height * ppu))
-
-    # Japan's land: the pieces' rings as drawn (shared arcs, so neighbours
-    # meet exactly), in map units; even-odd over all of them is their union.
-    g = res.grid
-    edges = []
-    for pid in piece_ids:
-        if pid not in res.topo:
-            fail(f"relief: no outline for {pid}")
-        for refs in res.topo[pid]:
-            ring = mapgen.ring_from_arcs(refs, res.arcs)
-            for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]):
-                if y1 == y2:
-                    continue
-                if y1 > y2:  # the same edge gives the same numbers from both sides
-                    x1, y1, x2, y2 = x2, y2, x1, y1
-                edges.append((y1 / g, y2 / g, x1 / g, (x2 - x1) / (y2 - y1)))
-    # coverage: RELIEF_SUB scanlines per pixel row, exact along them
-    nrows = ph * RELIEF_SUB
-    dy = 1.0 / (RELIEF_SUB * ppu)
-    rows = [[] for _ in range(nrows)]
-    for ylo, yhi, xlo, slope in edges:
-        for s in range(max(0, int((ylo - dy / 2) / dy)), min(nrows, int((yhi - dy / 2) / dy) + 2)):
-            y = dy / 2 + s * dy
-            if ylo <= y < yhi:
-                rows[s].append(xlo + (y - ylo) * slope)
-    cov = array.array("f", bytes(4 * pw * ph))
-    part = 1.0 / RELIEF_SUB
-    for s, xs in enumerate(rows):
-        if len(xs) % 2:
-            fail(f"relief: odd coast crossings on scanline {s}")
-        xs.sort()
-        base = (s // RELIEF_SUB) * pw
-        for a, b in zip(xs[0::2], xs[1::2]):
-            xa, xb = max(0.0, a * ppu), min(float(pw), b * ppu)
-            if xb <= xa:
-                continue
-            ia, ib = int(xa), int(xb)
-            if ia == ib:
-                cov[base + ia] += (xb - xa) * part
-                continue
-            cov[base + ia] += (ia + 1 - xa) * part
-            for i in range(ia + 1, ib):
-                cov[base + i] += part
-            if ib < pw:
-                cov[base + ib] += (xb - ib) * part
-    land = [i for i in range(pw * ph) if cov[i] > 0]
-    if any(i < pw or i >= pw * (ph - 1) or i % pw in (0, pw - 1) for i in land):
-        fail("relief: land on the image's edge")
-
-    # elevation at the land pixels and their neighbours (bilinear, ETOPO cell centres)
-    z, nc, cs, lat_top, lon_left = dem["z"], dem["nc"], dem["cs"], dem["lat_top"], dem["lon_left"]
-    need = bytearray(pw * ph)
-    for i in land:
-        for j in (i - pw - 1, i - pw, i - pw + 1, i - 1, i, i + 1, i + pw - 1, i + pw, i + pw + 1):
-            need[j] = 1
-    elev = array.array("f", bytes(4 * pw * ph))
-    k, x0, y1 = window.k, window.x0, window.y1
-    for i in (i for i in range(pw * ph) if need[i]):
-        py, px = divmod(i, pw)
-        lon, lat = inv((px + 0.5) / ppu / k + x0, y1 - (py + 0.5) / ppu / k)
-        fi, fj = (lat_top - lat) / cs, (lon - lon_left) / cs
-        r0, c0 = int(fi), int(fj)
-        if not (0 <= r0 < dem["nr"] - 1 and 0 <= c0 < nc - 1):
-            fail(f"relief: {lon:.3f}, {lat:.3f} outside the ETOPO subset")
-        ti, tj = fi - r0, fj - c0
-        o = r0 * nc + c0
-        elev[i] = (z[o] * (1 - tj) + z[o + 1] * tj) * (1 - ti) + (z[o + nc] * (1 - tj) + z[o + nc + 1] * tj) * ti
-
-    # hillshade (Horn's gradient), screen coordinates: x right, y down, z up
-    pix_m = 1.0 / ppu / k
-    alt, az = math.radians(RELIEF_ALT), math.radians(RELIEF_AZ)
-    lx, ly, lz = math.cos(alt) * math.sin(az), -math.cos(alt) * math.cos(az), math.sin(alt)
-    step = RELIEF_DARK / RELIEF_LEVELS
-    n_light = int(math.ceil(RELIEF_LIGHT / step - 1e-9))
-    pal = bytearray(pw * ph)  # 0 transparent, 1..LEVELS black, LEVELS+1.. white
-    for i in land:
-        a, b, c = elev[i - pw - 1], elev[i - pw], elev[i - pw + 1]
-        d, f = elev[i - 1], elev[i + 1]
-        gg, h, ii = elev[i + pw - 1], elev[i + pw], elev[i + pw + 1]
-        zx = ((c + 2 * f + ii) - (a + 2 * d + gg)) / (8 * pix_m) * RELIEF_Z
-        zy = ((gg + 2 * h + ii) - (a + 2 * b + c)) / (8 * pix_m) * RELIEF_Z
-        nrm = math.sqrt(zx * zx + zy * zy + 1)
-        shade = (-zx * lx - zy * ly + lz) / nrm
-        dark = min(1.0, RELIEF_W_SHADOW * min(1.0, max(0.0, (lz - shade) / lz)) + RELIEF_W_STEEP * (1 - 1 / nrm))
-        light = min(1.0, max(0.0, (shade - lz) / (1 - lz)))
-        q = int(round((RELIEF_LIGHT * light - RELIEF_DARK * dark) * min(1.0, cov[i]) / step))
-        if q < 0:
-            pal[i] = min(RELIEF_LEVELS, -q)
-        elif q > 0:
-            pal[i] = RELIEF_LEVELS + min(n_light, q)
-    plte = bytes(3 * (1 + RELIEF_LEVELS)) + b"\xff" * (3 * n_light)
-    trns = bytes([0] + [int(round(255 * step * j)) for j in range(1, RELIEF_LEVELS + 1)]
-                 + [int(round(255 * step * j)) for j in range(1, n_light + 1)])
-    png = png_palette(pw, ph, pal, plte, trns)
-    el = (f'<image id="{RELIEF_ID}" href="relief.png" x="0" y="0" width="{pw / ppu:g}" height="{ph / ppu:g}" '
-          f'preserveAspectRatio="none"/>')
-    shaded = sum(1 for i in land if pal[i])
-    notes.append(f"relief: {pw} x {ph} px ({ppu:g} px/unit), {len(land)} land px ({shaded} shaded), "
-                 f"inverse projection within {worst:.0e}°")
+    style = mapgen.ReliefStyle(RELIEF_PPU, sub=RELIEF_SUB, az=RELIEF_AZ, alt=RELIEF_ALT, z=RELIEF_Z,
+                               w_shadow=RELIEF_W_SHADOW, w_steep=RELIEF_W_STEEP, dark=RELIEF_DARK,
+                               light=RELIEF_LIGHT, levels=RELIEF_LEVELS)
+    png, el, st = mapgen.shaded_relief(res, window, inv, dem, piece_ids, style, element_id=RELIEF_ID)
+    notes.append(f"relief: {st['width']} x {st['height']} px ({RELIEF_PPU:g} px/unit), {st['land']} land px "
+                 f"({st['shaded']} shaded), inverse projection within {worst:.0e}°")
     return png, el
 
 
@@ -890,39 +697,7 @@ def main():
     except (mapgen.BuildError, ValueError, OSError) as e:
         sys.exit(f"build_map: {e}")
     status = mapgen.emit(files, args.out, args.check, report)
-    sys.exit(max(status, emit_binary(binaries, args.out, args.check)))
-
-
-def emit_binary(files, out_dir, check):
-    """mapgen.emit for bytes (relief.png): writes, or with check compares.
-    A PNG whose bytes differ but whose pixels don't (another zlib build
-    compressed them) counts as up to date. Returns 1 if a file is out of date."""
-    stale = []
-    for name, data in files.items():
-        dest = os.path.join(out_dir, name)
-        print(f"{name}: {len(data)} B")
-        if not check:
-            with open(dest, "wb") as fh:
-                fh.write(data)
-            continue
-        try:
-            with open(dest, "rb") as fh:
-                old = fh.read()
-        except FileNotFoundError:
-            old = None
-        if old == data:
-            continue
-        try:
-            same = old is not None and png_parts(old) == png_parts(data)
-        except (zlib.error, struct.error):
-            same = False
-        if same:
-            print(f"  {name}: same pixels, other compressed bytes (zlib {zlib.ZLIB_RUNTIME_VERSION})")
-        else:
-            stale.append(name)
-    if check:
-        print("out of date: " + ", ".join(stale) if stale else ", ".join(files) + " up to date")
-    return 1 if stale else 0
+    sys.exit(max(status, mapgen.emit_binary(binaries, args.out, args.check)))
 
 
 if __name__ == "__main__":

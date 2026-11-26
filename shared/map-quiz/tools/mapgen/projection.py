@@ -77,6 +77,31 @@ class LambertAzimuthalEqualArea(Projection):
         return self.fe + x, self.fn + y
 
 
+
+def laea_inverse(p):
+    """The inverse of a LambertAzimuthalEqualArea p: (easting, northing) ->
+    (lon, lat) in degrees. Snyder (1987) eqs. 24-26 + 24-28, and 3-18 for the
+    authalic -> geodetic latitude (a series, good to ~1e-8 degrees)."""
+    e2 = p.e2
+    c2 = e2 / 3 + 31 * e2 ** 2 / 180 + 517 * e2 ** 3 / 5040
+    c4 = 23 * e2 ** 2 / 360 + 251 * e2 ** 3 / 3780
+    c6 = 761 * e2 ** 3 / 45360
+    sb1, cb1 = math.sin(p.b1), math.cos(p.b1)
+
+    def inv(e, n):
+        x, y = e - p.fe, n - p.fn
+        rho = math.hypot(x / p.d, p.d * y)
+        if rho < 1e-9:
+            return math.degrees(p.lon0), math.degrees(p.lat0)
+        ce = 2 * math.asin(rho / (2 * p.rq))
+        sce, cce = math.sin(ce), math.cos(ce)
+        beta = math.asin(cce * sb1 + p.d * y * sce * cb1 / rho)
+        lam = p.lon0 + math.atan2(x * sce, p.d * rho * cb1 * cce - p.d * p.d * y * sb1 * sce)
+        phi = beta + c2 * math.sin(2 * beta) + c4 * math.sin(4 * beta) + c6 * math.sin(6 * beta)
+        return math.degrees(lam), math.degrees(phi)
+
+    return inv
+
 def epsg3035():
     """ETRS89-extended / LAEA Europe: centre 52°N 10°E, GRS80; EPSG's reference point."""
     return LambertAzimuthalEqualArea(52, 10, 4321000.0, 3210000.0, GRS80,

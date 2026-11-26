@@ -51,6 +51,8 @@ check('a valid config passes both checks; optional fields may be left out', () =
   checkTexts({ ...good(), carryColours: false });
   checkConfig({ ...good(), view: { panToCentre: true } });
   checkConfig({ ...good(), view: { maxScale: 6, besideHud: true, panToCentre: false } });
+  checkConfig({ ...good(), view: { ringMin: 7 } });
+  checkConfig({ ...good(), view: { maxScale: 3, ringMin: 0.5 } });
   checkConfig({ ...good(), carryColours: true });
 });
 
@@ -86,6 +88,10 @@ check('structure: each broken field is named', () => {
     [(c) => (c.view = { besideHud: 'yes' }), /view:/],
     [(c) => (c.view = { panToCentre: 1 }), /view:.*panToCentre: boolean/],
     [(c) => (c.view = { maxScale: 6, panToCentre: 'yes' }), /view:/],
+    [(c) => (c.view = { ringMin: 0 }), /view:.*ringMin: CSS px, > 0, at most 7/],
+    [(c) => (c.view = { ringMin: 7.5 }), /view:.*ringMin/],
+    [(c) => (c.view = { ringMin: '7' }), /view:.*ringMin/],
+    [(c) => (c.view = { ringMin: NaN }), /view:.*ringMin/],
     [(c) => (c.blockingOverlays = 'water'), /blockingOverlays: an array/],
     [(c) => (c.blockingOverlays = ['water', 'water']), /blockingOverlays: id "water"/],
     [(c) => (c.blockingOverlays = ['d02']), /blockingOverlays: id "d02"/],

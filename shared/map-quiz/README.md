@@ -3,9 +3,10 @@
 A map quiz as a static page: an inline SVG map, a question card, round
 after round of "find this region". One engine for several images
 (`images/europe-quiz`, `images/vienna-districts`,
-`images/south-america-quiz`, `images/east-asia-quiz`, `images/japan-quiz`:
-grouped rounds, `images/world-quiz`: Fuller's net, rounds with and
-without the small states); each image brings its own data, texts and
+`images/south-america-quiz`, `images/east-asia-quiz`,
+`images/germany-quiz`: a relief under the regions too,
+`images/japan-quiz`: grouped rounds, `images/world-quiz`: Fuller's net,
+rounds with and without the small states); each image brings its own data, texts and
 map, the engine stays the same.
 
 ```
@@ -118,7 +119,7 @@ export default {
     link: (asked) => `${asked} auf Wikipedia (neuer Tab)`, // with rounds[].link: its name and tooltip
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
-  view: { maxScale: 6, besideHud: true, panToCentre: true }, // optional, see below
+  view: { maxScale: 6, besideHud: true, panToCentre: true, ringMin: 7 }, // optional, see below
   blockingOverlays: ['water'],           // optional, see below
   carryColours: true,                    // optional, see below
   roundPicker: true,                     // optional, see below
@@ -252,6 +253,12 @@ export default {
   pinch about the screen's centre, e.g. on a world map: drag the region
   to the centre first. The default range stays a subset; fit (button, `0`)
   returns to the full view.
+- **view.ringMin** (CSS px, > 0, at most 7, the ring's full radius
+  `MARKER_R` in `contract.js`; default 4): the smallest radius rings
+  shrink to at low zoom (Behaviour: Rings). 7 keeps them full size at
+  every zoom where they show: for a ring hemmed in by neighbours, where
+  the wider zone around it never applies, so the drawn ring is the whole
+  target (germany-quiz: Bremen inside Niedersachsen).
 - **blockingOverlays**: ids of overlays in `map.svg`'s `#overlays` (each a
   `<path>`) whose area swallows clicks and taps like the background: no
   answer, no misclick, no hover on the region beneath. Their outline
@@ -291,10 +298,15 @@ What the engine reads (`mapgen.map_svg` writes exactly this):
 </svg>
 ```
 
-`#overlays` may also hold an `<image>` (japan-quiz: `<image id="relief"
-href="relief.png" …>`, a shaded relief, written by the image's adapter
-after `mapgen.map_svg`): drawn in document order with the paths, never
-hit (`#overlays` has `pointer-events: none`), never a line or a blocking
+`#overlays` may also hold `<image>`s (japan-quiz and germany-quiz:
+`<image id="relief" href="relief.png" …>`, a shaded relief;
+`mapgen.shaded_relief` makes the PNG and the element, the image's adapter
+inserts it after `mapgen.map_svg`), and an `<image>` may sit between
+`#land` and the regions' group (germany-quiz's `relief-context`, the
+context land's relief: the regions' opaque fills cover it, so it may run
+under them; give it `pointer-events: none` in the image's stylesheet,
+like `#land`). Either is drawn in document order with the paths, never
+hit (`#overlays` has `pointer-events: none`; the other by that rule), never a line or a blocking
 overlay (those must be paths), styled by its id in the image's
 stylesheet. Its `href` is relative: it resolves against the page, and
 `img-src 'self'` allows it.
@@ -398,8 +410,11 @@ theme-color meta.
   picks it, a tap in the wider zone around it only over sea, context
   land, an inert piece or that answer itself (never over a neighbour);
   the nearest ring wins. A ring shows the colour all its pieces share.
-  Rings shrink at low zoom (phones) and hide once their piece is 28 px
-  across; they are rebuilt when a round's ring set differs.
+  Rings are 7 px in radius (`MARKER_R`) but shrink at low zoom (phones)
+  to 11 map units, down to 4 px or `view.ringMin`; inside counts up to
+  2 px beyond the drawn ring; the wider zone is 14 px (mouse), 18 (pen),
+  22 (touch). They hide once their piece is 28 px across; they are
+  rebuilt when a round's ring set differs.
 - Toasts under the card: the intro (`text.intro`) shows on every page
   load, also when a saved game resumes (a reload is how to read it
   again), and stays until the first interaction, a press anywhere on the
@@ -453,7 +468,7 @@ theme-color meta.
 
 Python 3.9+, stdlib only, deterministic (modules: `build` pipeline,
 `geometry`, `projection`, `polyhedral` Fuller's net, `lines` boundary
-lines, `svg` path text, `output` pins and emit). An image's
+lines, `relief` shaded relief, `svg` path text, `output` pins and emit). An image's
 `tools/build_map.py` is an adapter: it loads and pins its inputs, applies
 its own fix-ups, decides what is a region, context land or an overlay,
 and writes its data module; mapgen does the geometry. `python3 -I` keeps
@@ -574,6 +589,21 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   Rivière's public-domain port of Gray's equations (d3-geo-polygon
   `grayfuller.js`) for the formulas; the tests compare 12 points with
   values from Gray's own procedure.
+- Shaded relief (`mapgen.relief`): `read_esri_ascii(raw, (ncols, nrows))`
+  reads an elevation grid (e.g. a NOAA ETOPO subset from ERDDAP; sea and
+  nodata as 0 m), `shaded_relief(res, window, inverse, dem, fids,
+  ReliefStyle(ppu, …), box=…, edge_ok=…)` hill-shades it (Horn's
+  gradient, light from the top left; shadow and steepness darken, slopes
+  facing the light lighten) on a pixel grid over `box` (default the
+  window; the extent with `edge_ok=True`, where the context land is
+  clipped), masked to the drawn rings of `fids` (`mapgen.CONTEXT` for the
+  context land) with exact coverage at the coast, and returns a
+  deterministic 8-bit palette PNG (transparent, black or white with
+  alpha), its `<image>` element and stats. `inverse` maps (easting,
+  northing) back to lon/lat (`mapgen.laea_inverse(p)` for a
+  `LambertAzimuthalEqualArea`; check it with `inverse_error`).
+  `emit_binary` writes or checks the PNGs (with `check`, the same pixels
+  under another zlib build count as up to date).
 - Feed polygons in a fixed order: the output depends on it, and the same
   inputs in the same order give byte-identical files. `emit` writes, or
   with `check` compares and returns 1 on a difference, and prints sizes
@@ -596,8 +626,8 @@ a capital, a current capital of the expected item (P36 / P1376). It is
 run by hand (CI runs only `wikicheck_test.py`, its logic on canned
 answers) through a thin per-image entry point
 (`images/<name>/tools/wiki_titles.py <pinned input>`, `--suggest`
-proposes titles from Wikidata); world-quiz, japan-quiz and east-asia-quiz
-have one, each `tools/README.md` ("Wikipedia titles") the method, date
+proposes titles from Wikidata); world-quiz, japan-quiz, east-asia-quiz and
+germany-quiz have one, each `tools/README.md` ("Wikipedia titles") the method, date
 and special cases.
 
 ## Adding a map image

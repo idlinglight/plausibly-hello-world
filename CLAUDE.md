@@ -143,7 +143,7 @@ synced (Dependabot bumps them per folder).
 
 `shared/map-quiz/`: a map quiz on an inline SVG map, shared by the map
 images (now `europe-quiz`, `vienna-districts`, `japan-quiz`, `world-quiz`,
-`south-america-quiz`, `east-asia-quiz`). Its `README.md` has the contracts and the
+`south-america-quiz`, `east-asia-quiz`, `germany-quiz`). Its `README.md` has the contracts and the
 behaviour (rounds, colours, rings, zoom/pan input, wheel classification,
 layouts, theme, `?seed`, `<html data-*>`, storage). The engine files
 (`main.js`, `quiz.js`, `contract.js`, `wheel.js`, `theme.js`, `style.css`,
@@ -160,7 +160,8 @@ offline generator is `tools/build_map.py` per image, an adapter (inputs,
 fix-ups, selection) over the shared core `shared/map-quiz/tools/mapgen`
 (projections incl. already-projected input and Fuller's icosahedral net, clipping, shared borders,
 simplification, optionally of the region borders too, boundary lines
-between groups of regions for line overlays, SVG, `--check`). Adding a map image: folder + `config.js`
+between groups of regions for line overlays, SVG, `--check`, a shaded relief
+from an elevation grid as a PNG for an `<image>` overlay). Adding a map image: folder + `config.js`
 + data adapter (+ `tools/data.test.mjs`), its name in the map-quiz rule
 of `shared/sync.json` and `python3 shared/sync.py`, then "Adding an
 image" below (caller workflow, README row). Engine changes go to
@@ -176,7 +177,12 @@ to a page about it, opened in a new tab: marked by an icon after it,
 underlined only on hover and keyboard focus (https only, no prefetch, the
 live region moves to an sr-only copy; on in world-quiz and japan-quiz:
 the English Wikipedia article, a capital round's the capital's; in
-east-asia-quiz in the capitals round only).
+east-asia-quiz in the capitals round only; in germany-quiz the German
+article, a capital round's the capital's). `view.ringMin` (CSS px, > 0,
+at most the full ring radius 7; default 4) is the smallest radius rings
+shrink to at low zoom: 7 keeps them full size at every zoom, for a ring
+hemmed in by neighbours, where the wider tap zone around it never
+applies (on in germany-quiz: Bremen).
 
 ### Per-image notes
 
@@ -282,8 +288,8 @@ east-asia-quiz in the capitals round only).
   free to use, no warranty), all sha256-pinned, not committed;
   `tools/build_map.py` (adapter over mapgen: fix-ups with expected
   counts and point checks, the piece split, LAEA 35°N 135°E, line
-  overlays from `mapgen.boundary_lines`, the hillshade with the inverse
-  projection) and `tools/prefectures.json` (the single source of truth:
+  overlays from `mapgen.boundary_lines`, the relief's parameters; the
+  hillshade itself is `mapgen.shaded_relief`) and `tools/prefectures.json` (the single source of truth:
   names, kanji, kana, capitals, regions, islands; every kana checked
   against its Hepburn name) give `site/map.svg`, `site/japan.js` and
   `site/relief.png`; fix-ups, pins and relief parameters in
@@ -385,6 +391,41 @@ east-asia-quiz in the capitals round only).
   fix-ups, point checks and choices in `tools/README.md`. Checks: `node
   tools/data.test.mjs`. Favicon rasters exported once from `favicon.svg`
   as for europe-quiz.
+- **germany-quiz**: a map-quiz image (engine above), German UI
+  (title "Deutschland-Quiz"). The 16 Länder by their short names
+  (Bayern, Bremen, …; ids ASCII: `baden-wuerttemberg`); rounds
+  (`<html data-round>`): `states`, then `capitals`, both all 16 (owner:
+  the city states too, by their capitals of the same name); a misclick
+  shows "Land · Hauptstadt" in the capitals round (a city state: the
+  name alone), the name in the states round. The asked name links to its
+  German Wikipedia article (the state's, "Freie Hansestadt Bremen" for
+  Bremen; in `capitals` the capital's, "Bremen" the city's; titles
+  `wiki` / `capital_wiki` in `tools/states.json`, checked by hand online
+  with `tools/wiki_titles.py`). One ring, Bremen's (its city part a
+  narrow band of a few px on phones, surrounded by Niedersachsen), sized
+  by that part, not with Bremerhaven, at its full 7 px radius at every
+  zoom (`view.ringMin`). `config.view`: `maxScale` 3, `besideHud`,
+  `ringMin` 7. Data:
+  Natural Earth v5.1.2 admin-1 10m for the Länder and for all context
+  land (the neighbours' admin-1 features, so the national border is one
+  line; no T-junctions, asserted), 10m lakes (13 in Germany, the Bodensee
+  as Natural Earth splits it, see-through: a tap picks the Land beneath;
+  no Chiemsee in that file), no geometry fix-ups (Büsingen stays Swiss
+  context land as Natural Earth draws it; Neuwerk isn't in the source),
+  point checks; LAEA 51°N 10.5°E, extent 50 % / 20 %. Shaded relief as
+  japan-quiz's (`mapgen.shaded_relief`, the same parameters) from NOAA
+  ETOPO 2022 at the full 15" (ERDDAP subset, sha256-pinned, not
+  committed), as two PNGs: `site/relief.png` on the Länder (1 px per
+  unit, in `#overlays`) and `site/relief-context.png` on the context land
+  over the whole extent (0.5 px per unit, fading out with it; drawn under
+  the Länder, whose opaque fills cut it off at the border: no seam),
+  together about 570 KB;
+  one image over the extent would be 0.7–2.8 MB. `tools/build_map.py` and
+  `tools/states.json` (names, capitals, titles, a point per Land) give
+  `site/map.svg`, `site/states.js` and the PNGs; choices, pins and
+  numbers in `tools/README.md`. Checks: `node tools/data.test.mjs`,
+  `links.test.mjs`. Favicon rasters exported once from `favicon.svg` as
+  for europe-quiz.
 - **glyph-rain**: canvas 2D, dark only: glyphs fall down columns and fade
   (white head, green trail, black ground); a tap starts a column there.
   It shows which of two documented switches, neither of them secret,

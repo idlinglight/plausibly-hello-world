@@ -1,0 +1,34 @@
+name: image-germany-quiz
+
+# Build of images/germany-quiz by _build-image.yml. Notes: _build-image.md
+# ("Callers"), beside this file.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'images/germany-quiz/**'
+      - '!images/germany-quiz/tools/**'
+      - '.github/workflows/image-germany-quiz.yml'
+      - '.github/workflows/_build-image.yml'
+      - 'tool-images/buildkit/**'
+  pull_request:
+    paths:
+      - 'images/germany-quiz/**'
+      - '!images/germany-quiz/tools/**'
+      - '.github/workflows/image-germany-quiz.yml'
+      - '.github/workflows/_build-image.yml'
+      - 'tool-images/buildkit/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The ceiling for _build-image.yml's jobs (_build-image.md).
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/_build-image.yml
+    with:
+      image: germany-quiz

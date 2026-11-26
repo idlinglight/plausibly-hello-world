@@ -204,15 +204,16 @@ none is lost to the grid, which the line overlays need.
 
 `site/relief.png` shades the terrain so plains and mountains can be told
 apart (Kantō, Nōbi and the Kinki basins flat, the Japan Alps and the
-backbone ranges rugged). `build_map.py`, `RELIEF_*`:
+backbone ranges rugged). `build_map.py`, `RELIEF_*`; the shading itself
+is the shared core's `mapgen.shaded_relief` (`mapgen/relief.py`):
 
 - Grid: 2.5 px per map unit (`RELIEF_PPU`; 2500 × 2743 px over the
   window `0 0 1000 1097.2`), about the 30" cells, so it stays sharp at the
   closest zoom (6 px/unit). Each pixel centre goes back to lon/lat by the
-  inverse of the map's projection (Snyder's ellipsoidal LAEA, in the
-  adapter; a round trip is checked on every run), its elevation is
-  bilinear between the ETOPO cell centres; sea values count as 0 m, so
-  the coast doesn't shade against the sea floor.
+  inverse of the map's projection (Snyder's ellipsoidal LAEA,
+  `mapgen.laea_inverse`; a round trip is checked on every run), its
+  elevation is bilinear between the ETOPO cell centres; sea values count
+  as 0 m, so the coast doesn't shade against the sea floor.
 - Shading: Horn's gradient, vertical exaggeration 5 (`RELIEF_Z`), light
   from the top left (azimuth 315°, 45° high). Darkness = 0.8 × how far
   the slope faces away from the light + 0.9 × its steepness, up to black

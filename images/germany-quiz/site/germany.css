@@ -1,0 +1,41 @@
+/* Deutschland-Quiz: additions to the shared engine's style.css (linked
+   before this file; token list in shared/map-quiz/README.md, "Styling").
+   Each token block three times, as in style.css: light, dark by the OS,
+   dark by the toggle. */
+
+/* Shaded relief, the two <image>s in map.svg (what they hold and where
+   they sit, why no blend mode: tools/README.md, "Relief"). Plain alpha, a
+   little softer in dark mode, where the shadows on the dark fills come
+   close to black. The context land's image takes no pointer events, like
+   the context land under it. */
+:root {
+  --relief-opacity: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --relief-opacity: 0.85;
+  }
+}
+
+:root[data-theme="dark"] {
+  --relief-opacity: 0.85;
+}
+
+#overlays #relief,
+#relief-context {
+  opacity: var(--relief-opacity);
+}
+
+#relief-context {
+  pointer-events: none;
+}
+
+/* Lakes (overlay "lakes"): water in the sea's colour (the engine's
+   --water) with the coast's hairline, which keeps its width at every
+   zoom. */
+#overlays #lakes {
+  stroke: var(--border);
+  stroke-width: 0.75px;
+  vector-effect: non-scaling-stroke;
+}
