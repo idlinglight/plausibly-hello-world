@@ -1,0 +1,42 @@
+/* Deutschland-Quiz: additions to the shared engine's style.css (linked
+   before this file; token list in shared/map-quiz/README.md, "Styling").
+   Each token block three times, as in style.css: light, dark by the OS,
+   dark by the toggle. */
+
+/* Shaded relief (map.svg's <image id="relief"> on the Länder and
+   <image id="relief-context"> on the context land, first in #overlays:
+   above the land, below the lakes; #overlays is never hit, so a tap on a
+   mountain picks the Land beneath). Both PNGs are transparent where flat
+   and off the land, black with alpha on shadowed and steep slopes, white
+   with alpha on slopes facing the light (top left): plain alpha
+   compositing, no blend mode (one would have nothing to blend with over
+   the sea, the page background outside the SVG, and leave a light fringe
+   along the coasts). A little softer in dark mode, where the shadows on
+   the dark fills come close to black. */
+:root {
+  --relief-opacity: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --relief-opacity: 0.85;
+  }
+}
+
+:root[data-theme="dark"] {
+  --relief-opacity: 0.85;
+}
+
+#overlays #relief,
+#overlays #relief-context {
+  opacity: var(--relief-opacity);
+}
+
+/* Lakes (overlay "lakes"): water in the sea's colour (the engine's
+   --water) with the coast's hairline. Not a blocking overlay: a click on
+   a lake picks the Land beneath. */
+#overlays #lakes {
+  stroke: var(--border);
+  stroke-width: 0.75px;
+  vector-effect: non-scaling-stroke;
+}
