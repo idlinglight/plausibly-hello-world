@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Checks the Wikipedia titles in tools/states.json against the live German
 Wikipedia and Wikidata (wiki: each state's article; capital_wiki: the
-capital city's article, for the 13 states the capitals round asks), or
-proposes titles from Wikidata.
+capital city's article, for all 16), or proposes titles from Wikidata.
 
 usage:
   python3 -I tools/wiki_titles.py <ne_10m_admin_1_states_provinces.geojson> [--verbose]
@@ -14,7 +13,8 @@ part is shared/map-quiz/tools/wikicheck.py. Expected items: a state's
 article belongs to Natural Earth's wikidataid of its admin-1 feature
 (matched by iso, as build_map.py matches it; the pinned file); a capital's
 article belongs to an item Wikidata records as a current capital of that
-state (P36 or P1376). Exits 1 if any title fails. Details:
+state (P36 or P1376), or, where it is the state's own article (Berlin,
+Hamburg: one article for city and state), to the state's item. Exits 1 if any title fails. Details:
 tools/README.md, "Wikipedia titles".
 """
 import argparse
@@ -61,7 +61,11 @@ def main():
             sys.exit(f"wiki_titles: {s['iso']}: Natural Earth has {sorted(map(str, qs)) or 'no'} wikidataid")
         q = next(iter(qs))
         rows.append({"key": f"{s['id']} wiki", "item": q, "title": s.get("wiki"), "stored": s.get("wiki")})
-        if s["capital_differs"]:
+        if s.get("capital_wiki") is not None and s["capital_wiki"] == s.get("wiki"):
+            # the city state's own article: the same item as the state's
+            rows.append({"key": f"{s['id']} capital_wiki", "item": q, "title": s["capital_wiki"],
+                         "stored": s["capital_wiki"]})
+        else:
             rows.append({"key": f"{s['id']} capital_wiki", "capital_of": q, "name": s["capital"],
                          "title": s.get("capital_wiki"), "stored": s.get("capital_wiki")})
     try:

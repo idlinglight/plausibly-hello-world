@@ -178,7 +178,11 @@ underlined only on hover and keyboard focus (https only, no prefetch, the
 live region moves to an sr-only copy; on in world-quiz and japan-quiz:
 the English Wikipedia article, a capital round's the capital's; in
 east-asia-quiz in the capitals round only; in germany-quiz the German
-article, a capital round's the capital's).
+article, a capital round's the capital's). `view.ringMin` (CSS px, > 0,
+at most the full ring radius 7; default 4) is the smallest radius rings
+shrink to at low zoom: 7 keeps them full size at every zoom, for a ring
+hemmed in by neighbours, where the wider tap zone around it never
+applies (on in germany-quiz: Bremen).
 
 ### Per-image notes
 
@@ -390,17 +394,18 @@ article, a capital round's the capital's).
 - **germany-quiz**: a map-quiz image (engine above), German UI
   (title "Deutschland-Quiz"). The 16 Länder by their short names
   (Bayern, Bremen, …; ids ASCII: `baden-wuerttemberg`); rounds
-  (`<html data-round>`): `states`, then `capitals` asking only the 13
-  whose capital's name differs (`asked`; Berlin, Hamburg, Bremen stay
-  clickable as misclicks, labelled by the name alone); a misclick shows
-  "Land · Hauptstadt" in the capitals round, the name in the states
-  round. The asked name links to its German Wikipedia article (the
-  state's; in `capitals` the capital's; "Freie Hansestadt Bremen" for
-  Bremen; titles `wiki` / `capital_wiki` in `tools/states.json`, checked
-  by hand online with `tools/wiki_titles.py`). One ring, Bremen's (its
-  city part a narrow band of a few px on phones), sized by that part, not
-  with Bremerhaven, in the states round only (the capitals round's
-  answers are the states as one-piece groups without a marker). `config.view`: `maxScale` 3, `besideHud`. Data:
+  (`<html data-round>`): `states`, then `capitals`, both all 16 (owner:
+  the city states too, by their capitals of the same name); a misclick
+  shows "Land · Hauptstadt" in the capitals round (a city state: the
+  name alone), the name in the states round. The asked name links to its
+  German Wikipedia article (the state's, "Freie Hansestadt Bremen" for
+  Bremen; in `capitals` the capital's, "Bremen" the city's; titles
+  `wiki` / `capital_wiki` in `tools/states.json`, checked by hand online
+  with `tools/wiki_titles.py`). One ring, Bremen's (its city part a
+  narrow band of a few px on phones, surrounded by Niedersachsen), sized
+  by that part, not with Bremerhaven, at its full 7 px radius at every
+  zoom (`view.ringMin`). `config.view`: `maxScale` 3, `besideHud`,
+  `ringMin` 7. Data:
   Natural Earth v5.1.2 admin-1 10m for the Länder and for all context
   land (the neighbours' admin-1 features, so the national border is one
   line; no T-junctions, asserted), 10m lakes (13 in Germany, the Bodensee

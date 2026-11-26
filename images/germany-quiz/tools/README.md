@@ -187,12 +187,16 @@ as they are. Point checks (`states.json` `point`, `VIEW_CHECKS`,
   not the whole state's (97.9: with Bremerhaven, which would hide the
   ring at about half the zoom); the engine hides the ring once that is
   28 px across (from about 0.58 px per unit: shown on a 1280 × 800
-  desktop, hidden on 1440 × 900). The ring shows in the states round
-  only: the capitals round never asks Bremen, so there it would only
-  draw misclicks (and take taps from Niedersachsen around it).
-  `config.js` gives that round the states as one-piece answers without
-  `marker` / `size` (a grouped round takes its rings from its answers;
-  no engine change).
+  desktop, hidden on 1440 × 900). It shows in both rounds.
+- Ring size: `config.view.ringMin` 7 (2026-11-26, owner, after a test on
+  an iPhone SE, 375 × 667): the ring keeps the engine's full 7 px radius
+  at every zoom where it shows. By default the engine shrinks rings at
+  low zoom to 11 map units, at least 4 px: 4 px on that phone, and the
+  wider touch zone around a ring (22 px) never applies here, as it works
+  only over sea, context land or the ring's own answer, and Niedersachsen
+  surrounds Bremen. A 7 px ring (taps count up to 9 px from its centre)
+  covers a little of Niedersachsen around Bremen at the full view; a tap
+  there picks Bremen, which is the point.
 
 ## Relief
 
@@ -248,22 +252,22 @@ Nordrhein-Westfalen, Baden-Württemberg, Thüringen, Bremen (not "Freie
 Hansestadt Bremen"), Hamburg, Berlin, in the usual alphabetical order
 (ü sorted as u). Capitals by their common names: München, Hannover,
 Düsseldorf, Wiesbaden, Saarbrücken, …. Berlin, Hamburg and Bremen are
-city states, their own capitals: the capitals round asks the other 13
-(`capital_differs`), and a pick of a city state there is a misclick
-whose label is the name alone. Ids are ASCII (`baden-wuerttemberg`,
-`thueringen`).
+city states whose capitals are the cities of the same name: the capitals
+round asks all 16 (owner, 2026-11-26: with only the other 13 asked, the
+city states kept the first round's colour all round), and a misclick
+there shows "Land · Hauptstadt", for a city state the name alone (not
+"Berlin · Berlin"). Ids are ASCII (`baden-wuerttemberg`, `thueringen`).
 
 ## Wikipedia titles
 
 The card links the asked name to its German Wikipedia article (the links
 are built in `site/config.js`). `states.json` holds the titles: `wiki`
-on every state, `capital_wiki` on the 13 states whose capital the
-capitals round asks (`capital_differs`), and only there. Stored exactly
-as the article is titled (spaces, no redirect); `build_map.py` passes
-them into `states.js` (`wiki`; `capitalWiki` on those 13 only) and stops
-if one is missing, malformed (`mapgen.wiki_title_error`), duplicated, or
-a `capital_wiki` sits on a capital that isn't asked; `data.test.mjs`
-checks the shape and the special cases below.
+(the state's article) and `capital_wiki` (the capital's) on every state.
+Stored exactly as the article is titled (spaces, no redirect);
+`build_map.py` passes them into `states.js` (`wiki`, `capitalWiki`) and
+stops if one is missing, malformed (`mapgen.wiki_title_error`) or
+duplicated within its key; `data.test.mjs` checks the shape and the
+special cases below.
 
 Checked on 2026-11-26 against the live German Wikipedia and Wikidata
 with `wiki_titles.py`, by hand: it needs the network, so neither the
@@ -280,14 +284,19 @@ redirects it), not be a disambiguation page, and belong to the expected
 Wikidata item: a state's Natural Earth `wikidataid` (admin-1, matched by
 `iso` as the build matches it; all 16 agree), a capital's an item
 Wikidata records as a current capital of the state (its P36 or the
-city's P1376). Result: 29 of 29 verified (16 states, 13 capitals; all 13
-capitals through the state's P36). Special cases:
+city's P1376), or, where it is the state's own article (Berlin,
+Hamburg), the state's item. Result (2026-11-26, after the capitals round
+began to ask all 16): 32 of 32 verified (16 states, 16 capitals: 14
+through the state's P36, Berlin and Hamburg as the state's own item).
+Special cases:
 
-- **Bremen**: the state's article is "Freie Hansestadt Bremen" (Q1209);
-  "Bremen" is the city's. The quiz shows the short name and links the
-  state's article.
+- **Bremen**: the state's article is "Freie Hansestadt Bremen" (Q1209),
+  the capital's is the city's, "Bremen" (Q24879). The quiz shows the
+  short name in both rounds and links the state's article, then the
+  city's.
 - **Berlin, Hamburg**: one article each for city and state ("Berlin",
-  Q64; "Hamburg", Q1055), the items Natural Earth gives.
+  Q64; "Hamburg", Q1055), the items Natural Earth gives; both rounds link
+  it.
 - Every other state's article is titled by its short name (Bayern,
-  Sachsen, Thüringen, …), every asked capital's by its name (München,
+  Sachsen, Thüringen, …), every capital's by its name (München,
   Hannover, Düsseldorf, …).

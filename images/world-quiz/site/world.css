@@ -3,12 +3,11 @@
    token block three times, as in style.css: light, dark by the OS, dark
    by the toggle.
 
-   The map is Fuller's net, not a rectangle: outside it is the page
-   background (the engine's --sea, also the theme-color), inside it the
-   sea (--net-sea, the engine's usual sea colour), drawn by map.svg's
-   <path id="net">. Its folds (<path id="folds">, the triangle edges where
-   two faces meet) are faint lines over the sea, under the land; neither
-   is ever hit (a click on them is a click on the sea). */
+   --sea, the page background, is a pale grey here, the area outside the
+   net; --net-sea, the engine's usual sea colour, fills #net, the sea
+   inside it; --fold draws #folds as faint lines. Neither takes pointer
+   events, so a click on them is a click on the sea (what #net and #folds
+   are: images/world-quiz/tools/README.md). */
 :root {
   --sea: #eef1f3;
   --net-sea: #bfd9e7;

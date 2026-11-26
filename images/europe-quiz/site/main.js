@@ -42,7 +42,10 @@
 // (config.blockingOverlays, e.g. water): its fill and outline count as
 // background (no answer, no misclick, no hover). Rings belong to the
 // round's answers (rebuilt when a round's set differs) and shrink at low
-// zoom (MARKER_R_UNITS), so they don't cover their neighbours on a phone.
+// zoom (MARKER_R_UNITS), so they don't cover their neighbours on a phone,
+// down to MARKER_R_MIN px or config.view.ringMin (up to the full MARKER_R:
+// a ring that never shrinks, for one hemmed in by neighbours, where the
+// wider hit zone doesn't apply).
 //
 // Round picker (optional, config.roundPicker): the card's round label
 // opens a list of the round kinds; picking one starts a fresh round of it.
@@ -61,7 +64,7 @@
 // with another seed is replaced).
 
 import config from './config.js';
-import { checkConfig, linkError, roundSpecs } from './contract.js';
+import { MARKER_R, checkConfig, linkError, roundSpecs } from './contract.js';
 import { Quiz } from './quiz.js';
 import { wheelKind } from './wheel.js';
 
@@ -100,9 +103,10 @@ const PULSE_MS = 700;
 const TOAST_MS = 4000;
 const RESET_ARM_MS = 3000;
 const SLOP = { mouse: 5, pen: 8, touch: 10 }; // px of movement that make a press a pan
-const MARKER_R = 7; // ring radius, CSS px …
+// ring radius: MARKER_R CSS px (contract.js) …
 const MARKER_R_UNITS = 11; // … but at most this many map units at low zoom …
-const MARKER_R_MIN = 4; // … and at least this many px
+const MARKER_R_MIN = 4; // … and at least this many px …
+const RING_MIN = (config.view && config.view.ringMin) || MARKER_R_MIN; // … or config.view.ringMin
 const RING_SLACK = 2; // px around the drawn ring that count as inside (its halo)
 const MARKER_HIT = { mouse: 14, pen: 18, touch: 22 }; // wider hit zone around a ring, CSS px
 const MARKER_HIDE = 28; // a ring hides once its region is this many CSS px across
@@ -371,7 +375,7 @@ function render() {
   if (!svg) return;
   const { s, tx, ty } = cam;
   svg.setAttribute('viewBox', `${num(-tx / s)} ${num(-ty / s)} ${num(view.w / s)} ${num(view.h / s)}`);
-  const rpx = Math.min(MARKER_R, Math.max(MARKER_R_MIN, MARKER_R_UNITS * s));
+  const rpx = Math.min(MARKER_R, Math.max(RING_MIN, MARKER_R_UNITS * s));
   const r = num(rpx / s);
   for (const m of rings.values()) {
     const on = m.size * s < MARKER_HIDE;

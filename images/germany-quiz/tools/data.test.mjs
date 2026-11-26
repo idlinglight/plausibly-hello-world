@@ -22,8 +22,7 @@ const st = new Map(STATES.map((s) => [s.id, s]));
 
 check('data: 16 Länder in alphabetical order, states.js matches states.json', () => {
   assert.equal(STATES.length, 16);
-  const camel = (s) => ({ id: s.id, iso: s.iso, name: s.name, capital: s.capital, capitalDiffers: s.capital_differs,
-    wiki: s.wiki, ...(s.capital_wiki ? { capitalWiki: s.capital_wiki } : {}) });
+  const camel = (s) => ({ id: s.id, iso: s.iso, name: s.name, capital: s.capital, wiki: s.wiki, capitalWiki: s.capital_wiki });
   assert.deepEqual(STATES.map(({ marker, size, ...rest }) => rest), SOURCE.states.map(camel));
   assert.deepEqual(STATES.map((s) => s.name), ['Baden-Württemberg', 'Bayern', 'Berlin', 'Brandenburg', 'Bremen', 'Hamburg',
     'Hessen', 'Mecklenburg-Vorpommern', 'Niedersachsen', 'Nordrhein-Westfalen', 'Rheinland-Pfalz', 'Saarland', 'Sachsen',
@@ -34,11 +33,8 @@ check('data: 16 Länder in alphabetical order, states.js matches states.json', (
   for (const s of STATES) assert.match(s.id, /^[a-z-]+$/, s.id);
 });
 
-check('data: 13 capitals differ from their state\'s name; the city states don\'t', () => {
-  const asked = STATES.filter((s) => s.capitalDiffers).map((s) => s.id);
-  assert.equal(asked.length, 13);
-  assert.deepEqual(STATES.filter((s) => !s.capitalDiffers).map((s) => s.id), ['berlin', 'bremen', 'hamburg']);
-  for (const s of STATES) assert.equal(s.capitalDiffers, s.capital !== s.name, s.id);
+check('data: 16 capitals; the city states\' are the cities of the same name', () => {
+  assert.deepEqual(STATES.filter((s) => s.capital === s.name).map((s) => s.id), ['berlin', 'bremen', 'hamburg']);
   assert.deepEqual(['bayern', 'niedersachsen', 'nordrhein-westfalen', 'saarland', 'hessen'].map((id) => st.get(id).capital),
     ['München', 'Hannover', 'Düsseldorf', 'Saarbrücken', 'Wiesbaden']);
 });
@@ -63,44 +59,37 @@ check('data: the title rule is mapgen.wiki_title_error\'s (same class, same case
     assert.ok(!titleOk(t), JSON.stringify(t));
 });
 
-check('data: German Wikipedia titles for every state, and for the 13 asked capitals only', () => {
+check('data: German Wikipedia titles for every state and every capital', () => {
   for (const s of STATES) assert.ok(titleOk(s.wiki), `${s.id} wiki: ${JSON.stringify(s.wiki)}`);
-  for (const s of STATES) {
-    if (s.capitalDiffers) assert.ok(titleOk(s.capitalWiki), `${s.id} capitalWiki: ${JSON.stringify(s.capitalWiki)}`);
-    else assert.ok(!('capitalWiki' in s), `${s.id}: capital not asked, no capitalWiki`);
-  }
+  for (const s of STATES) assert.ok(titleOk(s.capitalWiki), `${s.id} capitalWiki: ${JSON.stringify(s.capitalWiki)}`);
   assert.equal(new Set(STATES.map((s) => s.wiki)).size, 16);
-  assert.equal(new Set(STATES.filter((s) => s.capitalDiffers).map((s) => s.capitalWiki)).size, 13);
+  assert.equal(new Set(STATES.map((s) => s.capitalWiki)).size, 16);
   // special cases (tools/README.md, Wikipedia titles)
   assert.equal(st.get('bremen').wiki, 'Freie Hansestadt Bremen', 'the state, not the city');
   assert.deepEqual(['berlin', 'hamburg'].map((id) => st.get(id).wiki), ['Berlin', 'Hamburg'], 'one article for city and state');
   for (const s of STATES) if (s.id !== 'bremen') assert.equal(s.wiki, s.name, `${s.id}: the article is titled by the short name`);
-  for (const s of STATES) if (s.capitalDiffers) assert.equal(s.capitalWiki, s.capital, `${s.id}: the capital's article`);
+  for (const s of STATES) assert.equal(s.capitalWiki, s.capital, `${s.id}: the capital's article, titled by its name`);
+  assert.deepEqual(['berlin', 'hamburg', 'bremen'].map((id) => st.get(id).capitalWiki), ['Berlin', 'Hamburg', 'Bremen'],
+    'the city articles (Berlin, Hamburg: the same as the state\'s)');
 });
 
 check('config: fits the engine contract, every round text renders, prompts unique per round', () => {
   checkTexts(config);
   assert.equal(config.items, STATES);
   assert.equal(config.map, MAP);
-  assert.deepEqual(config.view, { maxScale: 3, besideHud: true });
+  assert.deepEqual(config.view, { maxScale: 3, besideHud: true, ringMin: 7 }, 'ringMin: Bremen\'s ring never shrinks');
   assert.equal(config.blockingOverlays, undefined, 'lakes are see-through: a tap picks the Land beneath');
   assert.equal(config.carryColours, undefined);
   assert.equal(config.attribution, undefined);
 });
 
-check('config: rounds states → capitals, asked, Bremen\'s ring in the states round only', () => {
+check('config: rounds states → capitals, both ask all 16, Bremen\'s ring in both', () => {
   assert.deepEqual(config.rounds.map((r) => r.key), ['states', 'capitals']);
   assert.deepEqual(config.rounds.map((r) => r.label), ['Länder', 'Hauptstädte']);
   const specs = roundSpecs(config);
-  assert.deepEqual(specs.map((s) => s.asked.length), [16, 13]);
-  for (const id of ['berlin', 'hamburg', 'bremen']) assert.ok(!specs[1].asked.includes(id), id);
+  assert.deepEqual(specs.map((s) => s.asked.length), [16, 16]);
+  for (const r of config.rounds) for (const k of ['answers', 'asked']) assert.equal(r[k], undefined, `${r.key}.${k}`);
   assert.deepEqual(STATES.filter((s) => s.marker).map((s) => s.id), ['bremen']);
-  assert.equal(config.rounds[0].answers, undefined, 'the states round: every item its own answer, Bremen ringed');
-  // the capitals round: the same states as one-piece answers, no ring (Bremen isn't asked there)
-  const caps = config.rounds[1].answers;
-  assert.deepEqual(caps.map((a) => [a.id, a.pieces]), STATES.map((s) => [s.id, [s.id]]));
-  assert.ok(caps.every((a) => a.marker === undefined && a.size === undefined));
-  assert.deepEqual(caps.map(({ pieces, ...a }) => a), STATES.map(({ marker, size, ...s }) => s));
   const b = st.get('bremen');
   assert.ok(b.marker.every(Number.isFinite) && b.size > 0);
   assert.ok(b.marker[0] > 0 && b.marker[0] < MAP.width && b.marker[1] > 0 && b.marker[1] < MAP.height);
@@ -109,17 +98,16 @@ check('config: rounds states → capitals, asked, Bremen\'s ring in the states r
 check('config: German texts, misclick labels', () => {
   const [sta, cap] = config.rounds;
   const by = st.get('bayern');
-  const be = cap.answers.find((a) => a.id === 'berlin'), hb = cap.answers.find((a) => a.id === 'bremen');
+  const be = st.get('berlin'), hb = st.get('bremen'), hh = st.get('hamburg');
   assert.deepEqual([sta.ask(by), sta.miss(by)], ['Bayern', 'Bayern']);
-  const byCap = cap.answers.find((a) => a.id === 'bayern');
-  assert.deepEqual([cap.ask(byCap), cap.miss(byCap)], ['München', 'Bayern · München']);
-  // city states (not asked this round): the name alone, not "Berlin · Berlin"
-  assert.deepEqual([cap.miss(be), cap.miss(hb)], ['Berlin', 'Bremen']);
+  assert.deepEqual([cap.ask(by), cap.miss(by)], ['München', 'Bayern · München']);
+  // city states: asked by their capital, a misclick shows the name alone, not "Berlin · Berlin"
+  assert.deepEqual([be, hb, hh].map((s) => [cap.ask(s), cap.miss(s)]), [['Berlin', 'Berlin'], ['Bremen', 'Bremen'], ['Hamburg', 'Hamburg']]);
   assert.equal(`${sta.prompt} ${sta.ask(by)}`, 'Finde das Land Bayern');
-  assert.equal(`${cap.prompt} ${cap.ask(byCap)}`, 'Finde das Land mit der Hauptstadt München');
-  assert.equal(sta.done({ total: 16, misses: 0 }), 'Alle 16 Länder gefunden · ohne Fehlklick. Jetzt 13 Landeshauptstädte: finde das Land dazu.');
-  assert.equal(sta.done({ total: 16, misses: 1 }), 'Alle 16 Länder gefunden · 1 Fehlklick. Jetzt 13 Landeshauptstädte: finde das Land dazu.');
-  assert.equal(cap.done({ total: 13, misses: 3 }), 'Alle 13 Hauptstädte gefunden · 3 Fehlklicks. Wieder die Länder, neu gemischt.');
+  assert.equal(`${cap.prompt} ${cap.ask(by)}`, 'Finde das Land mit der Hauptstadt München');
+  assert.equal(sta.done({ total: 16, misses: 0 }), 'Alle 16 Länder gefunden · ohne Fehlklick. Jetzt die 16 Landeshauptstädte: finde das Land dazu.');
+  assert.equal(sta.done({ total: 16, misses: 1 }), 'Alle 16 Länder gefunden · 1 Fehlklick. Jetzt die 16 Landeshauptstädte: finde das Land dazu.');
+  assert.equal(cap.done({ total: 16, misses: 3 }), 'Alle 16 Hauptstädte gefunden · 3 Fehlklicks. Wieder die Länder, neu gemischt.');
   assert.deepEqual(config.text.theme('dark', false), { label: 'In den dunklen Modus wechseln', title: 'In den dunklen Modus wechseln' });
   assert.deepEqual(config.text.theme('light', true), { label: 'In den hellen Modus wechseln', title: 'Zurück zur Systemeinstellung (hell)' });
 });

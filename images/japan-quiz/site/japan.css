@@ -3,10 +3,9 @@
    token block three times, as in style.css: light, dark by the OS, dark
    by the toggle. */
 
-/* Region borders: in the prefectures and capitals rounds the prefecture
-   borders are drawn too, so the region borders above them are heavier and
-   a step darker (lighter in dark mode), and the eight regions stay
-   readable as groups. */
+/* Region borders: heavier and a step darker (lighter in dark mode) in the
+   prefectures and capitals rounds, so the eight regions stay readable as
+   groups among the other lines there. */
 :root {
   --region-border: #4c585e;
 }
@@ -27,15 +26,10 @@
   stroke-width: 1.5px;
 }
 
-/* Shaded relief (map.svg's <image id="relief">, first in #overlays: above
-   the pieces, below the lake and the lines; #overlays is never hit, so a
-   tap on a mountain picks the piece beneath). relief.png is transparent
-   where flat and off Japan's land, black with alpha on shadowed and steep
-   slopes, white with alpha on slopes facing the light (top left): plain
-   alpha compositing, no blend mode (one would have nothing to blend with
-   over the sea, the page background outside the SVG, and leave a light
-   fringe along the coasts). A little softer in dark mode, where the
-   shadows on the dark fills come close to black. */
+/* Shaded relief, the <image id="relief"> in map.svg (what it holds and
+   where it sits, why no blend mode: images/japan-quiz/tools/README.md,
+   "Relief"). Plain alpha, a little softer in dark mode, where the shadows
+   on the dark fills come close to black. */
 :root {
   --relief-opacity: 1;
 }
@@ -54,17 +48,17 @@
   opacity: var(--relief-opacity);
 }
 
-/* Lake Biwa (overlay "lakes"): water in the sea's colour (the engine's
-   --water) with the coast's hairline. Not a blocking overlay: a click on
-   the lake picks Shiga beneath. */
+/* Lakes (overlay "lakes"): water in the sea's colour (the engine's
+   --water) with the coast's hairline, which keeps its width at every
+   zoom. */
 #overlays #lakes {
   stroke: var(--border);
   stroke-width: 0.75px;
   vector-effect: non-scaling-stroke;
 }
 
-/* The card's second line and the misclick label's kanji: Japanese system
-   fonts first (the engine sets lang="ja" on them). */
+/* Japanese text in the card and the misclick label (marked lang="ja"):
+   Japanese system fonts first. */
 #card [lang|="ja"],
 #label [lang|="ja"] {
   font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Yu Gothic", Meiryo, "Noto Sans CJK JP",

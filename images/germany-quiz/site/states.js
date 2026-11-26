@@ -4,27 +4,27 @@
 // [x, y, w, h] is map.svg's viewBox, the context drawn around it.
 // STATES: the 16 Länder in states.json order, one <path id> each in
 // map.svg; wiki: the German Wikipedia article's title; capitalWiki: the
-// capital's, only where the capitals round asks it (capitalDiffers).
+// capital's (Berlin and Hamburg: the same article as wiki).
 // marker: [x, y] in map units and size (map units) for the ring, on
 // Bremen only: size is the larger side of its city part's bounding box.
 
 export const MAP = { width: 1000, height: 1334.7, extent: [-500, -266.9, 2000, 1868.5] };
 
 export const STATES = [
-  { id: "baden-wuerttemberg", iso: "DE-BW", name: "Baden-Württemberg", capital: "Stuttgart", capitalDiffers: true, wiki: "Baden-Württemberg", capitalWiki: "Stuttgart" },
-  { id: "bayern", iso: "DE-BY", name: "Bayern", capital: "München", capitalDiffers: true, wiki: "Bayern", capitalWiki: "München" },
-  { id: "berlin", iso: "DE-BE", name: "Berlin", capital: "Berlin", capitalDiffers: false, wiki: "Berlin" },
-  { id: "brandenburg", iso: "DE-BB", name: "Brandenburg", capital: "Potsdam", capitalDiffers: true, wiki: "Brandenburg", capitalWiki: "Potsdam" },
-  { id: "bremen", iso: "DE-HB", name: "Bremen", capital: "Bremen", capitalDiffers: false, wiki: "Freie Hansestadt Bremen", marker: [334.6, 346.4], size: 48.1 },
-  { id: "hamburg", iso: "DE-HH", name: "Hamburg", capital: "Hamburg", capitalDiffers: false, wiki: "Hamburg" },
-  { id: "hessen", iso: "DE-HE", name: "Hessen", capital: "Wiesbaden", capitalDiffers: true, wiki: "Hessen", capitalWiki: "Wiesbaden" },
-  { id: "mecklenburg-vorpommern", iso: "DE-MV", name: "Mecklenburg-Vorpommern", capital: "Schwerin", capitalDiffers: true, wiki: "Mecklenburg-Vorpommern", capitalWiki: "Schwerin" },
-  { id: "niedersachsen", iso: "DE-NI", name: "Niedersachsen", capital: "Hannover", capitalDiffers: true, wiki: "Niedersachsen", capitalWiki: "Hannover" },
-  { id: "nordrhein-westfalen", iso: "DE-NW", name: "Nordrhein-Westfalen", capital: "Düsseldorf", capitalDiffers: true, wiki: "Nordrhein-Westfalen", capitalWiki: "Düsseldorf" },
-  { id: "rheinland-pfalz", iso: "DE-RP", name: "Rheinland-Pfalz", capital: "Mainz", capitalDiffers: true, wiki: "Rheinland-Pfalz", capitalWiki: "Mainz" },
-  { id: "saarland", iso: "DE-SL", name: "Saarland", capital: "Saarbrücken", capitalDiffers: true, wiki: "Saarland", capitalWiki: "Saarbrücken" },
-  { id: "sachsen", iso: "DE-SN", name: "Sachsen", capital: "Dresden", capitalDiffers: true, wiki: "Sachsen", capitalWiki: "Dresden" },
-  { id: "sachsen-anhalt", iso: "DE-ST", name: "Sachsen-Anhalt", capital: "Magdeburg", capitalDiffers: true, wiki: "Sachsen-Anhalt", capitalWiki: "Magdeburg" },
-  { id: "schleswig-holstein", iso: "DE-SH", name: "Schleswig-Holstein", capital: "Kiel", capitalDiffers: true, wiki: "Schleswig-Holstein", capitalWiki: "Kiel" },
-  { id: "thueringen", iso: "DE-TH", name: "Thüringen", capital: "Erfurt", capitalDiffers: true, wiki: "Thüringen", capitalWiki: "Erfurt" },
+  { id: "baden-wuerttemberg", iso: "DE-BW", name: "Baden-Württemberg", capital: "Stuttgart", wiki: "Baden-Württemberg", capitalWiki: "Stuttgart" },
+  { id: "bayern", iso: "DE-BY", name: "Bayern", capital: "München", wiki: "Bayern", capitalWiki: "München" },
+  { id: "berlin", iso: "DE-BE", name: "Berlin", capital: "Berlin", wiki: "Berlin", capitalWiki: "Berlin" },
+  { id: "brandenburg", iso: "DE-BB", name: "Brandenburg", capital: "Potsdam", wiki: "Brandenburg", capitalWiki: "Potsdam" },
+  { id: "bremen", iso: "DE-HB", name: "Bremen", capital: "Bremen", wiki: "Freie Hansestadt Bremen", capitalWiki: "Bremen", marker: [334.6, 346.4], size: 48.1 },
+  { id: "hamburg", iso: "DE-HH", name: "Hamburg", capital: "Hamburg", wiki: "Hamburg", capitalWiki: "Hamburg" },
+  { id: "hessen", iso: "DE-HE", name: "Hessen", capital: "Wiesbaden", wiki: "Hessen", capitalWiki: "Wiesbaden" },
+  { id: "mecklenburg-vorpommern", iso: "DE-MV", name: "Mecklenburg-Vorpommern", capital: "Schwerin", wiki: "Mecklenburg-Vorpommern", capitalWiki: "Schwerin" },
+  { id: "niedersachsen", iso: "DE-NI", name: "Niedersachsen", capital: "Hannover", wiki: "Niedersachsen", capitalWiki: "Hannover" },
+  { id: "nordrhein-westfalen", iso: "DE-NW", name: "Nordrhein-Westfalen", capital: "Düsseldorf", wiki: "Nordrhein-Westfalen", capitalWiki: "Düsseldorf" },
+  { id: "rheinland-pfalz", iso: "DE-RP", name: "Rheinland-Pfalz", capital: "Mainz", wiki: "Rheinland-Pfalz", capitalWiki: "Mainz" },
+  { id: "saarland", iso: "DE-SL", name: "Saarland", capital: "Saarbrücken", wiki: "Saarland", capitalWiki: "Saarbrücken" },
+  { id: "sachsen", iso: "DE-SN", name: "Sachsen", capital: "Dresden", wiki: "Sachsen", capitalWiki: "Dresden" },
+  { id: "sachsen-anhalt", iso: "DE-ST", name: "Sachsen-Anhalt", capital: "Magdeburg", wiki: "Sachsen-Anhalt", capitalWiki: "Magdeburg" },
+  { id: "schleswig-holstein", iso: "DE-SH", name: "Schleswig-Holstein", capital: "Kiel", wiki: "Schleswig-Holstein", capitalWiki: "Kiel" },
+  { id: "thueringen", iso: "DE-TH", name: "Thüringen", capital: "Erfurt", wiki: "Thüringen", capitalWiki: "Erfurt" },
 ];

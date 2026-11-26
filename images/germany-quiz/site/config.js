@@ -10,14 +10,9 @@ import { MAP, STATES } from './states.js';
 import { wikipediaUrl } from './wiki.js';
 
 const fehler = (n) => (n ? ` · ${n} Fehlklick${n === 1 ? '' : 's'}` : ' · ohne Fehlklick');
-const CAPITALS = STATES.filter((s) => s.capitalDiffers).length; // the capital's name isn't the state's
 // A German Wikipedia article's URL from its title (wiki.js, the engine's
 // helper: spaces as _, ? # % & + stay part of the title).
 const wiki = (title) => wikipediaUrl('de', title);
-// The capitals round's answers: the states as one-piece groups without a
-// ring (marker, size): rings belong to a grouped round's answers, and that
-// round never asks Bremen, so its ring would only draw misclicks there.
-const WITHOUT_RING = STATES.map(({ marker, size, ...s }) => ({ ...s, pieces: [s.id] }));
 
 export default {
   map: MAP,
@@ -31,19 +26,16 @@ export default {
       miss: (s) => s.name,
       link: (s) => wiki(s.wiki),
       done: ({ total, misses }) =>
-        `Alle ${total} Länder gefunden${fehler(misses)}. Jetzt ${CAPITALS} Landeshauptstädte: finde das Land dazu.`,
+        `Alle ${total} Länder gefunden${fehler(misses)}. Jetzt die ${STATES.length} Landeshauptstädte: finde das Land dazu.`,
     },
     {
-      // Asks the capital only where its name differs from the state's (a
-      // data flag); the city states are misclicks this round. A misclick
-      // shows name · capital, or just the name where they're the same.
+      // Asks every state's capital, the city states' too. A misclick shows
+      // name · capital, or just the name where they're the same (Berlin).
       key: 'capitals',
       label: 'Hauptstädte',
       prompt: 'Finde das Land mit der Hauptstadt',
-      answers: WITHOUT_RING,
-      asked: (s) => s.capitalDiffers,
       ask: (s) => s.capital,
-      miss: (s) => (s.capitalDiffers ? `${s.name} · ${s.capital}` : s.name),
+      miss: (s) => (s.capital === s.name ? s.name : `${s.name} · ${s.capital}`),
       link: (s) => wiki(s.capitalWiki),
       done: ({ total, misses }) => `Alle ${total} Hauptstädte gefunden${fehler(misses)}. Wieder die Länder, neu gemischt.`,
     },
@@ -68,6 +60,8 @@ export default {
   },
   // besideHud: in landscape the full view fits left of the card and the
   // controls, so they never cover a Land. maxScale: the closest zoom, 3 px
-  // per map unit (why 3: tools/README.md, "Map geometry").
-  view: { maxScale: 3, besideHud: true },
+  // per map unit (why 3: tools/README.md, "Map geometry"). ringMin: rings
+  // keep their full radius at every zoom where they show (why:
+  // tools/README.md, "Map geometry").
+  view: { maxScale: 3, besideHud: true, ringMin: 7 },
 };

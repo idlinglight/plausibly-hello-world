@@ -119,7 +119,7 @@ export default {
     link: (asked) => `${asked} auf Wikipedia (neuer Tab)`, // with rounds[].link: its name and tooltip
   },
   attribution: 'Datenquelle: Stadt Wien – data.wien.gv.at', // optional
-  view: { maxScale: 6, besideHud: true, panToCentre: true }, // optional, see below
+  view: { maxScale: 6, besideHud: true, panToCentre: true, ringMin: 7 }, // optional, see below
   blockingOverlays: ['water'],           // optional, see below
   carryColours: true,                    // optional, see below
   roundPicker: true,                     // optional, see below
@@ -253,6 +253,12 @@ export default {
   pinch about the screen's centre, e.g. on a world map: drag the region
   to the centre first. The default range stays a subset; fit (button, `0`)
   returns to the full view.
+- **view.ringMin** (CSS px, > 0, at most 7, the ring's full radius
+  `MARKER_R` in `contract.js`; default 4): the smallest radius rings
+  shrink to at low zoom (Behaviour: Rings). 7 keeps them full size at
+  every zoom where they show: for a ring hemmed in by neighbours, where
+  the wider zone around it never applies, so the drawn ring is the whole
+  target (germany-quiz: Bremen inside Niedersachsen).
 - **blockingOverlays**: ids of overlays in `map.svg`'s `#overlays` (each a
   `<path>`) whose area swallows clicks and taps like the background: no
   answer, no misclick, no hover on the region beneath. Their outline
@@ -404,8 +410,11 @@ theme-color meta.
   picks it, a tap in the wider zone around it only over sea, context
   land, an inert piece or that answer itself (never over a neighbour);
   the nearest ring wins. A ring shows the colour all its pieces share.
-  Rings shrink at low zoom (phones) and hide once their piece is 28 px
-  across; they are rebuilt when a round's ring set differs.
+  Rings are 7 px in radius (`MARKER_R`) but shrink at low zoom (phones)
+  to 11 map units, down to 4 px or `view.ringMin`; inside counts up to
+  2 px beyond the drawn ring; the wider zone is 14 px (mouse), 18 (pen),
+  22 (touch). They hide once their piece is 28 px across; they are
+  rebuilt when a round's ring set differs.
 - Toasts under the card: the intro (`text.intro`) shows on every page
   load, also when a saved game resumes (a reload is how to read it
   again), and stays until the first interaction, a press anywhere on the

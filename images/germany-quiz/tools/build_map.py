@@ -210,8 +210,6 @@ def load_data():
             fail(f"states.json: bad id {s['id']!r}")
         if not re.match(r"^DE-[A-Z]{2}$", s["iso"]):
             fail(f"states.json: {s['id']}: bad iso {s['iso']!r}")
-        if not isinstance(s["capital_differs"], bool) or s["capital_differs"] != (s["capital"] != s["name"]):
-            fail(f"states.json: {s['id']}: capital_differs must say whether capital and name differ")
         pt = s.get("point")
         if not (isinstance(pt, list) and len(pt) == 2 and 5 < pt[0] < 16 and 47 < pt[1] < 56):
             fail(f"states.json: {s['id']}: bad point")
@@ -222,24 +220,16 @@ def load_data():
     names = [s["name"] for s in st]
     if names != sorted(names, key=lambda n: n.replace("ü", "u")):
         fail("states.json: not in alphabetical order")
-    # Wikipedia titles (tools/README.md, "Wikipedia titles"): wiki on every
-    # state (each is asked by name), capital_wiki exactly on the states the
-    # capitals round asks (capital_differs).
+    # Wikipedia titles (tools/README.md, "Wikipedia titles"): wiki and
+    # capital_wiki on every state (both rounds ask all 16).
     for s in st:
-        bad = mapgen.wiki_title_error(s.get("wiki"))
-        if bad:
-            fail(f"states.json: {s['id']}: wiki (a German Wikipedia article title) "
-                 f"{'missing' if 'wiki' not in s else bad}")
-        if not s["capital_differs"]:
-            if "capital_wiki" in s:
-                fail(f"states.json: {s['id']}: capital_wiki, but the capitals round doesn't ask its capital")
-            continue
-        bad = mapgen.wiki_title_error(s.get("capital_wiki"))
-        if bad:
-            fail(f"states.json: {s['id']}: capital_wiki (a German Wikipedia article title) "
-                 f"{'missing' if 'capital_wiki' not in s else bad}")
+        for key in ("wiki", "capital_wiki"):
+            bad = mapgen.wiki_title_error(s.get(key))
+            if bad:
+                fail(f"states.json: {s['id']}: {key} (a German Wikipedia article title) "
+                     f"{'missing' if key not in s else bad}")
     for key in ("wiki", "capital_wiki"):
-        vals = [s[key] for s in st if key in s]
+        vals = [s[key] for s in st]
         if len(set(vals)) != len(vals):
             fail(f"states.json: duplicate {key}")
     return st
@@ -481,7 +471,7 @@ def build(adm1_path, lakes_path, etopo_path):
         "// [x, y, w, h] is map.svg's viewBox, the context drawn around it.",
         "// STATES: the 16 Länder in states.json order, one <path id> each in",
         "// map.svg; wiki: the German Wikipedia article's title; capitalWiki: the",
-        "// capital's, only where the capitals round asks it (capitalDiffers).",
+        "// capital's (Berlin and Hamburg: the same article as wiki).",
         "// marker: [x, y] in map units and size (map units) for the ring, on",
         "// Bremen only: size is the larger side of its city part's bounding box.",
         "",
@@ -495,9 +485,9 @@ def build(adm1_path, lakes_path, etopo_path):
             f"iso: {mapgen.js_string(s['iso'])}",
             f"name: {mapgen.js_string(s['name'])}",
             f"capital: {mapgen.js_string(s['capital'])}",
-            f"capitalDiffers: {'true' if s['capital_differs'] else 'false'}",
             f"wiki: {mapgen.js_string(s['wiki'])}",
-        ] + ([f"capitalWiki: {mapgen.js_string(s['capital_wiki'])}"] if s["capital_differs"] else [])
+            f"capitalWiki: {mapgen.js_string(s['capital_wiki'])}",
+        ]
         if s["id"] == RING[0]:
             fields += [f"marker: [{marker[0]:g}, {marker[1]:g}]", f"size: {size:g}"]
         js.append("  { " + ", ".join(fields) + " },")
