@@ -10,7 +10,11 @@ Overview and the map.svg layout: shared/map-quiz/README.md. Tests:
 python3 -I shared/map-quiz/tools/mapgen_test.py
 
 Polyhedral maps (Fuller's Dymaxion net): mapgen.Polyhedral splits lon/lat
-polygons into planar parts on the net, fed to a MapBuilder with Identity()."""
+polygons into planar parts on the net, fed to a MapBuilder with Identity().
+
+Shaded relief: mapgen.shaded_relief hill-shades an elevation grid
+(mapgen.read_esri_ascii) under the drawn land as a palette PNG for an
+<image> in map.svg's overlays."""
 from .build import CONTEXT, MapBuilder, Result, Window
 from .geometry import (area2, bbox, build_topology, clip_box, clip_ring, count_crossings, crossing_pairs, cut_cells,
                        dissolve, douglas_peucker, in_polygon, in_ring, node_points, open_ring, owner_of, parse_wkt,
@@ -20,7 +24,9 @@ from .output import BuildError, emit, read_pinned, wiki_title_error
 from . import polyhedral
 from .polyhedral import Polyhedral, stitch_antimeridian
 from .projection import (AIRY_1830, BESSEL_1841, GRS80, WGS84, Identity, LambertAzimuthalEqualArea, Projection,
-                         TransverseMercator, epsg3035, osgb_example)
+                         TransverseMercator, epsg3035, laea_inverse, osgb_example)
+from .relief import (ReliefStyle, coverage, emit_binary, inverse_error, png_palette, png_parts, read_esri_ascii,
+                     shaded_relief)
 from .svg import fmt_fixed, js_string, lines_d, map_svg, path_d
 
 __all__ = [
@@ -33,6 +39,8 @@ __all__ = [
     "BuildError", "emit", "read_pinned", "wiki_title_error",
     "polyhedral", "Polyhedral", "stitch_antimeridian",
     "AIRY_1830", "BESSEL_1841", "GRS80", "WGS84", "Identity", "LambertAzimuthalEqualArea", "Projection",
-    "TransverseMercator", "epsg3035", "osgb_example",
+    "TransverseMercator", "epsg3035", "laea_inverse", "osgb_example",
+    "ReliefStyle", "coverage", "emit_binary", "inverse_error", "png_palette", "png_parts", "read_esri_ascii",
+    "shaded_relief",
     "fmt_fixed", "js_string", "lines_d", "map_svg", "path_d",
 ]

@@ -828,5 +828,206 @@ class Polyhedral(unittest.TestCase):
         self.assertEqual(net.split([ring]), net.split([ring]))
 
 
+def esri(nc, nr, x0, y0, cs, z):
+    """An ESRI ASCII grid's bytes, as ERDDAP writes them (cell centres, rows
+    from north to south); z(lon, lat) gives each cell's value."""
+    head = f"ncols {nc}\nnrows {nr}\nxllcenter {x0}\nyllcenter {y0}\ncellsize {cs}\nnodata_value -9999\n"
+    rows = [" ".join(f"{z(x0 + c * cs, y0 + (nr - 1 - r) * cs):g}" for c in range(nc)) for r in range(nr)]
+    return (head + "\n".join(rows) + "\n").encode("ascii")
+
+
+def unpng(data):
+    """(width, height, palette indices row by row) of an 8-bit palette PNG,
+    every row filter undone: checks png_palette's filters independently."""
+    ihdr, plte, trns, raw = mapgen.png_parts(data)
+    w, h = int.from_bytes(ihdr[:4], "big"), int.from_bytes(ihdr[4:8], "big")
+    out, prev, pos = [], [0] * w, 0
+    for _ in range(h):
+        ft, line = raw[pos], list(raw[pos + 1:pos + 1 + w])
+        pos += 1 + w
+        for i in range(w):
+            a = line[i - 1] if i else 0
+            b, c = prev[i], (prev[i - 1] if i else 0)
+            if ft == 1:
+                line[i] = (line[i] + a) & 255
+            elif ft == 2:
+                line[i] = (line[i] + b) & 255
+            elif ft == 3:
+                line[i] = (line[i] + (a + b) // 2) & 255
+            elif ft == 4:
+                pp = a + b - c
+                pa, pb, pc = abs(pp - a), abs(pp - b), abs(pp - c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else (b if pb <= pc else c))) & 255
+        out.append(line)
+        prev = line
+    return w, h, out
+
+
+def relief_map(regions, context=()):
+    """A built map for relief tests: planar (1 degree = 1 km), the window
+    -1..3 x -1..2 km, 100 units wide (1 unit = 40 m), 10 % context around."""
+    window = mapgen.Window([planar(-1, -1), planar(3, 2)], 0.0, 100.0, (0.1, 0.1))
+    mb = mapgen.MapBuilder(planar, window, [rid for rid, _ in regions])
+    for rid, poly in regions:
+        mb.add_region(rid, poly)
+    for poly in context:
+        mb.add_context(poly)
+    return mb.build(keep_islands={rid for rid, _ in regions}), window
+
+
+def planar_inverse(e, n):
+    return e / 1000.0, n / 1000.0
+
+
+class Relief(unittest.TestCase):
+    STYLE = dict(sub=4, az=315.0, alt=45.0, z=5.0, w_shadow=0.8, w_steep=0.9, dark=0.55, light=0.3, levels=32)
+
+    def dem(self, z):
+        # -2..4 x -2..3 km: covers the extent (-1.4..3.4 x -1.3..2.3 km) and a pixel around it
+        return mapgen.read_esri_ascii(esri(601, 501, -2.0, -2.0, 0.01, z), (601, 501), "test grid")
+
+    def test_read_esri_ascii(self):
+        raw = esri(3, 2, 10.0, 50.0, 0.5, lambda lon, lat: {(10.0, 50.5): 5, (10.5, 50.5): -3, (11.0, 50.5): 7,
+                                                             (10.0, 50.0): 0, (10.5, 50.0): 2.5, (11.0, 50.0): -9999}[
+                                                                 (lon, lat)])
+        dem = mapgen.read_esri_ascii(raw, (3, 2))
+        self.assertEqual(list(dem["z"]), [5.0, 0.0, 7.0, 0.0, 2.5, 0.0])  # rows north first; sea and nodata 0
+        self.assertEqual((dem["nc"], dem["nr"], dem["cs"], dem["lat_top"], dem["lon_left"], dem["max"]),
+                         (3, 2, 0.5, 50.5, 10.0, 7.0))
+        with self.assertRaises(mapgen.BuildError):
+            mapgen.read_esri_ascii(raw, (2, 3))
+        with self.assertRaises(mapgen.BuildError):
+            mapgen.read_esri_ascii(raw.rsplit(b" ", 1)[0] + b"\n", (3, 2))  # a value short
+        with self.assertRaises(mapgen.BuildError):
+            mapgen.read_esri_ascii(raw.replace(b"xllcenter", b"xllcorner"), (3, 2))
+
+    def test_laea_inverse_round_trip(self):
+        for p, pts in ((mapgen.epsg3035(), ((5, 50), (10, 52), (-9, 38), (30, 68))),
+                       (mapgen.LambertAzimuthalEqualArea(35, 135), ((122.9, 24.3), (145.8, 45.5), (135, 35))),
+                       (mapgen.LambertAzimuthalEqualArea(51, 10.5), ((5.9, 47.3), (15.0, 55.1), (-1, 44), (22, 58)))):
+            self.assertLess(mapgen.inverse_error(p, mapgen.laea_inverse(p), pts), 1e-7, p)
+        p = mapgen.epsg3035()
+        lon, lat = mapgen.laea_inverse(p)(3962799.45, 2999718.85)  # EPSG's reference point
+        self.assertAlmostEqual(lon, 5, places=7)
+        self.assertAlmostEqual(lat, 50, places=7)
+
+    def test_coverage(self):
+        # A: x 25..50, y 25..50 units; B beside it from x 50.5 (0.5 px of the pixel at 50)
+        res, window = relief_map([("A", square(0, 0, 1, 1)), ("B", square(1.02, 0, 1.5, 1))])
+        cov, pw, ph = mapgen.coverage(res, ["A"], 1.0, 4, (0, 0, window.width, window.height))
+        self.assertEqual((pw, ph), (100, 75))
+        self.assertAlmostEqual(sum(cov), 25 * 25, places=3)
+        self.assertEqual({cov[y * pw + x] for x in range(25, 50) for y in range(25, 50)}, {1.0})
+        cov, _, _ = mapgen.coverage(res, ["A", "B"], 1.0, 4, (0, 0, window.width, window.height))
+        self.assertAlmostEqual(sum(cov), 25 * 25 + 12 * 25, places=3)
+        self.assertAlmostEqual(cov[30 * pw + 50], 0.5, places=6)
+        # neighbours sharing an edge: their union, nothing counted twice
+        res, window = relief_map([("A", square(0, 0, 1, 1)), ("B", square(1, 0, 1.5, 1))])
+        cov, _, _ = mapgen.coverage(res, ["A", "B"], 2.0, 4, (0, 0, window.width, window.height))
+        self.assertAlmostEqual(sum(cov), 4 * 37.5 * 25, places=3)
+        self.assertLessEqual(max(cov), 1.0 + 1e-6)
+        # a box with its own origin and the context land
+        res, window = relief_map([("A", square(0, 0, 1, 1))], context=[square(1, 0, 1.5, 1)])
+        cov, pw, ph = mapgen.coverage(res, ["A", mapgen.CONTEXT], 1.0, 4, window.extent)
+        self.assertEqual((pw, ph), (120, 90))
+        self.assertAlmostEqual(sum(cov), 37.5 * 25, places=3)
+        self.assertEqual(cov[int(26 - window.extent[1]) * pw + int(26 - window.extent[0])], 1.0)  # inside A
+        with self.assertRaises(mapgen.BuildError):
+            mapgen.coverage(res, ["nope"], 1.0, 4, window.extent)
+
+    def shade(self, z, regions=None, **kw):
+        res, window = relief_map(regions or [("A", square(0, 0, 1, 1))])
+        style = mapgen.ReliefStyle(1.0, **self.STYLE)
+        return mapgen.shaded_relief(res, window, planar_inverse, self.dem(z), ["A"], style, **kw)
+
+    def test_flat_land_is_transparent(self):
+        png, el, st = self.shade(lambda lon, lat: 300.0)
+        w, h, px = unpng(png)
+        self.assertEqual((w, h), (100, 75))
+        self.assertEqual({v for row in px for v in row}, {0})
+        self.assertEqual((st["land"], st["shaded"]), (25 * 25, 0))
+        self.assertEqual(el, '<image id="relief" href="relief.png" x="0" y="0" width="100" height="75" '
+                             'preserveAspectRatio="none"/>')
+
+    def test_slopes_to_and_from_the_light(self):
+        # light from the top left: a slope rising to the east faces it (white),
+        # one rising to the west faces away (black); off the land transparent
+        _, _, tr = mapgen.png_parts(self.shade(lambda lon, lat: 0.0)[0])[:3]
+        for rise, white in ((1, True), (-1, False)):
+            png, _, st = self.shade(lambda lon, lat: 100.0 + rise * 50.0 * lon)
+            w, h, px = unpng(png)
+            inner = {px[y][x] for y in range(27, 48) for x in range(27, 48)}
+            self.assertEqual(len(inner), 1, inner)
+            v = inner.pop()
+            self.assertTrue(v > 32 if white else 1 <= v <= 32, (rise, v))
+            self.assertEqual({px[y][x] for y in range(h) for x in range(w) if not (25 <= x < 50 and 25 <= y < 50)},
+                             {0})
+            self.assertEqual(st["shaded"], 25 * 25)
+        self.assertEqual(tr[0], 0)  # index 0 transparent
+        self.assertEqual(len(tr), 1 + 32 + 18)  # black steps, then white up to alpha 0.3
+
+    def test_edges_and_bounds(self):
+        whole = [("A", square(-1, -1, 3, 2))]
+        with self.assertRaises(mapgen.BuildError):
+            self.shade(lambda lon, lat: 0.0, regions=whole)
+        _, _, st = self.shade(lambda lon, lat: 0.0, regions=whole, edge_ok=True)
+        self.assertEqual(st["land"], 100 * 75)
+        res, window = relief_map([("A", square(0, 0, 1, 1))])
+        small = mapgen.read_esri_ascii(esri(51, 51, 0.0, 0.0, 0.01, lambda lon, lat: 0.0), (51, 51))
+        style = mapgen.ReliefStyle(1.0, **self.STYLE)
+        with self.assertRaises(mapgen.BuildError):  # the grid doesn't reach the pixels around the land
+            mapgen.shaded_relief(res, window, planar_inverse, small, ["A"], style)
+        png, el, _ = mapgen.shaded_relief(res, window, planar_inverse, self.dem(lambda lon, lat: 0.0), ["A"], style,
+                                          box=window.extent, element_id="hills", href="hills.png")
+        self.assertEqual(unpng(png)[:2], (120, 90))
+        self.assertEqual(el, '<image id="hills" href="hills.png" x="-10" y="-7.5" width="120" height="90" '
+                             'preserveAspectRatio="none"/>')
+
+    def test_deterministic(self):
+        z = lambda lon, lat: 400 * math.sin(3 * lon) * math.cos(2 * lat)  # noqa: E731
+        self.assertEqual(self.shade(z)[0], self.shade(z)[0])
+
+    def test_png_palette_filters_and_parts(self):
+        w, h = 37, 9
+        pix = bytearray((x * 7 + y * y * 3) % 5 if (x + y) % 4 else 0 for y in range(h) for x in range(w))
+        pix[:w] = bytes(w)  # a zero row
+        plte, trns = bytes(3 * 5), bytes([0, 60, 120, 180, 240])
+        png = mapgen.png_palette(w, h, pix, plte, trns)
+        self.assertEqual(png[:8], b"\x89PNG\r\n\x1a\n")
+        ww, hh, rows = unpng(png)
+        self.assertEqual((ww, hh), (w, h))
+        self.assertEqual(bytes(v for row in rows for v in row), bytes(pix))
+        ihdr, p2, t2, _ = mapgen.png_parts(png)
+        self.assertEqual((ihdr[8], ihdr[9], p2, t2), (8, 3, plte, trns))
+        self.assertEqual(png, mapgen.png_palette(w, h, pix, plte, trns))
+
+    def test_emit_binary(self):
+        import tempfile
+        import zlib
+        png = mapgen.png_palette(4, 2, bytes([0, 1, 2, 3, 3, 2, 1, 0]), bytes(12), bytes([0, 80, 160, 240]))
+        ihdr, plte, trns, raw = mapgen.png_parts(png)
+
+        def chunk(tag, data):
+            return (len(data).to_bytes(4, "big") + tag + data
+                    + (zlib.crc32(tag + data) & 0xFFFFFFFF).to_bytes(4, "big"))
+
+        # the same pixels, compressed otherwise
+        other = (png[:8] + chunk(b"IHDR", ihdr) + chunk(b"PLTE", plte) + chunk(b"tRNS", trns)
+                 + chunk(b"IDAT", zlib.compress(raw, 1)) + chunk(b"IEND", b""))
+        self.assertNotEqual(other, png)
+        with tempfile.TemporaryDirectory() as d, open(os.devnull, "w") as quiet:
+            out, sys.stdout = sys.stdout, quiet
+            try:
+                self.assertEqual(mapgen.emit_binary({"r.png": png}, d, True), 1)  # missing
+                self.assertEqual(mapgen.emit_binary({"r.png": png}, d, False), 0)
+                with open(os.path.join(d, "r.png"), "rb") as fh:
+                    self.assertEqual(fh.read(), png)
+                self.assertEqual(mapgen.emit_binary({"r.png": other}, d, True), 0)
+                changed = mapgen.png_palette(4, 2, bytes([1, 1, 2, 3, 3, 2, 1, 0]), bytes(12), bytes([0, 80, 160, 240]))
+                self.assertEqual(mapgen.emit_binary({"r.png": changed}, d, True), 1)
+            finally:
+                sys.stdout = out
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=1)
