@@ -3,8 +3,8 @@
 A map quiz as a static page: an inline SVG map, a question card, round
 after round of "find this region". One engine for several images
 (`images/europe-quiz`, `images/vienna-districts`,
-`images/south-america-quiz`, `images/east-asia-quiz`, `images/japan-quiz`:
-grouped rounds, `images/world-quiz`: Fuller's net, rounds with and
+`images/south-america-quiz`, `images/east-asia-quiz`,
+`images/germany-quiz`, `images/japan-quiz`: grouped rounds, `images/world-quiz`: Fuller's net, rounds with and
 without the small states); each image brings its own data, texts and
 map, the engine stays the same.
 
@@ -291,9 +291,10 @@ What the engine reads (`mapgen.map_svg` writes exactly this):
 </svg>
 ```
 
-`#overlays` may also hold an `<image>` (japan-quiz: `<image id="relief"
-href="relief.png" …>`, a shaded relief, written by the image's adapter
-after `mapgen.map_svg`): drawn in document order with the paths, never
+`#overlays` may also hold `<image>`s (japan-quiz: `<image id="relief"
+href="relief.png" …>`, a shaded relief; germany-quiz two of them, on the
+Länder and on the context land; `mapgen.shaded_relief` makes the PNG and
+the element, the image's adapter inserts it after `mapgen.map_svg`): drawn in document order with the paths, never
 hit (`#overlays` has `pointer-events: none`), never a line or a blocking
 overlay (those must be paths), styled by its id in the image's
 stylesheet. Its `href` is relative: it resolves against the page, and
@@ -453,7 +454,7 @@ theme-color meta.
 
 Python 3.9+, stdlib only, deterministic (modules: `build` pipeline,
 `geometry`, `projection`, `polyhedral` Fuller's net, `lines` boundary
-lines, `svg` path text, `output` pins and emit). An image's
+lines, `relief` shaded relief, `svg` path text, `output` pins and emit). An image's
 `tools/build_map.py` is an adapter: it loads and pins its inputs, applies
 its own fix-ups, decides what is a region, context land or an overlay,
 and writes its data module; mapgen does the geometry. `python3 -I` keeps
@@ -574,6 +575,21 @@ sys.exit(mapgen.emit({"map.svg": svg, "districts.js": js}, out_dir, check, res.r
   Rivière's public-domain port of Gray's equations (d3-geo-polygon
   `grayfuller.js`) for the formulas; the tests compare 12 points with
   values from Gray's own procedure.
+- Shaded relief (`mapgen.relief`): `read_esri_ascii(raw, (ncols, nrows))`
+  reads an elevation grid (e.g. a NOAA ETOPO subset from ERDDAP; sea and
+  nodata as 0 m), `shaded_relief(res, window, inverse, dem, fids,
+  ReliefStyle(ppu, …), box=…, edge_ok=…)` hill-shades it (Horn's
+  gradient, light from the top left; shadow and steepness darken, slopes
+  facing the light lighten) on a pixel grid over `box` (default the
+  window; the extent with `edge_ok=True`, where the context land is
+  clipped), masked to the drawn rings of `fids` (`mapgen.CONTEXT` for the
+  context land) with exact coverage at the coast, and returns a
+  deterministic 8-bit palette PNG (transparent, black or white with
+  alpha), its `<image>` element and stats. `inverse` maps (easting,
+  northing) back to lon/lat (`mapgen.laea_inverse(p)` for a
+  `LambertAzimuthalEqualArea`; check it with `inverse_error`).
+  `emit_binary` writes or checks the PNGs (with `check`, the same pixels
+  under another zlib build count as up to date).
 - Feed polygons in a fixed order: the output depends on it, and the same
   inputs in the same order give byte-identical files. `emit` writes, or
   with `check` compares and returns 1 on a difference, and prints sizes
@@ -596,8 +612,8 @@ a capital, a current capital of the expected item (P36 / P1376). It is
 run by hand (CI runs only `wikicheck_test.py`, its logic on canned
 answers) through a thin per-image entry point
 (`images/<name>/tools/wiki_titles.py <pinned input>`, `--suggest`
-proposes titles from Wikidata); world-quiz, japan-quiz and east-asia-quiz
-have one, each `tools/README.md` ("Wikipedia titles") the method, date
+proposes titles from Wikidata); world-quiz, japan-quiz, east-asia-quiz and
+germany-quiz have one, each `tools/README.md` ("Wikipedia titles") the method, date
 and special cases.
 
 ## Adding a map image
