@@ -27,32 +27,56 @@ from .geometry import ring_from_arcs
 from .output import BuildError
 
 
+ESRI_KEYS = {"ncols", "nrows", "xllcenter", "xllcorner", "yllcenter", "yllcorner", "cellsize", "nodata_value"}
+
+
 def read_esri_ascii(raw, grid, name="grid"):
     """An ESRI ASCII grid's bytes -> {"z": array of float32 elevations in
     metres, rows from north to south (values <= 0, sea and nodata, as 0),
     "nc", "nr", "cs" (cell size, degrees), "lat_top", "lon_left" (the
-    north-west cell's centre), "max"}. grid: the expected (ncols, nrows);
-    BuildError on another size or value count. The six header lines need
-    xllcenter / yllcenter (cell centres, as ERDDAP writes them)."""
-    parts = raw.split(b"\n", 6)
-    if len(parts) < 7:
-        raise BuildError(f"{name}: no ESRI ASCII header")
-    hdr = {}
-    for ln in parts[:6]:
-        k, v = ln.split()
-        hdr[k.decode("ascii").lower()] = float(v)
-    if "xllcenter" not in hdr or "yllcenter" not in hdr:
-        raise BuildError(f"{name}: header without xllcenter / yllcenter")
+    north-west cell's centre), "max"}. grid: the expected (ncols, nrows).
+    The header is the leading lines whose first word is one of ESRI_KEYS
+    (any case, any order, each once: ncols, nrows, cellsize, the lower-left
+    corner as xllcenter/yllcenter or xllcorner/yllcorner, optionally
+    nodata_value); the values follow. BuildError, naming the file, on a
+    malformed header, another size or another value count."""
+    hdr, pos = {}, 0
+    while True:
+        nl = raw.find(b"\n", pos)
+        line = raw[pos:] if nl < 0 else raw[pos:nl]
+        words = line.split()
+        if not words or words[0].decode("ascii", "replace").lower() not in ESRI_KEYS:
+            break
+        key = words[0].decode("ascii").lower()
+        if len(words) != 2 or key in hdr:
+            raise BuildError(f"{name}: malformed header line {line[:60]!r}")
+        try:
+            hdr[key] = float(words[1])
+        except ValueError:
+            raise BuildError(f"{name}: malformed header line {line[:60]!r}") from None
+        if nl < 0:
+            pos = len(raw)
+            break
+        pos = nl + 1
+    for need in (("ncols",), ("nrows",), ("cellsize",), ("xllcenter", "xllcorner"), ("yllcenter", "yllcorner")):
+        if sum(k in hdr for k in need) != 1:
+            raise BuildError(f"{name}: header needs exactly one of {' / '.join(need)}")
     nc, nr, cs = int(hdr["ncols"]), int(hdr["nrows"]), hdr["cellsize"]
+    if (nc, nr) != (hdr["ncols"], hdr["nrows"]) or nc <= 0 or nr <= 0 or not cs > 0:
+        raise BuildError(f"{name}: bad ncols, nrows or cellsize in the header")
     if (nc, nr) != tuple(grid):
         raise BuildError(f"{name}: {nc} x {nr} cells, expected {tuple(grid)}")
+    x0 = hdr["xllcenter"] if "xllcenter" in hdr else hdr["xllcorner"] + cs / 2
+    y0 = hdr["yllcenter"] if "yllcenter" in hdr else hdr["yllcorner"] + cs / 2
     z = array.array("f")
-    for line in parts[6].split(b"\n"):  # row by row: a large grid needn't be one list of floats
-        z.extend([v if v > 0 else 0.0 for v in map(float, line.split())])
+    try:
+        for line in raw[pos:].split(b"\n"):  # row by row: a large grid needn't be one list of floats
+            z.extend([v if v > 0 else 0.0 for v in map(float, line.split())])
+    except ValueError:
+        raise BuildError(f"{name}: a value that isn't a number") from None
     if len(z) != nc * nr:
         raise BuildError(f"{name}: {len(z)} values, expected {nc * nr}")
-    return {"z": z, "nc": nc, "nr": nr, "cs": cs, "lat_top": hdr["yllcenter"] + (nr - 1) * cs,
-            "lon_left": hdr["xllcenter"], "max": max(z)}
+    return {"z": z, "nc": nc, "nr": nr, "cs": cs, "lat_top": y0 + (nr - 1) * cs, "lon_left": x0, "max": max(z)}
 
 
 def inverse_error(project, inverse, points):
@@ -132,7 +156,7 @@ def coverage(res, fids, ppu, sub, box):
 
 
 def shaded_relief(res, window, inverse, dem, fids, style, box=None, edge_ok=False, element_id="relief",
-                  href="relief.png"):
+                  href="relief.png", within=None):
     """The relief over box (x0, y0, x1, y1 in map units; default the window,
     0 0 width height) on the land of fids (ids in res.topo; mapgen.CONTEXT
     for the context land): (png bytes, the <image> element for map.svg,
@@ -140,13 +164,21 @@ def shaded_relief(res, window, inverse, dem, fids, style, box=None, edge_ok=Fals
     map's projection; dem: read_esri_ascii's dict, covering every pixel
     centre of the box and one pixel around it. Land on the box's edge is a
     BuildError unless edge_ok (e.g. a box that is the drawn extent, where
-    the context land is clipped)."""
+    the context land is clipped). within (ids, optional): only pixels that
+    these features cover are drawn, at the coverage of fids: e.g. the
+    context land's relief with fids = all land and within = [CONTEXT] has
+    full alpha across a border with the regions (for an image under their
+    opaque fills, so the border shows no seam) but none inside them."""
     if box is None:
         box = (0.0, 0.0, window.width, window.height)
     bx0, by0 = box[0], box[1]
     ppu = style.ppu
     cov, pw, ph = coverage(res, fids, ppu, style.sub, box)
-    land = [i for i in range(pw * ph) if cov[i] > 0]
+    if within is None:
+        land = [i for i in range(pw * ph) if cov[i] > 0]
+    else:
+        sel = coverage(res, within, ppu, style.sub, box)[0]
+        land = [i for i in range(pw * ph) if cov[i] > 0 and sel[i] > 0]
     if not edge_ok and any(i < pw or i >= pw * (ph - 1) or i % pw in (0, pw - 1) for i in land):
         raise BuildError("relief: land on the image's edge")
 

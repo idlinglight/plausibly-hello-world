@@ -14,6 +14,10 @@ const CAPITALS = STATES.filter((s) => s.capitalDiffers).length; // the capital's
 // A German Wikipedia article's URL from its title (wiki.js, the engine's
 // helper: spaces as _, ? # % & + stay part of the title).
 const wiki = (title) => wikipediaUrl('de', title);
+// The capitals round's answers: the states as one-piece groups without a
+// ring (marker, size): rings belong to a grouped round's answers, and that
+// round never asks Bremen, so its ring would only draw misclicks there.
+const WITHOUT_RING = STATES.map(({ marker, size, ...s }) => ({ ...s, pieces: [s.id] }));
 
 export default {
   map: MAP,
@@ -36,6 +40,7 @@ export default {
       key: 'capitals',
       label: 'Hauptstädte',
       prompt: 'Finde das Land mit der Hauptstadt',
+      answers: WITHOUT_RING,
       asked: (s) => s.capitalDiffers,
       ask: (s) => s.capital,
       miss: (s) => (s.capitalDiffers ? `${s.name} · ${s.capital}` : s.name),

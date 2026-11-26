@@ -3,11 +3,12 @@
 Offline generator for the map data. Not part of the image (the Dockerfile
 copies `site/` only); its outputs are committed:
 
-- `site/map.svg`: one `<path>` per Land inside `<g id="states">`,
-  `<path id="land">` (all context land, merged), and in
-  `<g id="overlays">` the shaded relief (`<image id="relief"
-  href="relief.png">` and `<image id="relief-context"
-  href="relief-context.png">`, first) and the lakes (`lakes`, water). No
+- `site/map.svg`: `<path id="land">` (all context land, merged), the
+  context land's relief (`<image id="relief-context"
+  href="relief-context.png">`), one `<path>` per Land inside
+  `<g id="states">`, and in `<g id="overlays">` the Länder's relief
+  (`<image id="relief" href="relief.png">`, first) and the lakes
+  (`lakes`, water). No
   styling in the file: the engine's `style.css` (and the image's
   `germany.css`) does that.
 - `site/states.js`: the map's window/extent (`MAP`) and the 16 Länder
@@ -186,7 +187,12 @@ as they are. Point checks (`states.json` `point`, `VIEW_CHECKS`,
   not the whole state's (97.9: with Bremerhaven, which would hide the
   ring at about half the zoom); the engine hides the ring once that is
   28 px across (from about 0.58 px per unit: shown on a 1280 × 800
-  desktop, hidden on 1440 × 900).
+  desktop, hidden on 1440 × 900). The ring shows in the states round
+  only: the capitals round never asks Bremen, so there it would only
+  draw misclicks (and take taps from Niedersachsen around it).
+  `config.js` gives that round the states as one-piece answers without
+  `marker` / `size` (a grouped round takes its rings from its answers;
+  no engine change).
 
 ## Relief
 
@@ -202,16 +208,31 @@ grid. `build_map.py`, `RELIEF_*`:
 - `relief.png`: on the Länder only, over the window, 1 px per map unit
   (`RELIEF_PPU`, 0.68 km per pixel; 1000 × 1335 px, about 340 KB, decoded
   about 5 MB), ending at the coast and at the national border (coverage
-  from the drawn rings, as in japan-quiz).
-- `relief-context.png`: on the context land only, over the whole extent,
-  0.5 px per unit (`RELIEF_CONTEXT_PPU`; 1000 × 935 px, about 230 KB,
-  decoded about 4 MB). Clipped at the extent like the land, it fades out
-  with it under the page's fade.
-- Both first in `<g id="overlays">`: above the land, below the lakes;
-  `#overlays` is never hit, so a tap on a mountain picks the Land beneath.
-  `germany.css` draws them with plain alpha (`--relief-opacity`, softer
+  from the drawn rings, as in japan-quiz). First in `<g id="overlays">`:
+  above the Länder, below the lakes; `#overlays` is never hit, so a tap
+  on a mountain picks the Land beneath.
+- `relief-context.png`: the context land's, over the whole extent, 0.5 px
+  per unit (`RELIEF_CONTEXT_PPU`; 1000 × 935 px, about 230 KB, decoded
+  about 4 MB). Clipped at the extent like the land, it fades out with it
+  under the page's fade. Drawn between `<path id="land">` and the Länder's
+  group, so the Länder's opaque fills cover whatever of it lies under
+  them: its pixels are those touching context land, at the coverage of
+  all land (`mapgen.shaded_relief`'s `within`), so they are whole up to
+  the national border and the Länder cut them off exactly there.
+  `germany.css` gives it `pointer-events: none`, like `#land`.
+- Border seam (fixed 2026-11-26, review): with both images above the
+  Länder, each pixel along the border was covered by two partial-alpha
+  pixels of different size (one of each image), lighter than either
+  image alone (alpha about 0.47 instead of 0.55 at the darkest), and the
+  coarse one also shaded a strip of the Länder: closest-zoom shots on the
+  Alps border before and after the change differ by up to about 36 of
+  255 grey levels, only along the border; barely visible by eye. Now only relief.png's
+  own partial pixel (≤ 3 px at the closest zoom) meets the border, as at
+  any coast.
+- `germany.css` draws both with plain alpha (`--relief-opacity`, softer
   in dark mode), no blend mode (japan-quiz's reason: nothing to blend
-  with over the sea).
+  with over the sea, the page background outside the SVG, so a blend
+  would leave a light fringe along the coasts).
 - Why two images (2026-11-26): one image over the whole extent costs far
   more than japan-quiz's 330 KB, as almost all of it is land: 2.8 MB at
   1.5 px per unit (about the 15" cells), 1.26 MB at 1, 700 KB at 0.75.

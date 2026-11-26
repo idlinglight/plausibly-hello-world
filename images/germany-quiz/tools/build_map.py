@@ -50,13 +50,15 @@ Pipeline:
   9. Shaded relief (RELIEF_*, mapgen.shaded_relief): NOAA ETOPO 2022 at
      its full 15" (an ERDDAP subset, sha256-verified), hill-shaded on all
      drawn land, ending at the coast, as two palette PNGs: relief.png on
-     the Länder (RELIEF_PPU, over the window), relief-context.png on the
-     context land (RELIEF_CONTEXT_PPU, coarser, over the whole extent: it
-     fades out with the land at the page's fade). Drawn as
-     <image id="relief"> and <image id="relief-context">, first in
-     <g id="overlays">.
- 10. Write map.svg (one <path> per Land in <g id="states">, the relief and
-     the lakes in <g id="overlays">), states.js (MAP, STATES: the answers
+     the Länder (RELIEF_PPU, over the window), drawn as <image id="relief">
+     first in <g id="overlays">; relief-context.png on the context land
+     (RELIEF_CONTEXT_PPU, coarser, over the whole extent: it fades out with
+     the land at the page's fade), drawn as <image id="relief-context">
+     below the Länder, whole up to the border, so their fills cut it off
+     there without a seam.
+ 10. Write map.svg (context land, the context relief, one <path> per Land
+     in <g id="states">, the Länder's relief and the lakes in
+     <g id="overlays">), states.js (MAP, STATES: the answers
      with their texts, Wikipedia titles and Bremen's ring) and the two PNGs.
 """
 import argparse
@@ -180,12 +182,13 @@ MAX_SPAN = 90.0     # … and polygons wider than this (degrees of longitude: ac
 ID = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
 # Overlay ids map.svg gets (build() checks it writes no other), and the
 # ids of map.svg's own elements and the engine's layers: no state id may be
-# one of them. RELIEF_ID and RELIEF_CONTEXT_ID are the <image>s this script
-# inserts first in <g id="overlays">; "lakes" is mapgen's path.
+# one of them. RELIEF_ID is the <image> this script inserts first in
+# <g id="overlays">, RELIEF_CONTEXT_ID the one before <g id="states">;
+# "lakes" is mapgen's path.
 RELIEF_ID, RELIEF_CONTEXT_ID = "relief", "relief-context"
-OVERLAY_IDS = (RELIEF_ID, RELIEF_CONTEXT_ID, "lakes")
+OVERLAY_IDS = (RELIEF_ID, "lakes")
 GROUP_ID = "states"
-RESERVED = {"land", "overlays", "regions", "markers", GROUP_ID, *OVERLAY_IDS}
+RESERVED = {"land", "overlays", "regions", "markers", GROUP_ID, RELIEF_CONTEXT_ID, *OVERLAY_IDS}
 
 
 def fail(msg):
@@ -382,23 +385,28 @@ def ring_marker(res, mb, notes):
 def relief(res, window, project, dem, state_ids, notes):
     """The relief (mapgen.shaded_relief) as two images, so the Länder stay
     sharp at a size a phone loads quickly: relief.png on the Länder over
-    the window (their land never reaches its edge), relief-context.png on
-    the context land over the whole extent (clipped there: land on its
-    edge), at RELIEF_CONTEXT_PPU. Returns {file: png} and the <image>s."""
+    the window (their land never reaches its edge), drawn above them;
+    relief-context.png over the whole extent (clipped there: land on its
+    edge), at RELIEF_CONTEXT_PPU, drawn below the Länder: its pixels are
+    those touching context land, at the coverage of all land, so they are
+    whole up to the national border and the Länder's opaque fills cut them
+    off exactly there (no seam of two partial pixels). Returns
+    {file: png} and the two <image>s (Länder, context)."""
     inv = mapgen.laea_inverse(project)
     worst = mapgen.inverse_error(project, inv, ((5.87, 47.27), (15.04, 55.06), (-0.7, 45.1), (21.5, 56.9),
                                                 (LON0, LAT0)))
     if worst > 1e-6:  # ~0.1 m (the latitude series is good to ~1e-8°)
         fail(f"relief: inverse projection off by {worst:g}°")
     pngs, els = {}, []
-    for rid, ppu, fids, box, edge_ok in ((RELIEF_ID, RELIEF_PPU, list(state_ids), None, False),
-                                         (RELIEF_CONTEXT_ID, RELIEF_CONTEXT_PPU, [mapgen.CONTEXT], window.extent,
-                                          True)):
+    all_land = list(state_ids) + [mapgen.CONTEXT]
+    for rid, ppu, fids, within, box, edge_ok in (
+            (RELIEF_ID, RELIEF_PPU, list(state_ids), None, None, False),
+            (RELIEF_CONTEXT_ID, RELIEF_CONTEXT_PPU, all_land, [mapgen.CONTEXT], window.extent, True)):
         style = mapgen.ReliefStyle(ppu, sub=RELIEF_SUB, az=RELIEF_AZ, alt=RELIEF_ALT, z=RELIEF_Z,
                                    w_shadow=RELIEF_W_SHADOW, w_steep=RELIEF_W_STEEP, dark=RELIEF_DARK,
                                    light=RELIEF_LIGHT, levels=RELIEF_LEVELS)
         png, el, s = mapgen.shaded_relief(res, window, inv, dem, fids, style, box=box, edge_ok=edge_ok,
-                                          element_id=rid, href=f"{rid}.png")
+                                          element_id=rid, href=f"{rid}.png", within=within)
         pngs[f"{rid}.png"] = png
         els.append(el)
         notes.append(f"{rid}: {s['width']} x {s['height']} px ({ppu:g} px/unit), {s['land']} land px "
@@ -457,13 +465,14 @@ def build(adm1_path, lakes_path, etopo_path):
     if unknown:
         fail(f"overlay ids not in OVERLAY_IDS: {unknown}")
     svg_text = mapgen.map_svg(res, ids, HEAD, group_id=GROUP_ID)
-    # the relief: two <image>s, first in <g id="overlays"> (above the Länder
-    # and the context land, below the lakes); mapgen writes path overlays only
-    pngs, relief_els = relief(res, window, project, dem, ids, notes)
-    tag = '<g id="overlays">\n'
-    if svg_text.count(tag) != 1:
-        fail("map.svg: no single <g id=\"overlays\">")
-    svg_text = svg_text.replace(tag, tag + "".join(el + "\n" for el in relief_els))
+    # the relief: the Länder's <image> first in <g id="overlays"> (above the
+    # Länder, below the lakes), the context land's right before the Länder's
+    # group (above the context land, under the Länder); mapgen writes paths only
+    pngs, (relief_el, context_el) = relief(res, window, project, dem, ids, notes)
+    for tag, el, after in (('<g id="overlays">\n', relief_el, True), (f'<g id="{GROUP_ID}">\n', context_el, False)):
+        if svg_text.count(tag) != 1:
+            fail(f"map.svg: no single {tag.strip()}")
+        svg_text = svg_text.replace(tag, tag + el + "\n" if after else el + "\n" + tag)
 
     js = [
         f"// {HEAD}",

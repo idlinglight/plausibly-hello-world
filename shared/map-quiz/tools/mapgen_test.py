@@ -898,8 +898,24 @@ class Relief(unittest.TestCase):
             mapgen.read_esri_ascii(raw, (2, 3))
         with self.assertRaises(mapgen.BuildError):
             mapgen.read_esri_ascii(raw.rsplit(b" ", 1)[0] + b"\n", (3, 2))  # a value short
-        with self.assertRaises(mapgen.BuildError):
-            mapgen.read_esri_ascii(raw.replace(b"xllcenter", b"xllcorner"), (3, 2))
+        # the corner instead of the centre: the same cell centres
+        corner = raw.replace(b"xllcenter 10.0", b"XLLCORNER 9.75").replace(b"yllcenter 50.0", b"yllcorner 49.75")
+        dem2 = mapgen.read_esri_ascii(corner, (3, 2))
+        self.assertEqual((dem2["lat_top"], dem2["lon_left"], list(dem2["z"])), (50.5, 10.0, list(dem["z"])))
+        # five header lines (no nodata_value), in another order
+        lines = raw.split(b"\n")
+        five = b"\n".join([lines[4], lines[1], lines[0], lines[3], lines[2]] + lines[6:])
+        self.assertEqual(list(mapgen.read_esri_ascii(five, (3, 2))["z"]), list(dem["z"]))
+        for bad in (raw.replace(b"xllcenter 10.0", b"xllcorner 9.75 1"),        # three words
+                    raw.replace(b"cellsize 0.5", b"cellsize half"),               # not a number
+                    raw.replace(b"nodata_value -9999", b"ncols 3"),               # a key twice
+                    raw.replace(b"cellsize 0.5\n", b""),                          # cellsize missing
+                    raw.replace(b"nodata_value -9999", b"xllcorner 9.75"),        # centre and corner
+                    raw.replace(b"ncols 3", b"ncols 3.5"),
+                    raw.replace(b" 7 ", b" x ") if b" 7 " in raw else raw.replace(b"7", b"x", 1)):
+            with self.assertRaises(mapgen.BuildError) as cm:
+                mapgen.read_esri_ascii(bad, (3, 2), "test.asc")
+            self.assertIn("test.asc", str(cm.exception))
 
     def test_laea_inverse_round_trip(self):
         for p, pts in ((mapgen.epsg3035(), ((5, 50), (10, 52), (-9, 38), (30, 68))),
@@ -982,6 +998,22 @@ class Relief(unittest.TestCase):
         self.assertEqual(unpng(png)[:2], (120, 90))
         self.assertEqual(el, '<image id="hills" href="hills.png" x="-10" y="-7.5" width="120" height="90" '
                              'preserveAspectRatio="none"/>')
+
+    def test_within(self):
+        # fids give the alpha, within the pixels drawn: A (x 25..50.5) and
+        # B (50.5..62.5) share an edge inside the pixel column at x 50, drawn
+        # only where B covers: that column at full coverage, A's interior not
+        res, window = relief_map([("A", square(0, 0, 1.02, 1)), ("B", square(1.02, 0, 1.5, 1))])
+        style = mapgen.ReliefStyle(1.0, **self.STYLE)
+        z = lambda lon, lat: 100.0 - 50.0 * lon  # noqa: E731  (a slope facing away from the light: dark)
+        png, _, st = mapgen.shaded_relief(res, window, planar_inverse, self.dem(z), ["A", "B"], style, within=["B"])
+        _, _, px = unpng(png)
+        self.assertEqual(st["land"], 13 * 25)  # x 50..62, y 25..49
+        self.assertEqual({px[y][x] for y in range(75) for x in range(100) if not (50 <= x < 63 and 25 <= y < 50)}, {0})
+        inner, edge = px[30][55], px[30][50]
+        alone = unpng(mapgen.shaded_relief(res, window, planar_inverse, self.dem(z), ["B"], style)[0])[2][30][50]
+        self.assertEqual(edge, inner)  # A + B cover the shared column fully: B's own shade
+        self.assertLess(alone, inner)  # B alone covers half of it: lighter
 
     def test_deterministic(self):
         z = lambda lon, lat: 400 * math.sin(3 * lon) * math.cos(2 * lat)  # noqa: E731

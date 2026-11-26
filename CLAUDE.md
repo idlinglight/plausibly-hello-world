@@ -399,7 +399,8 @@ article, a capital round's the capital's).
   Bremen; titles `wiki` / `capital_wiki` in `tools/states.json`, checked
   by hand online with `tools/wiki_titles.py`). One ring, Bremen's (its
   city part a narrow band of a few px on phones), sized by that part, not
-  with Bremerhaven. `config.view`: `maxScale` 3, `besideHud`. Data:
+  with Bremerhaven, in the states round only (the capitals round's
+  answers are the states as one-piece groups without a marker). `config.view`: `maxScale` 3, `besideHud`. Data:
   Natural Earth v5.1.2 admin-1 10m for the Länder and for all context
   land (the neighbours' admin-1 features, so the national border is one
   line; no T-junctions, asserted), 10m lakes (13 in Germany, the Bodensee
@@ -410,8 +411,10 @@ article, a capital round's the capital's).
   japan-quiz's (`mapgen.shaded_relief`, the same parameters) from NOAA
   ETOPO 2022 at the full 15" (ERDDAP subset, sha256-pinned, not
   committed), as two PNGs: `site/relief.png` on the Länder (1 px per
-  unit) and `site/relief-context.png` on the context land over the whole
-  extent (0.5 px per unit, fading out with it), together about 570 KB;
+  unit, in `#overlays`) and `site/relief-context.png` on the context land
+  over the whole extent (0.5 px per unit, fading out with it; drawn under
+  the Länder, whose opaque fills cut it off at the border: no seam),
+  together about 570 KB;
   one image over the extent would be 0.7–2.8 MB. `tools/build_map.py` and
   `tools/states.json` (names, capitals, titles, a point per Land) give
   `site/map.svg`, `site/states.js` and the PNGs; choices, pins and

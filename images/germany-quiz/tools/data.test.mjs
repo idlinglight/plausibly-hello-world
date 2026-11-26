@@ -88,13 +88,19 @@ check('config: fits the engine contract, every round text renders, prompts uniqu
   assert.equal(config.attribution, undefined);
 });
 
-check('config: rounds states → capitals, asked, the ring on Bremen only', () => {
+check('config: rounds states → capitals, asked, Bremen\'s ring in the states round only', () => {
   assert.deepEqual(config.rounds.map((r) => r.key), ['states', 'capitals']);
   assert.deepEqual(config.rounds.map((r) => r.label), ['Länder', 'Hauptstädte']);
   const specs = roundSpecs(config);
   assert.deepEqual(specs.map((s) => s.asked.length), [16, 13]);
   for (const id of ['berlin', 'hamburg', 'bremen']) assert.ok(!specs[1].asked.includes(id), id);
   assert.deepEqual(STATES.filter((s) => s.marker).map((s) => s.id), ['bremen']);
+  assert.equal(config.rounds[0].answers, undefined, 'the states round: every item its own answer, Bremen ringed');
+  // the capitals round: the same states as one-piece answers, no ring (Bremen isn't asked there)
+  const caps = config.rounds[1].answers;
+  assert.deepEqual(caps.map((a) => [a.id, a.pieces]), STATES.map((s) => [s.id, [s.id]]));
+  assert.ok(caps.every((a) => a.marker === undefined && a.size === undefined));
+  assert.deepEqual(caps.map(({ pieces, ...a }) => a), STATES.map(({ marker, size, ...s }) => s));
   const b = st.get('bremen');
   assert.ok(b.marker.every(Number.isFinite) && b.size > 0);
   assert.ok(b.marker[0] > 0 && b.marker[0] < MAP.width && b.marker[1] > 0 && b.marker[1] < MAP.height);
@@ -102,13 +108,15 @@ check('config: rounds states → capitals, asked, the ring on Bremen only', () =
 
 check('config: German texts, misclick labels', () => {
   const [sta, cap] = config.rounds;
-  const by = st.get('bayern'), be = st.get('berlin'), hb = st.get('bremen');
+  const by = st.get('bayern');
+  const be = cap.answers.find((a) => a.id === 'berlin'), hb = cap.answers.find((a) => a.id === 'bremen');
   assert.deepEqual([sta.ask(by), sta.miss(by)], ['Bayern', 'Bayern']);
-  assert.deepEqual([cap.ask(by), cap.miss(by)], ['München', 'Bayern · München']);
+  const byCap = cap.answers.find((a) => a.id === 'bayern');
+  assert.deepEqual([cap.ask(byCap), cap.miss(byCap)], ['München', 'Bayern · München']);
   // city states (not asked this round): the name alone, not "Berlin · Berlin"
   assert.deepEqual([cap.miss(be), cap.miss(hb)], ['Berlin', 'Bremen']);
   assert.equal(`${sta.prompt} ${sta.ask(by)}`, 'Finde das Land Bayern');
-  assert.equal(`${cap.prompt} ${cap.ask(by)}`, 'Finde das Land mit der Hauptstadt München');
+  assert.equal(`${cap.prompt} ${cap.ask(byCap)}`, 'Finde das Land mit der Hauptstadt München');
   assert.equal(sta.done({ total: 16, misses: 0 }), 'Alle 16 Länder gefunden · ohne Fehlklick. Jetzt 13 Landeshauptstädte: finde das Land dazu.');
   assert.equal(sta.done({ total: 16, misses: 1 }), 'Alle 16 Länder gefunden · 1 Fehlklick. Jetzt 13 Landeshauptstädte: finde das Land dazu.');
   assert.equal(cap.done({ total: 13, misses: 3 }), 'Alle 13 Hauptstädte gefunden · 3 Fehlklicks. Wieder die Länder, neu gemischt.');
@@ -128,14 +136,16 @@ check('index.html: German, data-quiz names this image, own stylesheet after the 
   for (const id of ['prompt-link', 'prompt-live']) assert.ok(!mapIds.includes(id), id);
 });
 
-check('map.svg: a shape per Land in #states, context land, then the two relief images and the lakes', () => {
+check('map.svg: context land, its relief, a shape per Land in #states, then the Länder\'s relief and the lakes', () => {
   const svg = site('map.svg');
   const [x, y, w, h] = MAP.extent;
   assert.ok(svg.startsWith(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${x} ${y} ${w} ${h}">`));
   assert.ok(x < 0 && y < 0, 'context land around the window');
   for (const s of STATES) assert.ok(svg.includes(`<path id="${s.id}" d="m`), s.id);
-  assert.ok(svg.indexOf('<path id="land"') < svg.indexOf('<g id="states">') && svg.indexOf('<g id="states">') < svg.indexOf('<g id="overlays">'));
-  assert.match(svg, /<g id="overlays">\n<image id="relief" [^>]*\/>\n<image id="relief-context" [^>]*\/>\n<path id="lakes" d="m/);
+  assert.ok(svg.indexOf('<g id="states">') < svg.indexOf('<g id="overlays">'));
+  // the context relief right under the Länder (their fills cover it), the Länder's above them
+  assert.match(svg, /\n<path id="land" d="m[^"]+"\/>\n<image id="relief-context" [^>]*\/>\n<g id="states">\n/);
+  assert.match(svg, /<g id="overlays">\n<image id="relief" [^>]*\/>\n<path id="lakes" d="m/);
   assert.equal((svg.match(/ id="/g) || []).length, 1 + 1 + STATES.length + 1 + 2 + 1);
   assert.equal((svg.match(/<image /g) || []).length, 2);
 });
@@ -171,10 +181,11 @@ check('relief: relief.png over the window (the Länder), relief-context.png over
   assert.ok(ctx.bytes < 300_000, `relief-context.png ${ctx.bytes} B`);
 });
 
-check('germany.css: relief tokens in all three blocks, both images, lake outline', () => {
+check('germany.css: relief tokens in all three blocks, both images, the context relief never hit, lake outline', () => {
   const css = site('germany.css');
   assert.equal((css.match(/--relief-opacity:/g) || []).length, 3);
-  assert.match(css, /#overlays #relief,\s*#overlays #relief-context \{\s*opacity: var\(--relief-opacity\);\s*\}/);
+  assert.match(css, /#overlays #relief,\s*#relief-context \{\s*opacity: var\(--relief-opacity\);\s*\}/);
+  assert.match(css, /#relief-context \{\s*pointer-events: none;\s*\}/);
   assert.doesNotMatch(css, /mix-blend-mode/, 'plain alpha: a blend mode leaves a fringe over the sea');
   assert.match(css, /#overlays #lakes \{[^}]*vector-effect: non-scaling-stroke;/);
 });

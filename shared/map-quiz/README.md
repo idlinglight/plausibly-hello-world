@@ -4,8 +4,9 @@ A map quiz as a static page: an inline SVG map, a question card, round
 after round of "find this region". One engine for several images
 (`images/europe-quiz`, `images/vienna-districts`,
 `images/south-america-quiz`, `images/east-asia-quiz`,
-`images/germany-quiz`, `images/japan-quiz`: grouped rounds, `images/world-quiz`: Fuller's net, rounds with and
-without the small states); each image brings its own data, texts and
+`images/germany-quiz`: a relief under the regions too,
+`images/japan-quiz`: grouped rounds, `images/world-quiz`: Fuller's net,
+rounds with and without the small states); each image brings its own data, texts and
 map, the engine stays the same.
 
 ```
@@ -291,11 +292,15 @@ What the engine reads (`mapgen.map_svg` writes exactly this):
 </svg>
 ```
 
-`#overlays` may also hold `<image>`s (japan-quiz: `<image id="relief"
-href="relief.png" …>`, a shaded relief; germany-quiz two of them, on the
-Länder and on the context land; `mapgen.shaded_relief` makes the PNG and
-the element, the image's adapter inserts it after `mapgen.map_svg`): drawn in document order with the paths, never
-hit (`#overlays` has `pointer-events: none`), never a line or a blocking
+`#overlays` may also hold `<image>`s (japan-quiz and germany-quiz:
+`<image id="relief" href="relief.png" …>`, a shaded relief;
+`mapgen.shaded_relief` makes the PNG and the element, the image's adapter
+inserts it after `mapgen.map_svg`), and an `<image>` may sit between
+`#land` and the regions' group (germany-quiz's `relief-context`, the
+context land's relief: the regions' opaque fills cover it, so it may run
+under them; give it `pointer-events: none` in the image's stylesheet,
+like `#land`). Either is drawn in document order with the paths, never
+hit (`#overlays` has `pointer-events: none`; the other by that rule), never a line or a blocking
 overlay (those must be paths), styled by its id in the image's
 stylesheet. Its `href` is relative: it resolves against the page, and
 `img-src 'self'` allows it.

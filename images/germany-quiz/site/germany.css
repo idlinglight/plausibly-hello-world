@@ -3,16 +3,11 @@
    Each token block three times, as in style.css: light, dark by the OS,
    dark by the toggle. */
 
-/* Shaded relief (map.svg's <image id="relief"> on the Länder and
-   <image id="relief-context"> on the context land, first in #overlays:
-   above the land, below the lakes; #overlays is never hit, so a tap on a
-   mountain picks the Land beneath). Both PNGs are transparent where flat
-   and off the land, black with alpha on shadowed and steep slopes, white
-   with alpha on slopes facing the light (top left): plain alpha
-   compositing, no blend mode (one would have nothing to blend with over
-   the sea, the page background outside the SVG, and leave a light fringe
-   along the coasts). A little softer in dark mode, where the shadows on
-   the dark fills come close to black. */
+/* Shaded relief, the two <image>s in map.svg (what they hold and where
+   they sit, why no blend mode: tools/README.md, "Relief"). Plain alpha, a
+   little softer in dark mode, where the shadows on the dark fills come
+   close to black. The context land's image takes no pointer events, like
+   the context land under it. */
 :root {
   --relief-opacity: 1;
 }
@@ -28,13 +23,17 @@
 }
 
 #overlays #relief,
-#overlays #relief-context {
+#relief-context {
   opacity: var(--relief-opacity);
 }
 
+#relief-context {
+  pointer-events: none;
+}
+
 /* Lakes (overlay "lakes"): water in the sea's colour (the engine's
-   --water) with the coast's hairline. Not a blocking overlay: a click on
-   a lake picks the Land beneath. */
+   --water) with the coast's hairline, which keeps its width at every
+   zoom. */
 #overlays #lakes {
   stroke: var(--border);
   stroke-width: 0.75px;
